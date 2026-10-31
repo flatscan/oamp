@@ -1,19 +1,22 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../state/session.dart';
 import 'library/library_pane.dart';
 import 'player/now_playing.dart';
 import 'player/queue_panel.dart';
 
-/// Main screen: a Plexamp-style vertical column with the queue always on
-/// screen.
+/// Main screen: a Plexamp-style single column, the same on desktop as on a
+/// phone: now playing / library / queue, with a draggable divider between
+/// library and queue so the queue is always on screen.
 ///
-/// Narrow (the default phone-shaped window, and phones):
-///   now playing (compact) / library / queue, with a draggable divider
-///   between library and queue.
-/// Wide (900px+, e.g. a maximised desktop window):
-///   library on the left, a player column (large artwork + queue) on the right.
+/// On desktop a toggle opens a library fly-out to the right of the column and
+/// widens the window to make room. While it is open, the column shows large
+/// artwork and the queue, and library browsing moves into the fly-out.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -22,8 +25,31 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  /// Fraction of the split area given to the queue in the narrow layout.
+  static const _columnWidth = 420.0;
+  static const _flyoutWidth = 720.0;
+
+  /// Fraction of the split area given to the queue in the column.
   double _queueFraction = 0.4;
+  bool _flyoutOpen = false;
+
+  bool get _isDesktop =>
+      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+  Future<void> _toggleFlyout() async {
+    final open = !_flyoutOpen;
+    setState(() => _flyoutOpen = open);
+    // Grow or shrink the window by the fly-out's width, unless the user has
+    // maximised it, in which case the existing space is reused.
+    if (await windowManager.isMaximized() ||
+        await windowManager.isFullScreen()) {
+      return;
+    }
+    final size = await windowManager.getSize();
+    final width = open
+        ? size.width + _flyoutWidth
+        : (size.width - _flyoutWidth).clamp(360.0, double.infinity);
+    await windowManager.setSize(Size(width, size.height), animate: true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +58,16 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       appBar: AppBar(
         title: const Text('OAmp'),
         actions: [
+          if (_isDesktop)
+            IconButton(
+              tooltip: _flyoutOpen
+                  ? 'Close library panel'
+                  : 'Open library panel',
+              isSelected: _flyoutOpen,
+              icon: const Icon(Icons.view_sidebar_outlined),
+              selectedIcon: const Icon(Icons.view_sidebar),
+              onPressed: _toggleFlyout,
+            ),
           PopupMenuButton<String>(
             tooltip: 'Account',
             icon: const Icon(Icons.account_circle_outlined),
@@ -52,33 +88,37 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       ),
       body: LayoutBuilder(
         builder: (context, c) {
-          if (c.maxWidth >= 900) return _wide();
-          return _narrow(c.maxHeight);
+          // Fall back to the single column if the window is too narrow to
+          // fit the fly-out (e.g. while it is still resizing).
+          if (_flyoutOpen && c.maxWidth >= _columnWidth + 360) {
+            return _withFlyout();
+          }
+          return _column(c.maxHeight);
         },
       ),
     );
   }
 
-  Widget _wide() {
-    return Row(
+  Widget _withFlyout() {
+    return const Row(
       children: [
-        const Expanded(child: LibraryPane()),
-        const VerticalDivider(width: 1),
         SizedBox(
-          width: 400,
+          width: _columnWidth,
           child: Column(
-            children: const [
+            children: [
               NowPlaying(),
               Divider(height: 1),
               Expanded(child: QueuePanel()),
             ],
           ),
         ),
+        VerticalDivider(width: 1),
+        Expanded(child: LibraryPane()),
       ],
     );
   }
 
-  Widget _narrow(double height) {
+  Widget _column(double height) {
     return Column(
       children: [
         const NowPlaying(compact: true),

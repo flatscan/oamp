@@ -22,9 +22,11 @@ Windows is the first target. macOS, Android and iOS build from the same code.
   queue.
 - Queue panel that is always visible: tap to jump, drag to reorder, swipe or
   click to remove, clear all.
-- Narrow windows (the default) stack now playing, library and queue in one
-  column with a draggable divider. Windows 900px or wider show the library on
-  the left and a player column with large artwork and the queue on the right.
+- One tall column on every platform, the same as on a phone: now playing,
+  library and queue, with a draggable divider between library and queue.
+- On desktop, the sidebar button in the top bar opens a library fly-out to the
+  right of the column and widens the window to make room. While it is open the
+  column shows large artwork and the queue. Press it again to close it.
 
 ## Setting up on Windows with VS Code
 
@@ -104,7 +106,7 @@ lib/
     player.dart          Play queue and transport
   ui/
     login_screen.dart
-    home_shell.dart      Vertical layout, queue always visible
+    home_shell.dart      Single column, queue always visible, desktop fly-out
     library/             Artists, albums, album page
     player/              Now playing and queue panel
 test/                    Unit tests for the API client
@@ -122,7 +124,7 @@ test/                    Unit tests for the API client
 - [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage)
   for saved credentials.
 - [`window_manager`](https://pub.dev/packages/window_manager) for the
-  phone-shaped desktop window.
+  phone-shaped desktop window and the library fly-out.
 
 ## Development
 
