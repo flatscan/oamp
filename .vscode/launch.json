@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "OAmp (Windows)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "windows"
+    },
+    {
+      "name": "OAmp (macOS)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "macos"
+    },
+    {
+      "name": "OAmp (pick device)",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}
