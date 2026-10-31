@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
+import 'package:oamp/platform/system_controls.dart';
 import 'package:oamp/state/session.dart';
 
 /// A small in-memory library. Driving the UI with this is the design doc's
@@ -149,4 +150,24 @@ class FakeAudioEngine implements AudioEngine {
 
   @override
   Future<void> dispose() => _state.close();
+}
+
+/// Records what the app shows in the OS media UI, and lets a test press its
+/// buttons.
+class FakeSystemControls implements SystemControls {
+  final _commands = StreamController<MediaCommand>.broadcast();
+  final List<NowPlayingInfo?> shown = [];
+
+  NowPlayingInfo? get last => shown.isEmpty ? null : shown.last;
+
+  void press(MediaCommand cmd) => _commands.add(cmd);
+
+  @override
+  Stream<MediaCommand> get commands => _commands.stream;
+  @override
+  Future<void> update(NowPlayingInfo info) async => shown.add(info);
+  @override
+  Future<void> clear() async => shown.add(null);
+  @override
+  Future<void> dispose() => _commands.close();
 }

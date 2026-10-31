@@ -34,4 +34,19 @@ void main() {
     ];
     expect(bad, isEmpty);
   });
+
+  test('OS media session code stays behind SystemControls', () {
+    // Only lib/platform may use a platform's media session package, so
+    // Android/iOS/macOS (audio_service) and Linux (MPRIS) are new files there.
+    final bad = [
+      for (final dir in ['lib/core', 'lib/state', 'lib/ui', 'lib/sources'])
+        for (final (path, line) in imports(dir))
+          if (line.contains('package:smtc_windows') ||
+              line.contains('package:audio_service') ||
+              line.contains('windows_system_controls') ||
+              line.contains('platform_system_controls'))
+            '$path: $line',
+    ];
+    expect(bad, isEmpty);
+  });
 }
