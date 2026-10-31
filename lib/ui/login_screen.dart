@@ -36,7 +36,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await ref
           .read(sessionProvider.notifier)
-          .login(
+          .loginSubsonic(
             serverUrl: _url.text,
             username: _user.text,
             password: _pass.text,

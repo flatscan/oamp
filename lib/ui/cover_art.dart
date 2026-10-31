@@ -13,11 +13,11 @@ class CoverArt extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final client = ref.watch(sessionProvider).value;
+    final source = ref.watch(sessionProvider).value?.source;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     // Request a size bucket so the same image is reused across widgets.
     final px = (size * dpr) <= 150 ? 150 : ((size * dpr) <= 300 ? 300 : 600);
-    final url = client?.coverArtUrl(coverArtId, size: px);
+    final url = source?.coverArtUrl(coverArtId, size: px);
     final placeholder = Container(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       alignment: Alignment.center,

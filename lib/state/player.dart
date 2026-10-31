@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../api/models.dart';
-import '../api/subsonic_client.dart';
+import '../core/models.dart';
+import '../core/track_resolver.dart';
 import '../audio/audio_engine.dart';
 import 'session.dart';
 
@@ -52,17 +52,22 @@ final durationProvider = StreamProvider<Duration?>(
   (ref) => ref.watch(audioEngineProvider).durationStream,
 );
 
-final playerProvider = NotifierProvider<PlayerNotifier, PlayerState>(
-  PlayerNotifier.new,
+final playerProvider = NotifierProvider<PlayerController, PlayerState>(
+  PlayerController.new,
 );
 
-/// Owns the play queue. The list of [Track]s lives here and is mirrored into
-/// the [AudioEngine], so in-app buttons and (later) system media controls go
-/// through the same code path.
-class PlayerNotifier extends Notifier<PlayerState> {
+/// Owns the play queue and treats the [AudioEngine] as an output.
+///
+/// The list of [Track]s lives here and is mirrored into the engine, so in-app
+/// buttons and (next milestone) system media controls via `audio_service` go
+/// through the same code path, and a v2 cast engine can take over the output
+/// without the queue moving. Tracks become playable URIs through the
+/// [TrackResolver], which is where v2 offline downloads plug in.
+class PlayerController extends Notifier<PlayerState> {
   late AudioEngine _engine;
 
-  SubsonicClient? get _client => ref.read(sessionProvider).value;
+  bool get _signedIn => ref.read(sessionProvider).value != null;
+  TrackResolver get _resolver => ref.read(trackResolverProvider);
 
   @override
   PlayerState build() {
@@ -75,46 +80,47 @@ class PlayerNotifier extends Notifier<PlayerState> {
       );
     });
     ref.onDispose(sub.cancel);
-    // Signing out clears the queue, since its stream URLs carry the old auth.
+    // Signing out (or, in v2, switching server) clears the queue, since its
+    // URIs belong to the old server.
     ref.listen(sessionProvider, (prev, next) {
-      if (prev?.value != null && next.value == null) unawaited(clear());
+      final before = prev?.value?.serverId;
+      if (before != null && before != next.value?.serverId) unawaited(clear());
     });
     return const PlayerState();
   }
 
-  List<Uri> _uris(List<Track> tracks) => [
-    for (final t in tracks) _client!.streamUrl(t.id),
-  ];
+  Future<List<Uri>> _uris(List<Track> tracks) =>
+      Future.wait([for (final t in tracks) _resolver.resolve(t)]);
 
   /// Replaces the queue with [tracks] and starts at [startIndex].
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
-    if (_client == null || tracks.isEmpty) return;
+    if (!_signedIn || tracks.isEmpty) return;
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       currentIndex: () => startIndex,
     );
-    await _engine.setQueue(_uris(tracks), initialIndex: startIndex);
+    await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
   }
 
   /// Adds [tracks] to the end of the queue.
   Future<void> enqueue(List<Track> tracks) async {
-    if (_client == null || tracks.isEmpty) return;
+    if (!_signedIn || tracks.isEmpty) return;
     if (state.queue.isEmpty) return playTracks(tracks);
     state = state.copyWith(
       queue: List.unmodifiable([...state.queue, ...tracks]),
     );
-    await _engine.addAll(_uris(tracks));
+    await _engine.addAll(await _uris(tracks));
   }
 
   /// Inserts [tracks] right after the current track.
   Future<void> playNext(List<Track> tracks) async {
-    if (_client == null || tracks.isEmpty) return;
+    if (!_signedIn || tracks.isEmpty) return;
     if (state.queue.isEmpty) return playTracks(tracks);
     final at = (state.currentIndex ?? -1) + 1;
     final q = [...state.queue]..insertAll(at, tracks);
     state = state.copyWith(queue: List.unmodifiable(q));
-    await _engine.insertAll(at, _uris(tracks));
+    await _engine.insertAll(at, await _uris(tracks));
   }
 
   Future<void> jumpTo(int index) async {

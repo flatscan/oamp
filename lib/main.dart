@@ -1,18 +1,13 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'platform/platform_info.dart';
 import 'state/session.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 import 'ui/theme.dart';
-
-bool get _isDesktop =>
-    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +16,7 @@ Future<void> main() async {
   // provides it there. Android, iOS and macOS use just_audio's own players.
   JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
 
-  if (_isDesktop) {
+  if (isDesktop) {
     // Open as a tall, phone-shaped column like Plexamp's desktop window.
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
@@ -64,7 +59,9 @@ class _Root extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     return switch (session) {
-      AsyncData(value: final client?) => HomeShell(key: ValueKey(client)),
+      AsyncData(value: final session?) => HomeShell(
+        key: ValueKey(session.serverId),
+      ),
       AsyncData() || AsyncError() => const LoginScreen(),
       _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
     };

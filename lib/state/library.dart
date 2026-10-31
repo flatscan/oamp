@@ -1,22 +1,22 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../api/models.dart';
+import '../core/models.dart';
 import 'session.dart';
 
-/// Library data, cached per session by Riverpod. Pull-to-refresh or the
-/// refresh button invalidates these.
+/// Library queries against the active [MusicSource], cached by Riverpod and
+/// dropped when the session changes. Pull-to-refresh invalidates them.
 final artistsProvider = FutureProvider<List<Artist>>(
-  (ref) => ref.watch(clientProvider).getArtists(),
+  (ref) => ref.watch(musicSourceProvider).getArtists(),
 );
 
 final albumsProvider = FutureProvider<List<Album>>(
-  (ref) => ref.watch(clientProvider).getAlbumList(size: 500),
+  (ref) => ref.watch(musicSourceProvider).getAlbums(size: 500),
 );
 
 final artistDetailProvider = FutureProvider.family<ArtistDetail, String>(
-  (ref, id) => ref.watch(clientProvider).getArtist(id),
+  (ref, id) => ref.watch(musicSourceProvider).getArtist(id),
 );
 
 final albumDetailProvider = FutureProvider.family<AlbumDetail, String>(
-  (ref, id) => ref.watch(clientProvider).getAlbum(id),
+  (ref, id) => ref.watch(musicSourceProvider).getAlbum(id),
 );

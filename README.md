@@ -94,23 +94,50 @@ capability added in Xcode before sign-in persists.
 
 ```
 lib/
-  main.dart              App entry: audio backend, desktop window, routing
-  api/
-    subsonic_client.dart Subsonic/OpenSubsonic REST client and token auth
-    models.dart          Artist, Album, Track
+  main.dart                 App entry: audio backend, desktop window, routing
+  core/                     Backend-neutral, no dart:io
+    models.dart             Artist, Album, Track (OAmp's own models)
+    music_source.dart       MusicSource interface + capability flags
+    track_resolver.dart     Track -> playable URI (stream now, downloads in v2)
+  sources/subsonic/         The only v1 MusicSource: Navidrome / Subsonic
+    subsonic_client.dart    Transport and token auth
+    subsonic_source.dart    Maps Subsonic JSON to OAmp models
   audio/
-    audio_engine.dart    AudioEngine interface + just_audio implementation
-  state/                 Riverpod providers
-    session.dart         Sign-in, saved credentials
-    library.dart         Cached library queries
-    player.dart          Play queue and transport
+    audio_engine.dart       AudioEngine output interface + just_audio engine
+  platform/                 Platform code behind interfaces
+    secure_store.dart       SecureStore (OS keychain)
+    platform_info.dart      isDesktop without dart:io
+  state/                    Riverpod providers
+    session.dart            ServerSession keyed by serverId, sign-in
+    library.dart            Cached library queries
+    player.dart             PlayerController: the queue; engine is its output
   ui/
     login_screen.dart
-    home_shell.dart      Single column, queue always visible, desktop fly-out
-    library/             Artists, albums, album page
-    player/              Now playing and queue panel
-test/                    Unit tests for the API client
+    home_shell.dart         Single column, queue always visible, desktop fly-out
+    library/                Artists, albums, album page
+    player/                 Now playing and queue panel
+test/
+  fakes/                    FakeMusicSource, FakeAudioEngine
+  ui_with_fake_source_test.dart  Drives the whole UI with no server
+  architecture_test.dart    Enforces the seams below
 ```
+
+### Built for v2
+
+The design doc's v2 goals plug into seams that already exist, so they add
+implementations rather than rewrite v1:
+
+- **Other backends (Jellyfin, Plex):** a new `MusicSource`. The UI and
+  providers only see `core/` models.
+- **Multiple servers:** credentials are stored per `serverId`, and the
+  active one is a `ServerSession`. A switcher only changes which is active.
+- **Offline downloads:** a `TrackResolver` that returns a local file when
+  the track is downloaded.
+- **Chromecast:** `PlayerController` owns the queue and sends it to an
+  `AudioEngine`, so a cast engine is another output.
+- **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`
+  and `platform_info`. `architecture_test.dart` fails if `lib/ui` imports
+  the Subsonic or audio code, or if core, state or UI import `dart:io`.
 
 ### Packages
 

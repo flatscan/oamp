@@ -1,10 +1,8 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../platform/platform_info.dart';
 import '../state/session.dart';
 import 'library/library_pane.dart';
 import 'player/now_playing.dart';
@@ -32,9 +30,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   double _queueFraction = 0.4;
   bool _flyoutOpen = false;
 
-  bool get _isDesktop =>
-      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
-
   Future<void> _toggleFlyout() async {
     final open = !_flyoutOpen;
     setState(() => _flyoutOpen = open);
@@ -53,12 +48,12 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final client = ref.watch(clientProvider);
+    final source = ref.watch(musicSourceProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('OAmp'),
         actions: [
-          if (_isDesktop)
+          if (isDesktop)
             IconButton(
               tooltip: _flyoutOpen
                   ? 'Close library panel'
@@ -75,12 +70,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               if (v == 'logout') ref.read(sessionProvider.notifier).logout();
             },
             itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  '${client.credentials.username} @ ${client.credentials.baseUrl.host}',
-                ),
-              ),
+              PopupMenuItem(enabled: false, child: Text(source.displayName)),
               const PopupMenuItem(value: 'logout', child: Text('Sign out')),
             ],
           ),

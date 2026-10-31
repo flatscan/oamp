@@ -4,7 +4,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:oamp/api/subsonic_client.dart';
+import 'package:oamp/core/music_source.dart';
+import 'package:oamp/sources/subsonic/subsonic_client.dart';
+import 'package:oamp/sources/subsonic/subsonic_source.dart';
 
 void main() {
   group('normaliseServerUrl', () {
@@ -39,7 +41,17 @@ void main() {
     expect(uri.toString(), isNot(contains('sesame')));
   });
 
-  SubsonicClient clientReturning(Map<String, dynamic> body) => SubsonicClient(
+  test('serverId is stable across salts and differs per account', () {
+    SubsonicCredentials creds(String user) => SubsonicCredentials.fromPassword(
+      baseUrl: Uri.parse('https://m.example.com'),
+      username: user,
+      password: 'x',
+    );
+    expect(creds('ed').serverId, creds('ed').serverId);
+    expect(creds('ed').serverId, isNot(creds('kim').serverId));
+  });
+
+  SubsonicSource sourceReturning(Map<String, dynamic> body) => SubsonicSource(
     SubsonicCredentials.fromPassword(
       baseUrl: Uri.parse('https://m.example.com'),
       username: 'ed',
@@ -54,14 +66,14 @@ void main() {
   );
 
   test('server error is surfaced with its message', () async {
-    final c = clientReturning({
+    final c = sourceReturning({
       'status': 'failed',
       'error': {'code': 40, 'message': 'Wrong username or password'},
     });
     await expectLater(
       c.ping(),
       throwsA(
-        isA<SubsonicException>()
+        isA<MusicSourceException>()
             .having((e) => e.code, 'code', 40)
             .having((e) => e.message, 'message', 'Wrong username or password'),
       ),
@@ -69,7 +81,7 @@ void main() {
   });
 
   test('getArtists flattens the index', () async {
-    final c = clientReturning({
+    final c = sourceReturning({
       'status': 'ok',
       'artists': {
         'index': [
@@ -94,7 +106,7 @@ void main() {
   });
 
   test('getAlbum parses tracks with durations', () async {
-    final c = clientReturning({
+    final c = sourceReturning({
       'status': 'ok',
       'album': {
         'id': 'al1',

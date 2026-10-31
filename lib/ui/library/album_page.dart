@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../api/models.dart';
+import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
 import '../async_view.dart';
