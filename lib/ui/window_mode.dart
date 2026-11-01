@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
+import '../platform/window_transitions.dart';
 import 'player/now_playing.dart';
 
 /// Whether the desktop window is in expanded mode (the column plus the
@@ -84,14 +85,22 @@ class FlyoutController extends Notifier<bool> {
       // single column's sheet closed underneath without animating.
       ref.read(nowPlayingSheetProvider.notifier).close(animate: false);
       if (isDesktop) {
-        final height = (await windowManager.getSize()).height;
-        await windowManager.setMaximumSize(const Size(_unlimited, _unlimited));
-        await windowManager.setSize(
-          Size(_singleWindowWidth + flyoutWidth, height),
-        );
-        await windowManager.setMinimumSize(
-          Size(_singleWindowWidth + 360, minHeight),
-        );
+        await WindowTransitions.setEnabled(false);
+        try {
+          final height = (await windowManager.getSize()).height;
+          await windowManager.setMaximumSize(
+            const Size(_unlimited, _unlimited),
+          );
+          await windowManager.setSize(
+            Size(_singleWindowWidth + flyoutWidth, height),
+          );
+          await windowManager.setMinimumSize(
+            Size(_singleWindowWidth + 360, minHeight),
+          );
+          await SchedulerBinding.instance.endOfFrame;
+        } finally {
+          await WindowTransitions.setEnabled(true);
+        }
       }
       await _animate(0, 1, reveal.set);
     } finally {
@@ -123,12 +132,20 @@ class FlyoutController extends Notifier<bool> {
         if (await windowManager.isMaximized()) {
           await windowManager.unmaximize();
         }
-        final height = (await windowManager.getSize()).height;
-        await windowManager.setMinimumSize(Size(_singleWindowWidth, minHeight));
-        await windowManager.setSize(Size(_singleWindowWidth, height));
-        await windowManager.setMaximumSize(
-          Size(_singleWindowWidth, _unlimited),
-        );
+        await WindowTransitions.setEnabled(false);
+        try {
+          final height = (await windowManager.getSize()).height;
+          await windowManager.setMinimumSize(
+            Size(_singleWindowWidth, minHeight),
+          );
+          await windowManager.setSize(Size(_singleWindowWidth, height));
+          await windowManager.setMaximumSize(
+            Size(_singleWindowWidth, _unlimited),
+          );
+          await SchedulerBinding.instance.endOfFrame;
+        } finally {
+          await WindowTransitions.setEnabled(true);
+        }
       }
     } finally {
       if (ref.mounted) reveal.set(1);

@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <dwmapi.h>
 #include <flutter/standard_method_codec.h>
 
 #include <optional>
@@ -66,6 +67,28 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
         }
       });
+  // Lets the app turn off the window manager's own resize animations while
+  // it switches between one column and the expanded view. A snapped window
+  // otherwise gets an animated bitmap transition from Windows on top of the
+  // app's own, which shows as a one-frame flicker.
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "oamp/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setTransitionsEnabled") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          BOOL disabled = (enabled != nullptr && !*enabled) ? TRUE : FALSE;
+          DwmSetWindowAttribute(GetHandle(), DWMWA_TRANSITIONS_FORCEDISABLED,
+                                &disabled, sizeof(disabled));
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -105,6 +128,7 @@ void FlutterWindow::UnregisterMediaKeys() {
 void FlutterWindow::OnDestroy() {
   UnregisterMediaKeys();
   media_keys_channel_ = nullptr;
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

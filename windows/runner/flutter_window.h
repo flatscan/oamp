@@ -35,6 +35,8 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       media_keys_channel_;
   bool media_keys_registered_ = false;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
   bool RegisterMediaKeys();
   void UnregisterMediaKeys();
 };
