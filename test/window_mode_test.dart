@@ -9,6 +9,7 @@ import 'package:oamp/state/settings.dart';
 import 'package:oamp/ui/app_frame.dart';
 import 'package:oamp/ui/mode_switch.dart';
 import 'package:oamp/ui/player/now_playing.dart';
+import 'package:oamp/ui/window_mode.dart';
 
 import 'fakes/fakes.dart';
 
@@ -144,5 +145,49 @@ void main() {
 
     expect(find.byType(WindowBar), findsNothing);
     expect(prefs.getBool('oamp.window.showTitleBar'), isFalse);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('size limits always contain the window at fractional scaling', (
+    tester,
+  ) async {
+    // 125% scaling: the content is 550 physical px (440 logical) and the
+    // runner reports a 568 px window (454.4 logical), a fractional frame.
+    final widths = <double>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      ..setMockMethodCallHandler(const MethodChannel('oamp/window'), (
+        call,
+      ) async {
+        windowCalls.add(call);
+        if (call.method == 'setWidth') widths.add(call.arguments as double);
+        return call.method == 'setWidth' ? true : null;
+      })
+      ..setMockMethodCallHandler(const MethodChannel('window_manager'), (
+        call,
+      ) async {
+        windowCalls.add(call);
+        return switch (call.method) {
+          'getBounds' => {'x': 0.0, 'y': 0.0, 'width': 454.4, 'height': 880.0},
+          _ => null,
+        };
+      });
+    tester.view.physicalSize = const Size(550, 1100);
+    tester.view.devicePixelRatio = 1.25;
+    addTearDown(tester.view.reset);
+
+    await FlyoutController.lockToColumn();
+
+    Map<Object?, Object?> args(String method) =>
+        windowCalls.lastWhere((c) => c.method == method).arguments as Map;
+    final width = widths.single;
+    expect(width, closeTo(454.4, 1e-9));
+    // window_manager truncates limits to whole logical pixels before
+    // scaling, so check them the way it applies them.
+    int applied(String method) =>
+        ((args(method)['width'] as double).truncate() * 1.25).truncate();
+    final physical = (width * 1.25).round();
+    expect(applied('setMaximumSize'), greaterThanOrEqualTo(physical));
+    expect(applied('setMinimumSize'), lessThanOrEqualTo(physical));
+    // The width was set natively, so the height was never touched.
+    expect(windowCalls.where((c) => c.method == 'setBounds'), isEmpty);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <flutter/standard_method_codec.h>
 
+#include <cmath>
 #include <optional>
 #include <string>
 
@@ -85,6 +86,23 @@ bool FlutterWindow::OnCreate() {
           DwmSetWindowAttribute(GetHandle(), DWMWA_TRANSITIONS_FORCEDISABLED,
                                 &disabled, sizeof(disabled));
           result->Success();
+        } else if (call.method_name() == "setWidth") {
+          // Changes only the width, in whole physical pixels, keeping the
+          // exact current height and position. Going through logical sizes
+          // and back can round the height by a pixel, which un-snaps or
+          // re-snaps a window snapped to the screen's full height.
+          const auto* width = std::get_if<double>(call.arguments());
+          HWND hwnd = GetHandle();
+          RECT rect;
+          if (width == nullptr || !GetWindowRect(hwnd, &rect)) {
+            result->Success(flutter::EncodableValue(false));
+            return;
+          }
+          const double scale = GetDpiForWindow(hwnd) / 96.0;
+          const int physical = static_cast<int>(std::lround(*width * scale));
+          SetWindowPos(hwnd, nullptr, 0, 0, physical, rect.bottom - rect.top,
+                       SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+          result->Success(flutter::EncodableValue(true));
         } else {
           result->NotImplemented();
         }
