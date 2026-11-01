@@ -126,4 +126,87 @@ void main() {
     expect(detail.album.name, 'Moon Safari');
     expect(detail.tracks.single.duration, const Duration(seconds: 427));
   });
+
+  test('search3 results and liked flags are parsed', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'searchResult3': {
+        'artist': [
+          {'id': 'ar1', 'name': 'Air'},
+        ],
+        'album': [
+          {'id': 'al1', 'name': 'Moon Safari', 'artist': 'Air'},
+        ],
+        'song': [
+          {
+            'id': 't2',
+            'title': 'Sexy Boy',
+            'artistId': 'ar1',
+            'albumId': 'al1',
+            'starred': '2026-01-01T00:00:00Z',
+          },
+          {'id': 't3', 'title': 'Kelly Watch the Stars'},
+        ],
+      },
+    });
+    final r = await c.search('air');
+    expect(r.artists.single.name, 'Air');
+    expect(r.albums.single.name, 'Moon Safari');
+    expect(r.tracks.first.liked, isTrue);
+    expect(r.tracks.first.artistId, 'ar1');
+    expect(r.tracks.last.liked, isFalse);
+  });
+
+  test('an empty search result is empty, not an error', () async {
+    final c = sourceReturning({'status': 'ok', 'searchResult3': {}});
+    expect((await c.search('zzz')).isEmpty, isTrue);
+  });
+
+  test('getPlaylist parses entries and duration', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'playlist': {
+        'id': 'p1',
+        'name': 'Mixtape',
+        'songCount': 1,
+        'duration': 300,
+        'owner': 'ed',
+        'entry': [
+          {'id': 't1', 'title': 'One'},
+        ],
+      },
+    });
+    final d = await c.getPlaylist('p1');
+    expect(d.playlist.duration, const Duration(minutes: 5));
+    expect(d.playlist.owner, 'ed');
+    expect(d.tracks.single.title, 'One');
+  });
+
+  test('scrobble and star send the right endpoints', () async {
+    final seen = <Uri>[];
+    final c = SubsonicSource(
+      SubsonicCredentials.fromPassword(
+        baseUrl: Uri.parse('https://m.example.com'),
+        username: 'ed',
+        password: 'x',
+      ),
+      httpClient: MockClient((req) async {
+        seen.add(req.url);
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'subsonic-response': {'status': 'ok'},
+            }),
+          ),
+          200,
+        );
+      }),
+    );
+    await c.reportPlayback('t1', submission: true);
+    await c.setLiked('t1', false);
+    expect(seen[0].path, '/rest/scrobble');
+    expect(seen[0].queryParameters['submission'], 'true');
+    expect(seen[1].path, '/rest/unstar');
+    expect(seen[1].queryParameters['id'], 't1');
+  });
 }

@@ -41,6 +41,26 @@ abstract class MusicSource {
   });
   Future<AlbumDetail> getAlbum(String id);
 
+  /// Artists, albums and tracks matching [query].
+  Future<SearchResults> search(String query, {int limit = 20});
+
+  Future<List<Playlist>> getPlaylists();
+  Future<PlaylistDetail> getPlaylist(String id);
+
+  /// A random selection from the whole library, for "shuffle everything".
+  Future<List<Track>> getRandomTracks({int size = 100});
+
+  /// Tracks the user has liked.
+  Future<List<Track>> getLikedTracks();
+
+  /// Likes or unlikes a track.
+  Future<void> setLiked(String trackId, bool liked);
+
+  /// Tells the server a track is playing ([submission] false) or has been
+  /// listened to ([submission] true), which drives play counts and the
+  /// "recently played" lists.
+  Future<void> reportPlayback(String trackId, {required bool submission});
+
   /// A URL that plays the track with no extra headers, so the local player
   /// or (later) a cast device can fetch it directly.
   Uri streamUrl(String trackId);

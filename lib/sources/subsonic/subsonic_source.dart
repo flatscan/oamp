@@ -85,6 +85,76 @@ class SubsonicSource implements MusicSource {
     ]);
   }
 
+  @override
+  Future<SearchResults> search(String query, {int limit = 20}) async {
+    final r = await client.get('search3', {
+      'query': query,
+      'artistCount': '$limit',
+      'albumCount': '$limit',
+      'songCount': '$limit',
+    });
+    final res = (r['searchResult3'] as Map<String, dynamic>?) ?? const {};
+    return SearchResults(
+      artists: [
+        for (final a in (res['artist'] as List? ?? const []))
+          _artist(a as Map<String, dynamic>),
+      ],
+      albums: [
+        for (final a in (res['album'] as List? ?? const []))
+          _album(a as Map<String, dynamic>),
+      ],
+      tracks: [
+        for (final t in (res['song'] as List? ?? const []))
+          _track(t as Map<String, dynamic>),
+      ],
+    );
+  }
+
+  @override
+  Future<List<Playlist>> getPlaylists() async {
+    final r = await client.get('getPlaylists');
+    return [
+      for (final p in (r['playlists']?['playlist'] as List? ?? const []))
+        _playlist(p as Map<String, dynamic>),
+    ];
+  }
+
+  @override
+  Future<PlaylistDetail> getPlaylist(String id) async {
+    final r = await client.get('getPlaylist', {'id': id});
+    final p = r['playlist'] as Map<String, dynamic>;
+    return PlaylistDetail(_playlist(p), [
+      for (final t in (p['entry'] as List? ?? const []))
+        _track(t as Map<String, dynamic>),
+    ]);
+  }
+
+  @override
+  Future<List<Track>> getRandomTracks({int size = 100}) async {
+    final r = await client.get('getRandomSongs', {'size': '$size'});
+    return [
+      for (final t in (r['randomSongs']?['song'] as List? ?? const []))
+        _track(t as Map<String, dynamic>),
+    ];
+  }
+
+  @override
+  Future<List<Track>> getLikedTracks() async {
+    final r = await client.get('getStarred2');
+    return [
+      for (final t in (r['starred2']?['song'] as List? ?? const []))
+        _track(t as Map<String, dynamic>),
+    ];
+  }
+
+  @override
+  Future<void> setLiked(String trackId, bool liked) =>
+      client.get(liked ? 'star' : 'unstar', {'id': trackId});
+
+  @override
+  Future<void> reportPlayback(String trackId, {required bool submission}) =>
+      client.get('scrobble', {'id': trackId, 'submission': '$submission'});
+
   /// Auth rides in the query string, which is how Subsonic clients stream.
   @override
   Uri streamUrl(String trackId) =>
@@ -126,11 +196,31 @@ class SubsonicSource implements MusicSource {
       id: '${j['id']}',
       title: (j['title'] ?? 'Unknown track') as String,
       artist: j['artist'] as String?,
+      artistId: j['artistId']?.toString(),
       album: j['album'] as String?,
       albumId: j['albumId']?.toString(),
       track: _int(j['track']),
       discNumber: _int(j['discNumber']),
       duration: secs == null ? null : Duration(seconds: secs),
+      coverArt: j['coverArt'] as String?,
+      liked: j['starred'] != null,
+      year: _int(j['year']),
+      format: j['suffix'] as String?,
+      bitRate: _int(j['bitRate']),
+      // OpenSubsonic fields; plain Subsonic servers leave them out.
+      sampleRate: _int(j['samplingRate']),
+      bitDepth: _int(j['bitDepth']),
+    );
+  }
+
+  static Playlist _playlist(Map<String, dynamic> j) {
+    final secs = _int(j['duration']);
+    return Playlist(
+      id: '${j['id']}',
+      name: (j['name'] ?? 'Untitled playlist') as String,
+      songCount: _int(j['songCount']) ?? 0,
+      duration: secs == null ? null : Duration(seconds: secs),
+      owner: j['owner'] as String?,
       coverArt: j['coverArt'] as String?,
     );
   }
