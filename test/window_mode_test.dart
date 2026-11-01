@@ -74,14 +74,14 @@ void main() {
     expect(tester.getRect(buttons.first), home);
     final expandedNowPlaying = tester.getRect(find.byType(NowPlayingView));
     expect(expandedNowPlaying.width, 440);
-    // The window grew over several frames rather than in one jump.
+    // The window is resized once, straight to its final width; the slide
+    // happens inside the app.
     final widths = [
       for (final c in windowCalls.where((c) => c.method == 'setBounds'))
         (c.arguments as Map)['width'] as double,
     ];
-    expect(widths.length, greaterThan(3));
     expect(widths.last, 1160);
-    expect(widths, orderedEquals([...widths]..sort()));
+    expect(widths.where((w) => w > 440 && w < 1160), isEmpty);
     expect(tester.getRect(buttons.last).right, 1160 - ModeSwitchButton.inset);
 
     // Expanded -> single column lands on now playing, same spot again.

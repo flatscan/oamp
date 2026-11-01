@@ -20,15 +20,14 @@ class HomeShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expanded = ref.watch(flyoutOpenProvider);
-    final slideWidth = ref.watch(flyoutSlideWidthProvider);
+    final reveal = ref.watch(flyoutRevealProvider);
     if (!expanded) {
       return Scaffold(
         body: Browser(key: Browser.globalKey, footer: const MiniPlayer()),
       );
     }
     // The column stays exactly one column wide and pinned left in every
-    // state, including while the window is growing or shrinking, so now
-    // playing never moves or resizes.
+    // state, so now playing never moves or resizes.
     return Scaffold(
       body: Row(
         children: [
@@ -38,7 +37,7 @@ class HomeShell extends ConsumerWidget {
           ),
           Expanded(
             child: FlyoutSlide(
-              width: slideWidth,
+              reveal: reveal,
               child: Row(
                 children: [
                   const VerticalDivider(width: 1),
