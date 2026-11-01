@@ -566,7 +566,7 @@ class _DetailScaffoldState extends State<DetailScaffold> {
           }
           return false;
         },
-        child: Scrollbar(child: body),
+        child: body,
       ),
     );
   }
@@ -579,6 +579,7 @@ class ListScaffold extends StatelessWidget {
   final List<Widget>? actions;
   final Future<void> Function()? onRefresh;
   final ScrollController? controller;
+  final double toolbarHeight;
 
   const ListScaffold({
     super.key,
@@ -587,6 +588,7 @@ class ListScaffold extends StatelessWidget {
     this.actions,
     this.onRefresh,
     this.controller,
+    this.toolbarHeight = kToolbarHeight,
   });
 
   @override
@@ -606,10 +608,7 @@ class ListScaffold extends StatelessWidget {
     if (onRefresh != null) {
       body = RefreshIndicator(onRefresh: onRefresh!, child: body);
     }
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Scrollbar(controller: controller, child: body),
-    );
+    return Scaffold(backgroundColor: Colors.transparent, body: body);
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
 import '../state/player.dart';
+import '../state/settings.dart';
 import 'browser.dart';
 import 'theme.dart';
 
@@ -67,7 +68,8 @@ class AppFrame extends ConsumerWidget {
           autofocus: true,
           child: Column(
             children: [
-              if (isDesktop) const WindowBar(),
+              if (isDesktop && ref.watch(settingsProvider).showTitleBar)
+                const WindowBar(),
               Expanded(child: child),
             ],
           ),
@@ -228,5 +230,21 @@ class _MaximizeButtonState extends State<_MaximizeButton> with WindowListener {
             brightness: Brightness.dark,
             onPressed: windowManager.maximize,
           );
+  }
+}
+
+/// Drags the window when the title bar is hidden (Windows only); otherwise
+/// just [child].
+class WindowDragArea extends ConsumerWidget {
+  final Widget child;
+  const WindowDragArea({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hidden = !ref.watch(settingsProvider).showTitleBar;
+    if (!hidden || defaultTargetPlatform != TargetPlatform.windows) {
+      return child;
+    }
+    return DragToMoveArea(child: child);
   }
 }

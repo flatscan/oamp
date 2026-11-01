@@ -5,21 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
-import '../../platform/platform_info.dart';
 import '../cover_art.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import '../window_mode.dart';
+import '../app_frame.dart';
+import '../mode_switch.dart';
 import 'art_colors.dart';
 import 'controls.dart';
 import 'queue_list.dart';
 
 /// Opens the full-screen now playing view over the whole column.
-void showNowPlaying(BuildContext context) {
+/// [animate] false shows it at once, as when switching back from expanded
+/// mode.
+void showNowPlaying(BuildContext context, {bool animate = true}) {
   Navigator.of(context, rootNavigator: true).push(
     PageRouteBuilder<void>(
       opaque: true,
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: animate
+          ? const Duration(milliseconds: 320)
+          : Duration.zero,
       reverseTransitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (context, _, _) =>
           NowPlayingView(onClose: () => Navigator.of(context).maybePop()),
@@ -77,34 +81,32 @@ class NowPlayingView extends ConsumerWidget {
               ],
             ),
           ),
-          child: Scrollbar(
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Stack(
-                    children: [
-                      _Artwork(track: track),
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        right: 8,
-                        child: _ArtOverlayBar(onClose: onClose),
-                      ),
-                    ],
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: _Controls(track: track, accent: accent),
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Stack(
+                  children: [
+                    _Artwork(track: track),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      right: 8,
+                      child: _ArtOverlayBar(onClose: onClose),
                     ),
+                  ],
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: _Controls(track: track, accent: accent),
                   ),
                 ),
-                const QueueSlivers(),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
-            ),
+              ),
+              const QueueSlivers(),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
           ),
         );
       },
@@ -121,59 +123,41 @@ class NowPlayingView extends ConsumerWidget {
 }
 
 /// Buttons over the top of the artwork: close in the middle (when shown
-/// full-screen) and, on desktop, the switch between single-column and
-/// expanded mode on the right.
-class _ArtOverlayBar extends ConsumerWidget {
+/// full-screen) and the mode switch at the top right. On Windows the
+/// strip also moves the window, for when the title bar is hidden.
+class _ArtOverlayBar extends StatelessWidget {
   final VoidCallback? onClose;
   const _ArtOverlayBar({required this.onClose});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final expanded = ref.watch(flyoutOpenProvider);
-    final style = IconButton.styleFrom(
-      backgroundColor: Colors.black45,
-      foregroundColor: Colors.white,
-      hoverColor: Colors.white24,
-    );
-    return Row(
-      children: [
-        const SizedBox(width: 48),
-        Expanded(
-          child: Center(
-            child: onClose == null
-                ? null
-                : IconButton(
-                    tooltip: 'Close',
-                    style: style,
-                    iconSize: 30,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    onPressed: onClose,
-                  ),
+  Widget build(BuildContext context) {
+    final bar = SizedBox(
+      height: ModeSwitchButton.size,
+      child: Row(
+        children: [
+          const SizedBox(width: ModeSwitchButton.size),
+          Expanded(
+            child: Center(
+              child: onClose == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Close',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black45,
+                        foregroundColor: Colors.white,
+                        hoverColor: Colors.white24,
+                      ),
+                      iconSize: 30,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                      onPressed: onClose,
+                    ),
+            ),
           ),
-        ),
-        SizedBox(
-          width: 48,
-          child: !isDesktop
-              ? null
-              : IconButton(
-                  tooltip: expanded ? 'Single column' : 'Expanded view',
-                  style: style,
-                  iconSize: 20,
-                  icon: Icon(
-                    expanded
-                        ? Icons.close_fullscreen_rounded
-                        : Icons.open_in_full_rounded,
-                  ),
-                  onPressed: () {
-                    // Expanded mode shows now playing in the column, so the
-                    // full-screen copy closes first.
-                    onClose?.call();
-                    ref.read(flyoutOpenProvider.notifier).toggle();
-                  },
-                ),
-        ),
-      ],
+          const ModeSwitchButton(),
+        ],
+      ),
     );
+    return WindowDragArea(child: bar);
   }
 }
 
