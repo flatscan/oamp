@@ -10,21 +10,6 @@ abstract final class NativeWindow {
   static bool get _supported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
-  /// Turns the window manager's own animations for this window off and on.
-  /// The app animates its own mode switch; when the window is snapped,
-  /// Windows also animates the resize with a stretched snapshot of the old
-  /// frame.
-  static Future<void> setTransitionsEnabled(bool enabled) async {
-    if (!_supported) return;
-    try {
-      await _channel.invokeMethod<void>('setTransitionsEnabled', enabled);
-    } on MissingPluginException {
-      // Tests and older runners: nothing to turn off.
-    } on PlatformException {
-      // Purely cosmetic; never block a mode switch on it.
-    }
-  }
-
   /// Sets the outer window width (logical pixels), rounded once to whole
   /// physical pixels, leaving the height and position exactly as they are.
   /// Returns false when the runner can't, so the caller can fall back.
