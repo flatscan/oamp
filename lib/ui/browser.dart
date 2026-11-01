@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'browse/home_view.dart';
 import 'browse/library_view.dart';
 import 'browse/search_view.dart';
+import 'player/now_playing.dart';
 
 enum BrowserTab { home, library, search }
 
@@ -45,6 +46,7 @@ class BrowserState extends State<Browser> {
 
   void push(Widget page) {
     Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
+    hideNowPlaying(context);
     _nav?.push(MaterialPageRoute<void>(builder: (_) => page));
   }
 

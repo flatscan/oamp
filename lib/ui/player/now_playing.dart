@@ -14,32 +14,43 @@ import 'art_colors.dart';
 import 'controls.dart';
 import 'queue_list.dart';
 
-/// Opens the full-screen now playing view over the whole column.
-/// [animate] false shows it at once, as when switching back from expanded
-/// mode.
-void showNowPlaying(BuildContext context, {bool animate = true}) {
-  Navigator.of(context, rootNavigator: true).push(
-    PageRouteBuilder<void>(
-      opaque: true,
-      transitionDuration: animate
-          ? const Duration(milliseconds: 320)
-          : Duration.zero,
-      reverseTransitionDuration: const Duration(milliseconds: 260),
-      pageBuilder: (context, _, _) =>
-          NowPlayingView(onClose: () => Navigator.of(context).maybePop()),
-      transitionsBuilder: (_, animation, _, child) => SlideTransition(
-        position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          ),
-        ),
-        child: child,
-      ),
-    ),
-  );
+/// Whether the single column is showing now playing over the browser.
+/// [animate] says whether the last change should slide.
+class NowPlayingSheet {
+  final bool open;
+  final bool animate;
+  const NowPlayingSheet({this.open = false, this.animate = true});
 }
+
+final nowPlayingSheetProvider =
+    NotifierProvider<NowPlayingSheetNotifier, NowPlayingSheet>(
+      NowPlayingSheetNotifier.new,
+    );
+
+class NowPlayingSheetNotifier extends Notifier<NowPlayingSheet> {
+  @override
+  NowPlayingSheet build() => const NowPlayingSheet();
+
+  void open({bool animate = true}) =>
+      state = NowPlayingSheet(open: true, animate: animate);
+
+  void close({bool animate = true}) =>
+      state = NowPlayingSheet(open: false, animate: animate);
+}
+
+/// Slides now playing up over the single column. [animate] false shows it
+/// at once, as when switching back from expanded mode.
+void showNowPlaying(BuildContext context, {bool animate = true}) =>
+    ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(nowPlayingSheetProvider.notifier).open(animate: animate);
+
+/// Slides now playing back down, if it is open.
+void hideNowPlaying(BuildContext context) => ProviderScope.containerOf(
+  context,
+  listen: false,
+).read(nowPlayingSheetProvider.notifier).close();
 
 /// One scrolling screen: the cover edge to edge at the top, then the seek
 /// bar, track details and controls, then the queue directly below. The
@@ -56,18 +67,40 @@ class NowPlayingView extends ConsumerStatefulWidget {
 }
 
 class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
-  /// Where the screen was scrolled to, shared by every copy of it, so the
-  /// full-screen view and the expanded column's view pick up in the same
-  /// place when switching modes.
-  static double _sharedOffset = 0;
+  /// Where the screen was scrolled to, kept when the sheet is closed so it
+  /// reopens in the same place.
+  static double _savedOffset = 0;
 
   late final ScrollController _scroll = ScrollController(
-    initialScrollOffset: _sharedOffset,
-  )..addListener(() => _sharedOffset = _scroll.offset);
+    initialScrollOffset: _savedOffset,
+  )..addListener(() => _savedOffset = _scroll.offset);
+
+  final _focus = FocusNode(debugLabel: 'now playing');
+
+  @override
+  void initState() {
+    super.initState();
+    _focusIfClosable();
+  }
+
+  @override
+  void didUpdateWidget(NowPlayingView old) {
+    super.didUpdateWidget(old);
+    if (old.onClose == null) _focusIfClosable();
+  }
+
+  /// As the full-screen sheet it takes keyboard focus, so Esc closes it.
+  void _focusIfClosable() {
+    if (widget.onClose == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -137,7 +170,7 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
     return CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): ?onClose},
       child: Focus(
-        autofocus: onClose != null,
+        focusNode: _focus,
         child: Material(color: oampBackground, child: view),
       ),
     );
