@@ -19,26 +19,35 @@ class HomeShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final flyout = ref.watch(flyoutOpenProvider);
+    final expanded = ref.watch(flyoutOpenProvider);
+    final slideWidth = ref.watch(flyoutSlideWidthProvider);
+    if (!expanded) {
+      return Scaffold(
+        body: Browser(key: Browser.globalKey, footer: const MiniPlayer()),
+      );
+    }
+    // The column stays exactly one column wide and pinned left in every
+    // state, including while the window is growing or shrinking, so now
+    // playing never moves or resizes.
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, c) {
-          // Fall back to the single column if the window is too narrow to
-          // fit the fly-out (e.g. while it is still resizing).
-          if (flyout && c.maxWidth >= FlyoutController.columnWidth + 360) {
-            return Row(
-              children: [
-                const SizedBox(
-                  width: FlyoutController.columnWidth,
-                  child: NowPlayingView(),
-                ),
-                const VerticalDivider(width: 1),
-                Expanded(child: Browser(key: Browser.globalKey)),
-              ],
-            );
-          }
-          return Browser(key: Browser.globalKey, footer: const MiniPlayer());
-        },
+      body: Row(
+        children: [
+          const SizedBox(
+            width: FlyoutController.columnWidth,
+            child: NowPlayingView(),
+          ),
+          Expanded(
+            child: FlyoutSlide(
+              width: slideWidth,
+              child: Row(
+                children: [
+                  const VerticalDivider(width: 1),
+                  Expanded(child: Browser(key: Browser.globalKey)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

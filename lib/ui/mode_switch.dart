@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../platform/platform_info.dart';
-import 'app_frame.dart';
-import 'player/now_playing.dart';
 import 'theme.dart';
 import 'window_mode.dart';
 
@@ -33,26 +31,11 @@ class ModeSwitchButton extends ConsumerWidget {
         icon: Icon(
           expanded ? Icons.view_sidebar_rounded : Icons.view_sidebar_outlined,
         ),
-        onPressed: () async {
-          final nav = rootNavigatorKey.currentState;
-          if (expanded) {
-            final resized = ref.read(flyoutOpenProvider.notifier).toggle();
-            // Back in one column, carry on in now playing, which is what
-            // the column was showing, rather than flashing Home first.
-            final rootContext = rootNavigatorKey.currentContext;
-            if (rootContext != null) {
-              showNowPlaying(rootContext, animate: false);
-            }
-            await resized;
-          } else {
-            // Expanded mode shows now playing in the column, so a
-            // full-screen copy goes away at once, without sliding down.
-            final route = ModalRoute.of(context);
-            if (nav != null && route != null && !route.isFirst) {
-              nav.removeRoute(route);
-            }
-            await ref.read(flyoutOpenProvider.notifier).toggle();
-          }
+        onPressed: () {
+          final c = ref.read(flyoutOpenProvider.notifier);
+          expanded
+              ? c.collapse()
+              : c.expand(nowPlayingRoute: ModalRoute.of(context));
         },
       ),
     );
