@@ -205,21 +205,25 @@ class AlbumPagesNotifier extends Notifier<AlbumPages> {
   final AlbumSort sort;
 
   static const pageSize = 120;
-  bool _fetching = false;
+  Future<void>? _inflight;
 
   @override
   AlbumPages build() {
     ref.watch(musicSourceProvider);
+    _inflight = null;
     Future.microtask(loadMore);
     return const AlbumPages(loading: true);
   }
 
-  /// Fetches the next page unless one is already loading or the end is
-  /// reached. Safe to call on every scroll.
-  Future<void> loadMore() async {
+  /// Fetches the next page unless the end is reached. Safe to call on every
+  /// scroll: while a page is loading, it returns that page's future.
+  Future<void> loadMore() {
+    if (state.done) return Future.value();
+    return _inflight ??= _fetch().whenComplete(() => _inflight = null);
+  }
+
+  Future<void> _fetch() async {
     final s = state;
-    if (s.done || _fetching) return;
-    _fetching = true;
     state = AlbumPages(albums: s.albums, loading: true);
     try {
       final page = await ref
@@ -234,9 +238,35 @@ class AlbumPagesNotifier extends Notifier<AlbumPages> {
     } catch (e) {
       if (!ref.mounted) return;
       state = AlbumPages(albums: s.albums, error: e);
-    } finally {
-      _fetching = false;
     }
+  }
+
+  /// Loads pages until one reaches albums filed under [letter] (or later),
+  /// and returns the index of the first such album, or the end of the list.
+  /// Only meaningful in A to Z order.
+  Future<int> loadThrough(String letter) async {
+    final target = indexLetters.indexOf(letter);
+    int firstAt() {
+      final albums = state.albums;
+      for (var i = 0; i < albums.length; i++) {
+        final l = indexLetter(albums[i].sortName ?? albums[i].name);
+        if (indexLetters.indexOf(l) >= target) return i;
+      }
+      return -1;
+    }
+
+    while (firstAt() < 0 && !state.done && state.error == null) {
+      await loadMore();
+      if (!ref.mounted) break;
+    }
+    final i = firstAt();
+    if (i < 0) return state.albums.length;
+    // Load a screenful past it too, so it can be scrolled to the top.
+    while (state.albums.length < i + 60 && !state.done && state.error == null) {
+      await loadMore();
+      if (!ref.mounted) break;
+    }
+    return i;
   }
 }
 

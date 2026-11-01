@@ -38,10 +38,13 @@ class SubsonicSource implements MusicSource {
   Future<List<Artist>> getArtists() async {
     final r = await client.get('getArtists');
     final index = (r['artists']?['index'] as List?) ?? const [];
+    final articles =
+        (r['artists']?['ignoredArticles'] as String?)?.split(' ') ??
+        defaultIgnoredArticles;
     return [
       for (final group in index)
         for (final a in ((group as Map)['artist'] as List? ?? const []))
-          _artist(a as Map<String, dynamic>),
+          _artist(a as Map<String, dynamic>, articles),
     ];
   }
 
@@ -307,9 +310,44 @@ class SubsonicSource implements MusicSource {
   static int? _int(Object? v) =>
       v is int ? v : (v is String ? int.tryParse(v) : null);
 
-  static Artist _artist(Map<String, dynamic> j) => Artist(
+  /// Navidrome's default list of words to sort names without.
+  static const defaultIgnoredArticles = [
+    'The', 'El', 'La', 'Los', 'Las', 'Le', 'Les', 'Os', 'As', 'O', 'A', //
+  ];
+
+  /// The name without a leading article, as the server sorts it.
+  static String sortNameOf(
+    String name, [
+    List<String> articles = defaultIgnoredArticles,
+  ]) {
+    final lower = name.toLowerCase();
+    for (final a in articles) {
+      if (a.isEmpty) continue;
+      if (lower.startsWith('${a.toLowerCase()} ')) {
+        return name.substring(a.length + 1).trimLeft();
+      }
+    }
+    return name;
+  }
+
+  static String? _sortName(
+    Map<String, dynamic> j,
+    String name, [
+    List<String> articles = defaultIgnoredArticles,
+  ]) {
+    final given = j['sortName'] as String?;
+    return given != null && given.trim().isNotEmpty
+        ? given
+        : sortNameOf(name, articles);
+  }
+
+  static Artist _artist(
+    Map<String, dynamic> j, [
+    List<String> articles = defaultIgnoredArticles,
+  ]) => Artist(
     id: '${j['id']}',
     name: (j['name'] ?? 'Unknown artist') as String,
+    sortName: _sortName(j, (j['name'] ?? '') as String, articles),
     albumCount: _int(j['albumCount']) ?? 0,
     coverArt: j['coverArt'] as String?,
     liked: j['starred'] != null,
@@ -318,9 +356,10 @@ class SubsonicSource implements MusicSource {
   static Album _album(Map<String, dynamic> j) {
     final secs = _int(j['duration']);
     final genre = j['genre'] as String?;
+    final name = (j['name'] ?? j['title'] ?? 'Unknown album') as String;
     return Album(
       id: '${j['id']}',
-      name: (j['name'] ?? j['title'] ?? 'Unknown album') as String,
+      name: name,
       artist: j['artist'] as String?,
       artistId: j['artistId']?.toString(),
       year: _int(j['year']),
@@ -335,6 +374,7 @@ class SubsonicSource implements MusicSource {
           '$t'.toLowerCase(),
       ],
       isCompilation: j['isCompilation'] == true,
+      sortName: _sortName(j, name),
     );
   }
 
