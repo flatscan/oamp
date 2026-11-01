@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../browser.dart';
-import '../mode_switch.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'albums_view.dart';
@@ -20,12 +19,6 @@ class LibraryView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return ListScaffold(
       title: 'Library',
-      // 64 high puts the mode switch exactly where it is on Home.
-      toolbarHeight: ModeSwitchButton.size + 2 * ModeSwitchButton.inset,
-      actions: const [
-        ModeSwitchButton(),
-        SizedBox(width: ModeSwitchButton.inset),
-      ],
       slivers: [
         SliverList.list(
           children: [

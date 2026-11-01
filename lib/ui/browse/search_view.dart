@@ -8,6 +8,7 @@ import '../../state/library.dart';
 import '../../state/player.dart';
 import '../app_frame.dart';
 import '../async_view.dart';
+import '../mode_switch.dart';
 import '../widgets.dart';
 
 /// Searches artists, albums and tracks as the user types.
@@ -48,7 +49,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
             pinned: true,
             // With the title bar hidden, the bar moves the window.
             flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
-            toolbarHeight: 72,
+            toolbarHeight: ModeSwitchButton.toolbarHeight,
+            actions: ModeSwitchButton.withActions(null),
             title: TextField(
               controller: _controller,
               focusNode: widget.focusNode,
