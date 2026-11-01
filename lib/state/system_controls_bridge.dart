@@ -12,6 +12,21 @@ final systemControlsProvider = Provider<SystemControls>(
   (_) => const NoSystemControls(),
 );
 
+/// Why the OS media controls are not working, or `null`.
+final systemControlsProblemProvider =
+    NotifierProvider<_ProblemNotifier, String?>(_ProblemNotifier.new);
+
+class _ProblemNotifier extends Notifier<String?> {
+  @override
+  String? build() {
+    final problem = ref.watch(systemControlsProvider).problem;
+    void update() => state = problem.value;
+    problem.addListener(update);
+    ref.onDispose(() => problem.removeListener(update));
+    return problem.value;
+  }
+}
+
 /// Keeps the OS media session in step with [PlayerController], and sends
 /// its button presses back through the same controller methods the in-app
 /// buttons use. Nothing here is platform specific: Windows SMTC today and

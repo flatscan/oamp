@@ -10,8 +10,7 @@ import 'windows_system_controls.dart';
 Future<SystemControls> createSystemControls() async {
   if (kIsWeb) return const NoSystemControls();
   return switch (defaultTargetPlatform) {
-    TargetPlatform.windows =>
-      await WindowsSystemControls.create() ?? const NoSystemControls(),
+    TargetPlatform.windows => await WindowsSystemControls.create(),
     _ => const NoSystemControls(),
   };
 }

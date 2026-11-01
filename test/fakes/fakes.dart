@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
@@ -157,6 +159,8 @@ class FakeAudioEngine implements AudioEngine {
 class FakeSystemControls implements SystemControls {
   final _commands = StreamController<MediaCommand>.broadcast();
   final List<NowPlayingInfo?> shown = [];
+  @override
+  final ValueNotifier<String?> problem = ValueNotifier(null);
 
   NowPlayingInfo? get last => shown.isEmpty ? null : shown.last;
 

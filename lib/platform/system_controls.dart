@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 /// What the OS media UI should show: the Windows media overlay today, and
 /// later the Android notification, iOS/macOS Now Playing and Linux MPRIS.
 class NowPlayingInfo {
@@ -79,6 +81,11 @@ class SeekCommand extends MediaCommand {
 /// get an `audio_service` implementation and Linux an MPRIS one, without the
 /// player or the UI changing.
 abstract class SystemControls {
+  /// Why the OS media controls are not working, or `null` when they are (or
+  /// when the platform has none yet). Shown in the app so a failure is not
+  /// silent.
+  ValueListenable<String?> get problem;
+
   /// Buttons pressed in the OS media UI or on the keyboard.
   Stream<MediaCommand> get commands;
 
@@ -93,8 +100,12 @@ abstract class SystemControls {
 
 /// Used on platforms without an implementation yet, and in tests.
 class NoSystemControls implements SystemControls {
-  const NoSystemControls();
+  /// Set when a platform implementation exists but could not start.
+  final String? unavailableReason;
+  const NoSystemControls({this.unavailableReason});
 
+  @override
+  ValueListenable<String?> get problem => ValueNotifier(unavailableReason);
   @override
   Stream<MediaCommand> get commands => const Stream.empty();
   @override

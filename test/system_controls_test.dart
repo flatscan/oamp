@@ -83,4 +83,15 @@ void main() {
     await settle();
     expect(engine.playing, isFalse);
   });
+
+  test('a media controls failure is reported, not swallowed', () async {
+    expect(container.read(systemControlsProblemProvider), isNull);
+    controls.problem.value = 'SMTC broke';
+    expect(container.read(systemControlsProblemProvider), 'SMTC broke');
+  });
+
+  test('NoSystemControls carries a start-up failure', () {
+    const c = NoSystemControls(unavailableReason: 'no dll');
+    expect(c.problem.value, 'no dll');
+  });
 }
