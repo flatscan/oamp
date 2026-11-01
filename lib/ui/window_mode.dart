@@ -109,6 +109,13 @@ class FlyoutController extends Notifier<bool> {
     final reveal = ref.read(flyoutRevealProvider.notifier);
     try {
       await _animate(1, 0, reveal.set);
+      // Swap layouts while the window is still wide. With the panel slid
+      // away the two layouts draw the same pixels, and now playing stays in
+      // place, so this frame changes nothing visible. Only then shrink the
+      // window, which just trims the empty area on the right.
+      ref.read(nowPlayingSheetProvider.notifier).open(animate: false);
+      state = false;
+      await SchedulerBinding.instance.endOfFrame;
       if (isDesktop) {
         if (await windowManager.isFullScreen()) {
           await windowManager.setFullScreen(false);
@@ -123,10 +130,6 @@ class FlyoutController extends Notifier<bool> {
           Size(_singleWindowWidth, _unlimited),
         );
       }
-      // Same frame: now playing stays where it is and becomes the single
-      // column's open sheet.
-      ref.read(nowPlayingSheetProvider.notifier).open(animate: false);
-      state = false;
     } finally {
       if (ref.mounted) reveal.set(1);
       _busy = false;

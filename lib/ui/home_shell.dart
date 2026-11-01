@@ -56,57 +56,73 @@ class _HomeShellState extends ConsumerState<HomeShell>
     final expanded = ref.watch(flyoutOpenProvider);
     final reveal = ref.watch(flyoutRevealProvider);
 
-    if (expanded) {
-      // The column stays exactly one column wide and pinned left in every
-      // state, so now playing never moves or resizes.
-      return Scaffold(
-        body: Row(
+    // One layout for both modes, so switching never rebuilds or moves now
+    // playing: a column exactly one column wide pinned left, and a panel
+    // that takes whatever width the window adds. In single-column mode the
+    // panel is empty and the window is one column wide; in expanded mode
+    // the browser slides out into it and now playing stays up in the
+    // column.
+    final browser = Browser(
+      key: Browser.globalKey,
+      footer: expanded ? null : const MiniPlayer(),
+    );
+    final sheet = expanded ? kAlwaysCompleteAnimation : _sheet;
+    return Scaffold(
+      body: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              width: FlyoutController.columnWidth,
-              child: NowPlayingView(key: _nowPlayingKey),
-            ),
-            Expanded(
-              child: FlyoutSlide(
-                reveal: reveal,
-                child: Row(
+              width: constraints.maxWidth < FlyoutController.columnWidth
+                  ? constraints.maxWidth
+                  : FlyoutController.columnWidth,
+              child: AnimatedBuilder(
+                animation: sheet,
+                builder: (context, _) => Stack(
+                  fit: StackFit.expand,
                   children: [
-                    const VerticalDivider(width: 1),
-                    Expanded(child: Browser(key: Browser.globalKey)),
+                    // Covered (and paused) while now playing is fully up.
+                    Offstage(
+                      offstage: expanded || sheet.isCompleted,
+                      child: expanded ? const SizedBox.shrink() : browser,
+                    ),
+                    if (!sheet.isDismissed)
+                      SlideTransition(
+                        position:
+                            Tween(
+                              begin: const Offset(0, 1),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: sheet,
+                                curve: Curves.easeOutCubic,
+                                reverseCurve: Curves.easeInCubic,
+                              ),
+                            ),
+                        child: NowPlayingView(
+                          key: _nowPlayingKey,
+                          onClose: expanded ? null : _close,
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
+            Expanded(
+              child: expanded
+                  ? FlyoutSlide(
+                      reveal: reveal,
+                      child: Row(
+                        children: [
+                          const VerticalDivider(width: 1),
+                          Expanded(child: browser),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
-      );
-    }
-
-    final browser = Browser(key: Browser.globalKey, footer: const MiniPlayer());
-    return Scaffold(
-      body: AnimatedBuilder(
-        animation: _sheet,
-        builder: (context, _) {
-          if (_sheet.isDismissed) return browser;
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // The browser is fully covered once the sheet is up.
-              Offstage(offstage: _sheet.isCompleted, child: browser),
-              SlideTransition(
-                position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-                    .animate(
-                      CurvedAnimation(
-                        parent: _sheet,
-                        curve: Curves.easeOutCubic,
-                        reverseCurve: Curves.easeInCubic,
-                      ),
-                    ),
-                child: NowPlayingView(key: _nowPlayingKey, onClose: _close),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
