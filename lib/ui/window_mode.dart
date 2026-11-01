@@ -16,22 +16,23 @@ final flyoutOpenProvider = NotifierProvider<FlyoutController, bool>(
   FlyoutController.new,
 );
 
-/// While the fly-out slides in or out, the width it is laid out at, so its
-/// contents are revealed or covered rather than squeezed. Null otherwise.
-final flyoutSlideWidthProvider = NotifierProvider<_SlideWidth, double?>(
-  _SlideWidth.new,
-);
+/// How far the fly-out has slid out of the column: 0 hidden behind it,
+/// 1 fully out.
+final flyoutRevealProvider = NotifierProvider<_Reveal, double>(_Reveal.new);
 
-class _SlideWidth extends Notifier<double?> {
+class _Reveal extends Notifier<double> {
   @override
-  double? build() => null;
-  void set(double? w) => state = w;
+  double build() => 1;
+  void set(double v) => state = v;
 }
 
 /// Switches between the two modes. The column (now playing, in expanded
-/// mode) keeps exactly the same size and place throughout; the window grows
-/// or shrinks on its right-hand side over a short animation, so the fly-out
-/// appears to slide out of the column and back into it.
+/// mode) keeps exactly the same size and place throughout.
+///
+/// The window is resized in one step (resizing it every frame makes Windows
+/// stretch stale frames), and the fly-out then slides out from behind the
+/// column inside the app; collapsing slides it back in first and shrinks
+/// the window after.
 class FlyoutController extends Notifier<bool> {
   /// Width of the column's content, in both modes.
   static const columnWidth = 440.0;
@@ -76,35 +77,39 @@ class FlyoutController extends Notifier<bool> {
   Future<void> expand({Route<dynamic>? nowPlayingRoute}) async {
     if (state || _busy) return;
     _busy = true;
+    final reveal = ref.read(flyoutRevealProvider.notifier);
     try {
+      reveal.set(0);
       state = true;
       if (nowPlayingRoute != null && !nowPlayingRoute.isFirst) {
         rootNavigatorKey.currentState?.removeRoute(nowPlayingRoute);
       }
-      if (!isDesktop) return;
-      await windowManager.setMaximumSize(const Size(_unlimited, _unlimited));
-      final height = (await windowManager.getSize()).height;
-      ref.read(flyoutSlideWidthProvider.notifier).set(flyoutWidth);
-      await _animateWidth(
-        _singleWindowWidth,
-        _singleWindowWidth + flyoutWidth,
-        height,
-      );
-      await windowManager.setMinimumSize(
-        Size(_singleWindowWidth + 360, minHeight),
-      );
+      if (isDesktop) {
+        final height = (await windowManager.getSize()).height;
+        await windowManager.setMaximumSize(const Size(_unlimited, _unlimited));
+        await windowManager.setSize(
+          Size(_singleWindowWidth + flyoutWidth, height),
+        );
+        await windowManager.setMinimumSize(
+          Size(_singleWindowWidth + 360, minHeight),
+        );
+      }
+      await _animate(0, 1, reveal.set);
     } finally {
-      if (ref.mounted) ref.read(flyoutSlideWidthProvider.notifier).set(null);
+      if (ref.mounted) reveal.set(1);
       _busy = false;
     }
   }
 
   /// Expanded to single column: the fly-out slides back into the column,
-  /// then the column carries on as the full-screen now playing.
+  /// the window shrinks, and the column carries on as the full-screen now
+  /// playing.
   Future<void> collapse() async {
     if (!state || _busy) return;
     _busy = true;
+    final reveal = ref.read(flyoutRevealProvider.notifier);
     try {
+      await _animate(1, 0, reveal.set);
       if (isDesktop) {
         if (await windowManager.isFullScreen()) {
           await windowManager.setFullScreen(false);
@@ -112,12 +117,9 @@ class FlyoutController extends Notifier<bool> {
         if (await windowManager.isMaximized()) {
           await windowManager.unmaximize();
         }
-        final size = await windowManager.getSize();
+        final height = (await windowManager.getSize()).height;
         await windowManager.setMinimumSize(Size(_singleWindowWidth, minHeight));
-        ref
-            .read(flyoutSlideWidthProvider.notifier)
-            .set(size.width - _singleWindowWidth);
-        await _animateWidth(size.width, _singleWindowWidth, size.height);
+        await windowManager.setSize(Size(_singleWindowWidth, height));
         await windowManager.setMaximumSize(
           Size(_singleWindowWidth, _unlimited),
         );
@@ -130,14 +132,13 @@ class FlyoutController extends Notifier<bool> {
       }
       state = false;
     } finally {
-      if (ref.mounted) ref.read(flyoutSlideWidthProvider.notifier).set(null);
+      if (ref.mounted) reveal.set(1);
       _busy = false;
     }
   }
 
-  /// Resizes the window's width from [from] to [to] once per frame, keeping
-  /// its left edge where it is.
-  Future<void> _animateWidth(double from, double to, double height) {
+  /// Runs [apply] from [from] to [to] once per frame over [slideDuration].
+  Future<void> _animate(double from, double to, void Function(double) apply) {
     final done = Completer<void>();
     final binding = SchedulerBinding.instance;
     Duration? start;
@@ -145,8 +146,7 @@ class FlyoutController extends Notifier<bool> {
       start ??= now;
       final t = ((now - start!).inMicroseconds / slideDuration.inMicroseconds)
           .clamp(0.0, 1.0);
-      final w = lerpDouble(from, to, Curves.easeInOutCubic.transform(t))!;
-      unawaited(windowManager.setSize(Size(w.roundToDouble(), height)));
+      apply(lerpDouble(from, to, Curves.easeOutCubic.transform(t))!);
       if (t < 1) {
         binding.scheduleFrameCallback(tick);
         binding.scheduleFrame();
@@ -161,22 +161,20 @@ class FlyoutController extends Notifier<bool> {
   }
 }
 
-/// Lays out the fly-out at [width] even while less of it is visible, and
-/// clips it, so during the slide its contents move rather than reflow.
+/// Slides the fly-out out from behind the column: at [reveal] 0 it sits
+/// fully to the left (hidden under the column), at 1 in place. It is laid
+/// out at its final width throughout, so it moves without reflowing.
 class FlyoutSlide extends StatelessWidget {
-  final double? width;
+  final double reveal;
   final Widget child;
-  const FlyoutSlide({super.key, required this.width, required this.child});
+  const FlyoutSlide({super.key, required this.reveal, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final w = width;
-    if (w == null) return child;
+    if (reveal >= 1) return child;
     return ClipRect(
-      child: OverflowBox(
-        alignment: Alignment.centerLeft,
-        minWidth: w,
-        maxWidth: w,
+      child: FractionalTranslation(
+        translation: Offset(reveal - 1, 0),
         child: child,
       ),
     );
