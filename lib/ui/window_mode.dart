@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
-import '../platform/window_transitions.dart';
+import '../platform/native_window.dart';
 import 'player/now_playing.dart';
 
 /// Whether the desktop window is in expanded mode (the column plus the
@@ -51,6 +51,22 @@ class FlyoutController extends Notifier<bool> {
 
   static double get _singleWindowWidth => columnWidth + _frame;
 
+  /// window_manager drops the fraction from size limits before scaling them
+  /// to physical pixels. With a fractional frame (e.g. at 125% scaling) a
+  /// maximum of exactly the window width came out a pixel narrower than
+  /// the window, and Windows enforced it on snapped windows with an extra
+  /// resize. Round limits outwards so they always contain the window.
+  static Size _minSize(double width) => Size(width.floorToDouble(), minHeight);
+  static Size _maxSize(double width) =>
+      Size(width.ceilToDouble() + 1, _unlimited);
+
+  /// Sets the outer width only, keeping the height exactly as it is.
+  static Future<void> _setWidth(double width) async {
+    if (await NativeWindow.setWidth(width)) return;
+    final height = (await windowManager.getSize()).height;
+    await windowManager.setSize(Size(width, height));
+  }
+
   @override
   bool build() => false;
 
@@ -59,14 +75,14 @@ class FlyoutController extends Notifier<bool> {
   /// the width so only the height can be dragged.
   static Future<void> lockToColumn() async {
     final outer = await windowManager.getSize();
-    final view = PlatformDispatcher.instance.implicitView;
+    final view = WidgetsBinding.instance.platformDispatcher.implicitView;
     if (view != null && view.physicalSize.width > 0) {
       final inner = view.physicalSize.width / view.devicePixelRatio;
       _frame = (outer.width - inner).clamp(0.0, 64.0);
     }
-    await windowManager.setMinimumSize(Size(_singleWindowWidth, minHeight));
-    await windowManager.setMaximumSize(Size(_singleWindowWidth, _unlimited));
-    await windowManager.setSize(Size(_singleWindowWidth, outer.height));
+    await windowManager.setMinimumSize(_minSize(_singleWindowWidth));
+    await windowManager.setMaximumSize(_maxSize(_singleWindowWidth));
+    await _setWidth(_singleWindowWidth);
   }
 
   bool _busy = false;
@@ -85,21 +101,18 @@ class FlyoutController extends Notifier<bool> {
       // single column's sheet closed underneath without animating.
       ref.read(nowPlayingSheetProvider.notifier).close(animate: false);
       if (isDesktop) {
-        await WindowTransitions.setEnabled(false);
+        await NativeWindow.setTransitionsEnabled(false);
         try {
-          final height = (await windowManager.getSize()).height;
           await windowManager.setMaximumSize(
             const Size(_unlimited, _unlimited),
           );
-          await windowManager.setSize(
-            Size(_singleWindowWidth + flyoutWidth, height),
-          );
+          await _setWidth(_singleWindowWidth + flyoutWidth);
           await windowManager.setMinimumSize(
-            Size(_singleWindowWidth + 360, minHeight),
+            _minSize(_singleWindowWidth + 360),
           );
           await SchedulerBinding.instance.endOfFrame;
         } finally {
-          await WindowTransitions.setEnabled(true);
+          await NativeWindow.setTransitionsEnabled(true);
         }
       }
       await _animate(0, 1, reveal.set);
@@ -132,19 +145,14 @@ class FlyoutController extends Notifier<bool> {
         if (await windowManager.isMaximized()) {
           await windowManager.unmaximize();
         }
-        await WindowTransitions.setEnabled(false);
+        await NativeWindow.setTransitionsEnabled(false);
         try {
-          final height = (await windowManager.getSize()).height;
-          await windowManager.setMinimumSize(
-            Size(_singleWindowWidth, minHeight),
-          );
-          await windowManager.setSize(Size(_singleWindowWidth, height));
-          await windowManager.setMaximumSize(
-            Size(_singleWindowWidth, _unlimited),
-          );
+          await windowManager.setMinimumSize(_minSize(_singleWindowWidth));
+          await _setWidth(_singleWindowWidth);
+          await windowManager.setMaximumSize(_maxSize(_singleWindowWidth));
           await SchedulerBinding.instance.endOfFrame;
         } finally {
-          await WindowTransitions.setEnabled(true);
+          await NativeWindow.setTransitionsEnabled(true);
         }
       }
     } finally {
