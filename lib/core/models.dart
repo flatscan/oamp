@@ -12,12 +12,16 @@ class Artist {
   /// Whether the user has liked (starred) the artist on the server.
   final bool liked;
 
+  /// The name the server sorts by, such as `Beatles` for `The Beatles`.
+  final String? sortName;
+
   const Artist({
     required this.id,
     required this.name,
     this.albumCount = 0,
     this.coverArt,
     this.liked = false,
+    this.sortName,
   });
 }
 
@@ -52,6 +56,9 @@ class Album {
   final List<String> releaseTypes;
   final bool isCompilation;
 
+  /// The name the server sorts by, such as `Wall` for `The Wall`.
+  final String? sortName;
+
   const Album({
     required this.id,
     required this.name,
@@ -65,6 +72,7 @@ class Album {
     this.liked = false,
     this.releaseTypes = const [],
     this.isCompilation = false,
+    this.sortName,
   });
 
   /// Which shelf of an artist's page the album belongs on.
@@ -78,6 +86,29 @@ class Album {
     }
     return ReleaseKind.album;
   }
+}
+
+/// The letters of an A to Z jump bar: `#` for anything that does not start
+/// with a letter, then A to Z.
+const indexLetters = [
+  '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', //
+  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+];
+
+const _plainLetters = {
+  'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A', 'Æ': 'A', //
+  'Ç': 'C', 'È': 'E', 'É': 'E', 'Ê': 'E', 'Ë': 'E', 'Ì': 'I', 'Í': 'I',
+  'Î': 'I', 'Ï': 'I', 'Ñ': 'N', 'Ò': 'O', 'Ó': 'O', 'Ô': 'O', 'Õ': 'O',
+  'Ö': 'O', 'Ø': 'O', 'Ù': 'U', 'Ú': 'U', 'Û': 'U', 'Ü': 'U', 'Ý': 'Y',
+};
+
+/// Which of [indexLetters] a name files under.
+String indexLetter(String sortName) {
+  final s = sortName.trim();
+  if (s.isEmpty) return '#';
+  final c = s[0].toUpperCase();
+  final plain = _plainLetters[c] ?? c;
+  return indexLetters.contains(plain) ? plain : '#';
 }
 
 /// How an artist page groups releases.

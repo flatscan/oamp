@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../async_view.dart';
+import '../jump_bar.dart';
 import '../widgets.dart';
 import 'artist_page.dart';
 
@@ -18,6 +19,61 @@ class AllAlbumsPage extends ConsumerStatefulWidget {
 
 class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
   late AlbumSort _sort = widget.initialSort;
+  final _scroll = ScrollController();
+
+  static const _gridPadding = EdgeInsets.fromLTRB(16, 8, 16 + JumpBar.width, 0);
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Loads pages as far as [letter], then scrolls so its first album's row
+  /// is at the top.
+  Future<void> _jump(String letter) async {
+    final index = await ref
+        .read(albumPagesProvider(_sort).notifier)
+        .loadThrough(letter);
+    // Scroll once the grid has laid out any page that just arrived.
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) => _scrollToIndex(index))
+      ..scheduleFrame();
+  }
+
+  /// Scrolls to [index]'s row. The grid can be a frame or two behind the
+  /// pages just loaded, so while the row is past the end it tries again
+  /// next frame.
+  void _scrollToIndex(int index, [int tries = 5]) {
+    if (!mounted || !_scroll.hasClients) return;
+    final width = (context.size?.width ?? 0) - _gridPadding.horizontal;
+    if (width <= 0) return;
+    final row = index ~/ _columns(width);
+    final offset = _gridPadding.top + row * _rowStride(width);
+    final p = _scroll.position;
+    _scroll.jumpTo(offset.clamp(p.minScrollExtent, p.maxScrollExtent));
+    if (offset > p.maxScrollExtent && tries > 0) {
+      WidgetsBinding.instance
+        ..addPostFrameCallback((_) => _scrollToIndex(index, tries - 1))
+        ..scheduleFrame();
+    }
+  }
+
+  // The same sums SliverGridDelegateWithMaxCrossAxisExtent does.
+  static int _columns(double width) {
+    final d = albumGridDelegate;
+    return (width / (d.maxCrossAxisExtent + d.crossAxisSpacing)).ceil().clamp(
+      1,
+      1 << 20,
+    );
+  }
+
+  static double _rowStride(double width) {
+    final d = albumGridDelegate;
+    final n = _columns(width);
+    final cell = (width - d.crossAxisSpacing * (n - 1)) / n;
+    return cell / d.childAspectRatio + d.mainAxisSpacing;
+  }
 
   static const _labels = {
     AlbumSort.alphabetical: 'A to Z',
@@ -39,6 +95,11 @@ class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
       },
       child: ListScaffold(
         title: 'Albums',
+        controller: _scroll,
+        // Only A to Z order can be jumped through by letter.
+        jumpBar: _sort == AlbumSort.alphabetical && pages.albums.length > 12
+            ? JumpBar(onJump: _jump)
+            : null,
         onRefresh: () async => ref.invalidate(albumPagesProvider(_sort)),
         actions: [
           PopupMenuButton<AlbumSort>(
@@ -76,7 +137,9 @@ class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: _sort == AlbumSort.alphabetical
+                  ? _gridPadding
+                  : const EdgeInsets.fromLTRB(16, 8, 16, 0),
               sliver: AlbumSliverGrid(albums: pages.albums),
             ),
           if (pages.loading)

@@ -614,6 +614,10 @@ class ListScaffold extends StatelessWidget {
   final Future<void> Function()? onRefresh;
   final ScrollController? controller;
 
+  /// Shown down the right edge, below the top bar, such as a [JumpBar].
+  /// The list should leave [JumpBar.width] free on its right.
+  final Widget? jumpBar;
+
   const ListScaffold({
     super.key,
     required this.title,
@@ -621,6 +625,7 @@ class ListScaffold extends StatelessWidget {
     this.actions,
     this.onRefresh,
     this.controller,
+    this.jumpBar,
   });
 
   @override
@@ -642,6 +647,19 @@ class ListScaffold extends StatelessWidget {
     );
     if (onRefresh != null) {
       body = RefreshIndicator(onRefresh: onRefresh!, child: body);
+    }
+    if (jumpBar != null) {
+      body = Stack(
+        children: [
+          Positioned.fill(child: body),
+          Positioned(
+            top: ModeSwitchButton.toolbarHeight + 4,
+            bottom: 8,
+            right: 2,
+            child: jumpBar!,
+          ),
+        ],
+      );
     }
     return Scaffold(backgroundColor: Colors.transparent, body: body);
   }
