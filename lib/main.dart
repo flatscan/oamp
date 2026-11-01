@@ -1,13 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'audio/platform_audio.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
 import 'state/playback_reporter.dart';
+import 'state/player.dart';
+import 'state/precache.dart';
 import 'state/session.dart';
 import 'state/settings.dart';
 import 'state/system_controls_bridge.dart';
@@ -20,9 +22,7 @@ import 'ui/window_mode.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // just_audio has no native Windows backend, so libmpv (via media_kit)
-  // provides it there. Android, iOS and macOS use just_audio's own players.
-  JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
+  final createDeck = createDeckFactory();
 
   if (isDesktop) {
     // Open as a tall, phone-shaped column. On Windows the system title bar
@@ -49,12 +49,15 @@ Future<void> main() async {
   // The OS media session: the Windows media overlay and keyboard media keys.
   final systemControls = await createSystemControls();
   final preferences = await PlatformPreferences.load();
+  final trackCache = await openTrackCache();
 
   runApp(
     ProviderScope(
       overrides: [
         systemControlsProvider.overrideWithValue(systemControls),
         preferencesProvider.overrideWithValue(preferences),
+        audioDeckFactoryProvider.overrideWithValue(createDeck),
+        trackCacheProvider.overrideWithValue(trackCache),
       ],
       child: const OAmpApp(),
     ),
@@ -91,6 +94,7 @@ class _Root extends ConsumerWidget {
     // server, for the app's lifetime.
     ref.watch(systemControlsBridgeProvider);
     ref.watch(playbackReporterProvider);
+    ref.watch(precacheProvider);
     final session = ref.watch(sessionProvider);
     return switch (session) {
       AsyncData(value: final session?) => HomeShell(

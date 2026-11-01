@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
+import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/platform/system_controls.dart';
 import 'package:oamp/state/session.dart';
 
@@ -204,7 +205,12 @@ class FakeMusicSource implements MusicSource {
   }) async => calls.add('${submission ? 'played' : 'playing'}:$trackId');
 
   @override
-  Uri streamUrl(String trackId) => Uri.parse('fake://stream/$trackId');
+  Uri streamUrl(
+    String trackId, {
+    StreamQuality quality = StreamQuality.original,
+  }) => Uri.parse(
+    'fake://stream/$trackId${quality.isOriginal ? '' : '?q=${quality.tag}'}',
+  );
   @override
   Uri? coverArtUrl(String? coverArtId, {int size = 300}) => null;
   @override
@@ -307,6 +313,19 @@ class FakeAudioEngine implements AudioEngine {
   Future<void> setRepeatMode(PlaybackRepeat mode) async => repeat = mode;
   @override
   Future<void> setVolume(double v) async => volume = v;
+
+  @override
+  QueueInfo? queueInfo;
+  bool gapless = true;
+  Duration crossfade = Duration.zero;
+  int gainRefreshes = 0;
+
+  @override
+  Future<void> refreshGain() async => gainRefreshes++;
+  @override
+  Future<void> setGapless(bool enabled) async => gapless = enabled;
+  @override
+  Future<void> setCrossfade(Duration d) async => crossfade = d;
 
   @override
   Future<void> dispose() async {

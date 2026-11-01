@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'playback_options.dart';
 
 /// Features a backend may or may not support. The UI switches features on
 /// from these instead of checking which backend it is talking to.
@@ -99,8 +100,12 @@ abstract class MusicSource {
   Future<void> reportPlayback(String trackId, {required bool submission});
 
   /// A URL that plays the track with no extra headers, so the local player
-  /// or (later) a cast device can fetch it directly.
-  Uri streamUrl(String trackId);
+  /// or (later) a cast device can fetch it directly. [quality] asks the
+  /// server to transcode; the default streams the original file.
+  Uri streamUrl(
+    String trackId, {
+    StreamQuality quality = StreamQuality.original,
+  });
 
   /// URL for cover art at roughly [size] pixels, or null if there is none.
   Uri? coverArtUrl(String? coverArtId, {int size = 300});

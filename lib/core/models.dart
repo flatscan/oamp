@@ -141,6 +141,9 @@ class Track {
   final int? sampleRate;
   final int? bitDepth;
 
+  /// Loudness data for volume levelling, or null when the server has none.
+  final ReplayGain? replayGain;
+
   const Track({
     required this.id,
     required this.title,
@@ -158,7 +161,27 @@ class Track {
     this.bitRate,
     this.sampleRate,
     this.bitDepth,
+    this.replayGain,
   });
+}
+
+/// ReplayGain values for a track, as the server read them from the file's
+/// tags. Gains are in decibels, peaks are linear sample peaks where 1.0 is
+/// full scale.
+class ReplayGain {
+  final double? trackGain;
+  final double? albumGain;
+  final double? trackPeak;
+  final double? albumPeak;
+
+  const ReplayGain({
+    this.trackGain,
+    this.albumGain,
+    this.trackPeak,
+    this.albumPeak,
+  });
+
+  bool get isEmpty => trackGain == null && albumGain == null;
 }
 
 class Playlist {
