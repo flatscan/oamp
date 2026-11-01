@@ -87,7 +87,18 @@ void main() {
     // Expanded -> single column lands on now playing, same spot again, and
     // it is the very same widget (not a fresh copy that could flicker).
     final nowPlayingState = tester.state(find.byType(NowPlayingView));
+    final nowPlayingRender = tester.renderObject(find.byType(NowPlayingView));
     await tester.tap(buttons.first);
+    // Every frame of the switch back (panel sliding in, layout swap) keeps
+    // the same now playing render object in the same place.
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.getRect(find.byType(NowPlayingView)), expandedNowPlaying);
+      expect(
+        tester.renderObject(find.byType(NowPlayingView)),
+        same(nowPlayingRender),
+      );
+    }
     tester.view.physicalSize = const Size(440, 880);
     await tester.pumpAndSettle();
     expect(find.text('UP NEXT'), findsOneWidget);
