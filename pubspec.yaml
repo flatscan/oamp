@@ -43,6 +43,10 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   window_manager: ^0.5.2
   smtc_windows: ^1.1.0
+  # smtc_windows' bindings were generated with flutter_rust_bridge 2.11.1 and
+  # refuse to start against any other runtime version. Move this only
+  # together with an smtc_windows release built for the new version.
+  flutter_rust_bridge: 2.11.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
