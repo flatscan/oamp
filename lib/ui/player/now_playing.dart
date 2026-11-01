@@ -10,7 +10,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'art_colors.dart';
 import 'controls.dart';
-import 'queue_view.dart';
+import 'queue_list.dart';
 
 /// Opens the full-screen now playing view over the whole column.
 void showNowPlaying(BuildContext context) {
@@ -35,223 +35,110 @@ void showNowPlaying(BuildContext context) {
   );
 }
 
-/// Big artwork tinted by its own colours, track details, seek bar and
-/// controls. "Up next" swaps the artwork for the queue.
+/// One scrolling screen: the cover edge to edge at the top, then the seek
+/// bar, track details and controls, then the queue directly below. The
+/// whole screen is tinted from the cover.
 ///
-/// [onClose] shows a close chevron; the desktop fly-out layout embeds this
-/// view permanently and leaves it null.
-class NowPlayingView extends ConsumerStatefulWidget {
+/// [onClose] adds a close button (and Esc); the desktop fly-out layout embeds
+/// this view permanently and leaves it null.
+class NowPlayingView extends ConsumerWidget {
   final VoidCallback? onClose;
   const NowPlayingView({super.key, this.onClose});
 
   @override
-  ConsumerState<NowPlayingView> createState() => _NowPlayingViewState();
-}
-
-class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
-  bool _showQueue = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(playerProvider.select((s) => s.current));
-    final from = ref.watch(playerProvider.select((s) => s.from));
     final tint = track == null
         ? null
         : ref.watch(artColorProvider(track.coverArt)).value;
+    final base = tint ?? const Color(0xFF4A4A52);
 
-    final body = SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          children: [
-            _TopBar(onClose: widget.onClose, from: from, track: track),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: _showQueue
-                    ? const Padding(
-                        key: ValueKey('queue'),
-                        padding: EdgeInsets.only(top: 8),
-                        child: QueueView(),
-                      )
-                    : _Artwork(key: const ValueKey('art'), track: track),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _TrackInfo(track: track),
-            const SizedBox(height: 4),
-            const Scrubber(),
-            const SizedBox(height: 4),
-            const TransportControls(),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Expanded(child: VolumeControl()),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: _showQueue ? 'Show artwork' : 'Up next',
-                  isSelected: _showQueue,
-                  color: OAmpColors.textMuted,
-                  selectedIcon: const Icon(
-                    Icons.queue_music_rounded,
-                    color: oampAccent,
-                  ),
-                  icon: const Icon(Icons.queue_music_rounded),
-                  onPressed: () => setState(() => _showQueue = !_showQueue),
-                ),
+    final view = TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: base),
+      duration: const Duration(milliseconds: 600),
+      builder: (context, c, _) {
+        // A muted version of the cover's colour for the play button and
+        // sliders, light enough to read on the dark background.
+        final hsl = HSLColor.fromColor(c!);
+        final accent = hsl
+            .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
+            .withLightness(0.62)
+            .toColor();
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.lerp(c, Colors.black, 0.55)!,
+                Color.lerp(c, Colors.black, 0.72)!,
               ],
             ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+          ),
+          child: Scrollbar(
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _Artwork(track: track)),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: _Controls(
+                        track: track,
+                        accent: accent,
+                        onClose: onClose,
+                      ),
+                    ),
+                  ),
+                ),
+                const QueueSlivers(),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
+            ),
+          ),
+        );
+      },
     );
 
     return CallbackShortcuts(
-      bindings: {
-        if (widget.onClose != null)
-          const SingleActivator(LogicalKeyboardKey.escape): widget.onClose!,
-      },
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): ?onClose},
       child: Focus(
-        autofocus: widget.onClose != null,
-        child: Material(
-          color: oampBackground,
-          child: TweenAnimationBuilder<Color?>(
-            tween: ColorTween(end: tint ?? const Color(0xFF3A3A40)),
-            duration: const Duration(milliseconds: 600),
-            builder: (context, c, child) => DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0, 0.55, 1],
-                  colors: [
-                    Color.lerp(c, Colors.black, 0.45)!,
-                    Color.lerp(c, Colors.black, 0.82)!,
-                    oampBackground,
-                  ],
-                ),
-              ),
-              child: child,
-            ),
-            child: body,
-          ),
-        ),
+        autofocus: onClose != null,
+        child: Material(color: oampBackground, child: view),
       ),
     );
   }
 }
 
-class _TopBar extends ConsumerWidget {
-  final VoidCallback? onClose;
-  final String? from;
-  final Track? track;
-  const _TopBar({required this.onClose, required this.from, this.track});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context).textTheme;
-    final tr = track;
-    return SizedBox(
-      height: 56,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            child: onClose == null
-                ? null
-                : IconButton(
-                    tooltip: 'Close',
-                    iconSize: 32,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    onPressed: onClose,
-                  ),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (from != null) ...[
-                  Text(
-                    'PLAYING FROM',
-                    style: t.labelSmall?.copyWith(
-                      color: OAmpColors.textMuted,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  Text(
-                    from!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 48,
-            child: tr == null
-                ? null
-                : Builder(
-                    builder: (btn) => IconButton(
-                      tooltip: 'More',
-                      icon: const Icon(Icons.more_horiz_rounded),
-                      onPressed: () {
-                        final box = btn.findRenderObject() as RenderBox;
-                        showTrackMenu(
-                          context,
-                          ref,
-                          tr,
-                          at: box.localToGlobal(box.size.center(Offset.zero)),
-                        );
-                      },
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The cover, as large as fits. Swipe sideways to change track.
+/// The cover across the full width, square, at most 560 wide. Swipe
+/// sideways to change track.
 class _Artwork extends ConsumerWidget {
   final Track? track;
-  const _Artwork({super.key, required this.track});
+  const _Artwork({required this.track});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.read(playerProvider.notifier);
     return LayoutBuilder(
       builder: (context, c) {
-        final size = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight)
-            .clamp(80.0, 640.0);
+        final size = c.maxWidth.clamp(0.0, 560.0);
+        final wide = c.maxWidth > size;
         return GestureDetector(
           onHorizontalDragEnd: (d) {
             final v = d.primaryVelocity ?? 0;
             if (v < -300) p.next();
             if (v > 300) p.previous();
           },
-          child: Center(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: DecoratedBox(
-                key: ValueKey(track?.id),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x80000000),
-                      blurRadius: 40,
-                      offset: Offset(0, 16),
-                    ),
-                  ],
-                ),
+          child: Padding(
+            padding: EdgeInsets.only(top: wide ? 16 : 0),
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
                 child: CoverArt(
                   track?.coverArt,
+                  key: ValueKey(track?.id),
                   size: size,
-                  radius: 12,
+                  radius: wide ? 10 : 0,
                   placeholderIcon: track == null
                       ? Icons.music_note_rounded
                       : Icons.album_rounded,
@@ -265,80 +152,126 @@ class _Artwork extends ConsumerWidget {
   }
 }
 
-class _TrackInfo extends ConsumerWidget {
+class _Controls extends ConsumerWidget {
   final Track? track;
-  const _TrackInfo({required this.track});
+  final Color accent;
+  final VoidCallback? onClose;
+  const _Controls({required this.track, required this.accent, this.onClose});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context).textTheme;
     final tr = track;
+    final quality = tr == null ? null : qualityLabel(tr);
     final liked =
         tr != null &&
         ref.watch(likesProvider.select((m) => m[tr.id] ?? tr.liked));
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tr?.title ?? 'Nothing playing',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: t.headlineSmall?.copyWith(fontSize: 22),
+    final albumLine = tr?.album == null
+        ? null
+        : tr!.year == null
+        ? tr.album!
+        : '${tr.album} (${tr.year})';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Column(
+        children: [
+          SeekBar(accent: accent),
+          const SizedBox(height: 10),
+          if (tr == null) ...[
+            Text('Nothing playing', style: t.titleLarge),
+            const SizedBox(height: 2),
+            Text(
+              'Pick something from your library',
+              style: t.bodyLarge?.copyWith(color: OAmpColors.textMuted),
+            ),
+          ] else ...[
+            if (tr.artist != null)
+              _Link(
+                tr.artist!,
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                onTap: tr.artistId == null
+                    ? null
+                    : () => openArtistById(tr.artistId!, tr.artist!),
               ),
-              const SizedBox(height: 2),
-              if (tr != null)
-                DefaultTextStyle.merge(
-                  style: t.bodyLarge?.copyWith(color: OAmpColors.textMuted),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  child: Row(
-                    children: [
-                      if (tr.artist != null)
-                        Flexible(
-                          child: _Link(
-                            tr.artist!,
-                            onTap: tr.artistId == null
-                                ? null
-                                : () =>
-                                      openArtistById(tr.artistId!, tr.artist!),
-                          ),
-                        ),
-                      if (tr.artist != null && tr.album != null)
-                        const Text('  ·  '),
-                      if (tr.album != null)
-                        Flexible(
-                          child: _Link(
-                            tr.album!,
-                            onTap: tr.albumId == null
-                                ? null
-                                : () => openAlbumById(tr.albumId!, tr.album!),
-                          ),
-                        ),
-                    ],
-                  ),
-                )
-              else
-                Text(
-                  'Pick something from your library',
-                  style: t.bodyLarge?.copyWith(color: OAmpColors.textMuted),
+            Text(
+              tr.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (albumLine != null)
+              _Link(
+                albumLine,
+                style: t.titleMedium?.copyWith(
+                  color: OAmpColors.textMuted,
+                  fontWeight: FontWeight.w400,
                 ),
+                onTap: tr.albumId == null
+                    ? null
+                    : () => openAlbumById(tr.albumId!, tr.album!),
+              ),
+            if (quality != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                quality,
+                style: t.labelLarge?.copyWith(color: OAmpColors.textMuted),
+              ),
+            ],
+          ],
+          const SizedBox(height: 14),
+          TransportControls(playColor: accent),
+          const SizedBox(height: 8),
+          VolumeControl(accent: accent),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Builder(
+                builder: (btn) => IconButton(
+                  tooltip: 'More',
+                  color: OAmpColors.textMuted,
+                  icon: const Icon(Icons.more_horiz_rounded),
+                  onPressed: tr == null
+                      ? null
+                      : () {
+                          final box = btn.findRenderObject() as RenderBox;
+                          showTrackMenu(
+                            context,
+                            ref,
+                            tr,
+                            at: box.localToGlobal(box.size.center(Offset.zero)),
+                          );
+                        },
+                ),
+              ),
+              IconButton(
+                tooltip: liked ? 'Unlike' : 'Like',
+                color: liked ? oampAccent : OAmpColors.textMuted,
+                icon: Icon(
+                  liked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                ),
+                onPressed: tr == null
+                    ? null
+                    : () => toggleLike(context, ref, tr),
+              ),
+              const ShuffleButton(),
+              if (onClose != null)
+                IconButton(
+                  tooltip: 'Close',
+                  color: OAmpColors.textMuted,
+                  iconSize: 30,
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                  onPressed: onClose,
+                ),
+              const RepeatButton(),
             ],
           ),
-        ),
-        if (tr != null)
-          IconButton(
-            tooltip: liked ? 'Unlike' : 'Like',
-            iconSize: 26,
-            color: liked ? oampAccent : OAmpColors.textMuted,
-            icon: Icon(
-              liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            ),
-            onPressed: () => toggleLike(context, ref, tr),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -346,8 +279,9 @@ class _TrackInfo extends ConsumerWidget {
 /// Text that underlines on hover and opens a page when clicked.
 class _Link extends StatefulWidget {
   final String text;
+  final TextStyle? style;
   final VoidCallback? onTap;
-  const _Link(this.text, {this.onTap});
+  const _Link(this.text, {this.style, this.onTap});
 
   @override
   State<_Link> createState() => _LinkState();
@@ -360,9 +294,12 @@ class _LinkState extends State<_Link> {
   Widget build(BuildContext context) {
     final text = Text(
       widget.text,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: _hover
-          ? const TextStyle(decoration: TextDecoration.underline)
-          : null,
+          ? widget.style?.copyWith(decoration: TextDecoration.underline)
+          : widget.style,
     );
     if (widget.onTap == null) return text;
     return MouseRegion(

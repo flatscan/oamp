@@ -24,11 +24,14 @@ Windows is the first target. macOS, Android and iOS build from the same code.
   playlists and liked tracks. Artist pages play or shuffle everything by the
   artist; album pages group tracks by disc.
 - **Search** across artists, albums and tracks as you type.
-- **Mini-player** above the tabs. Click it (or swipe up) for **now playing**:
-  large artwork on a background tinted from the cover, seek bar, repeat,
-  shuffle up next, like, volume, and links to the artist and album. Swipe the
-  artwork sideways to skip. *Up next* swaps the artwork for the queue: click to
-  jump, drag to reorder, swipe or click to remove, clear.
+- Hover an album (or an artist in search) for a play button that plays it
+  without opening it.
+- **Mini-player** above the tabs. Click it (or swipe up) for **now playing**,
+  one scrolling screen tinted from the cover: the artwork edge to edge, seek
+  bar, artist / title / album, format and quality, play controls, volume,
+  like, shuffle up next and repeat, then the queue directly below. *Up next*:
+  click to jump, drag to reorder, swipe or click to remove, clear. *Earlier*
+  lists what already played. Swipe the artwork sideways to skip.
 - Right-click (or long-press) any track for play next, add to queue, like,
   go to album and go to artist.
 - Plays are reported to the server (scrobbles), so Navidrome's play counts and
@@ -144,7 +147,7 @@ lib/
     home_shell.dart         Single column with mini-player, desktop fly-out
     browser.dart            Home / Library / Search tabs, each with its history
     browse/                 Home, library, search, album, artist, playlist pages
-    player/                 Mini-player, now playing, queue, controls
+    player/                 Mini-player, now playing with its queue, controls
     widgets.dart            Shared rows, cards and the track menu
 test/
   fakes/                    FakeMusicSource, FakeAudioEngine, FakeSystemControls

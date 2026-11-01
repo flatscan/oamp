@@ -204,6 +204,12 @@ class SubsonicSource implements MusicSource {
       duration: secs == null ? null : Duration(seconds: secs),
       coverArt: j['coverArt'] as String?,
       liked: j['starred'] != null,
+      year: _int(j['year']),
+      format: j['suffix'] as String?,
+      bitRate: _int(j['bitRate']),
+      // OpenSubsonic fields; plain Subsonic servers leave them out.
+      sampleRate: _int(j['samplingRate']),
+      bitDepth: _int(j['bitDepth']),
     );
   }
 
