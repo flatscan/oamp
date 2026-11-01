@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oamp/core/models.dart';
 import 'package:oamp/main.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
@@ -13,12 +14,12 @@ void main() {
   late FakeAudioEngine engine;
   late FakeMusicSource source;
 
-  Future<void> pumpApp(WidgetTester tester) async {
+  Future<void> pumpApp(WidgetTester tester, {FakeMusicSource? with_}) async {
     tester.view.physicalSize = const Size(440, 880);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     engine = FakeAudioEngine();
-    source = FakeMusicSource();
+    source = with_ ?? FakeMusicSource();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -82,6 +83,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('UP NEXT'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Play'), findsOneWidget);
+
+    // So does the close arrow over the top of the artwork.
+    await tester.tap(find.text('La femme d’argent').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('UP NEXT'), findsNothing);
   });
 
   testWidgets('search finds a track and typing a space does not pause', (
@@ -167,5 +175,46 @@ void main() {
     expect(engine.playing, isTrue);
     // Played in place: still on Home, not the album page.
     expect(find.text('Recently added'), findsOneWidget);
+  });
+
+  testWidgets('album rows scroll sideways with the arrows and a mouse drag', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      with_: FakeMusicSource(
+        albums: [
+          for (var i = 0; i < 12; i++) Album(id: 'a$i', name: 'Album $i'),
+        ],
+      ),
+    );
+    final row = find.byType(ListView).at(1); // first shelf on Home
+    double offset() => tester.widget<ListView>(row).controller!.position.pixels;
+
+    expect(offset(), 0);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.chevron_left_rounded).first,
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byTooltip('Scroll Recently played forward'));
+    await tester.pumpAndSettle();
+    final afterArrow = offset();
+    expect(afterArrow, greaterThan(200));
+
+    await tester.dragFrom(
+      tester.getCenter(row),
+      const Offset(-150, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(offset(), greaterThan(afterArrow));
+
+    await tester.tap(find.byTooltip('Scroll Recently played back'));
+    await tester.pumpAndSettle();
+    expect(offset(), lessThan(afterArrow + 150));
   });
 }

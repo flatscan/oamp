@@ -11,6 +11,11 @@ import 'package:oamp/state/session.dart';
 /// A small in-memory library. Driving the UI with this is the design doc's
 /// check that no widget depends on Subsonic.
 class FakeMusicSource implements MusicSource {
+  FakeMusicSource({this.albums = const [moonSafari]});
+
+  /// What album lists return; tests that need long rows pass more.
+  final List<Album> albums;
+
   static const air = Artist(id: 'ar1', name: 'Air', albumCount: 1);
   static const moonSafari = Album(
     id: 'al1',
@@ -61,7 +66,7 @@ class FakeMusicSource implements MusicSource {
     AlbumSort sort = AlbumSort.alphabetical,
     int size = 100,
     int offset = 0,
-  }) async => [moonSafari];
+  }) async => albums.skip(offset).take(size).toList();
   @override
   Future<AlbumDetail> getAlbum(String id) async =>
       const AlbumDetail(moonSafari, tracks);

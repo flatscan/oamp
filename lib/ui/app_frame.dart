@@ -6,9 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
 import '../state/player.dart';
-import '../state/session.dart';
 import 'browser.dart';
-import 'home_shell.dart';
 import 'theme.dart';
 
 /// The app's root navigator, which the now playing view is pushed onto.
@@ -119,19 +117,17 @@ class _NotWhileTyping<T extends Intent> extends Action<T> {
 }
 
 /// A slim dark title bar in place of the system one: drag to move,
-/// double-click to maximise, the fly-out toggle and the window buttons.
+/// double-click to maximise, and the window buttons.
 ///
 /// It sits above the app's navigator, where there is no overlay, so its
 /// buttons go without tooltips.
-class WindowBar extends ConsumerWidget {
+class WindowBar extends StatelessWidget {
   const WindowBar({super.key});
 
   static const height = 34.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final signedIn = ref.watch(sessionProvider).value != null;
-    final flyout = ref.watch(flyoutOpenProvider);
+  Widget build(BuildContext context) {
     final windows = defaultTargetPlatform == TargetPlatform.windows;
 
     return Material(
@@ -145,25 +141,6 @@ class WindowBar extends ConsumerWidget {
                   ? const DragToMoveArea(child: _Title())
                   : const _Title(),
             ),
-            if (signedIn)
-              Semantics(
-                label: flyout ? 'Close library panel' : 'Open library panel',
-                button: true,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  color: flyout ? oampAccent : OAmpColors.textMuted,
-                  icon: Icon(
-                    flyout
-                        ? Icons.view_sidebar_rounded
-                        : Icons.view_sidebar_outlined,
-                  ),
-                  onPressed: () {
-                    _closeOverlays();
-                    ref.read(flyoutOpenProvider.notifier).toggle();
-                  },
-                ),
-              ),
             if (windows) ...[
               WindowCaptionButton.minimize(
                 brightness: Brightness.dark,

@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
@@ -163,7 +165,7 @@ class _HoverPlayState extends State<HoverPlay> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: Stack(
-        alignment: widget.circle ? Alignment.center : Alignment.bottomLeft,
+        alignment: Alignment.center,
         children: [
           widget.child,
           Positioned.fill(
@@ -183,27 +185,25 @@ class _HoverPlayState extends State<HoverPlay> {
               ),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.all(widget.circle ? 0 : 8),
-            child: AnimatedScale(
-              scale: _hover ? 1 : 0.6,
+          AnimatedScale(
+            scale: _hover ? 1 : 0.6,
+            duration: const Duration(milliseconds: 150),
+            child: AnimatedOpacity(
+              opacity: _hover ? 1 : 0,
               duration: const Duration(milliseconds: 150),
-              child: AnimatedOpacity(
-                opacity: _hover ? 1 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: IgnorePointer(
-                  ignoring: !_hover,
-                  child: IconButton.filled(
-                    tooltip: widget.tooltip,
-                    iconSize: 28,
-                    style: IconButton.styleFrom(
-                      backgroundColor: oampAccent,
-                      foregroundColor: Colors.black,
-                      elevation: 4,
-                    ),
-                    onPressed: widget.onPlay,
-                    icon: const Icon(Icons.play_arrow_rounded),
+              child: IgnorePointer(
+                ignoring: !_hover,
+                child: IconButton.filled(
+                  tooltip: widget.tooltip,
+                  iconSize: 40,
+                  padding: const EdgeInsets.all(12),
+                  style: IconButton.styleFrom(
+                    backgroundColor: oampAccent,
+                    foregroundColor: Colors.black,
+                    elevation: 4,
                   ),
+                  onPressed: widget.onPlay,
+                  icon: const Icon(Icons.play_arrow_rounded),
                 ),
               ),
             ),
@@ -234,24 +234,181 @@ class AlbumCarousel extends StatelessWidget {
     final list = albums.value;
     if (list != null && list.isEmpty) return const SizedBox.shrink();
     if (list == null && albums.hasError) return const SizedBox.shrink();
+    if (list == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title),
+          const SizedBox(
+            height: _cardSize + 52,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+        ],
+      );
+    }
+    return HorizontalShelf(
+      title: title,
+      onSeeAll: onSeeAll,
+      height: _cardSize + 52,
+      itemCount: list.length,
+      itemBuilder: (_, i) => SizedBox(
+        width: _cardSize,
+        child: AlbumCard(album: list[i], size: _cardSize),
+      ),
+    );
+  }
+}
+
+/// A titled row that scrolls sideways on its own. With a mouse it can be
+/// dragged, scrolled with Shift + wheel, or stepped a page at a time with
+/// the arrows in the heading; trackpads and touch scroll it directly.
+class HorizontalShelf extends StatefulWidget {
+  final String title;
+  final VoidCallback? onSeeAll;
+  final double height;
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  final double spacing;
+
+  const HorizontalShelf({
+    super.key,
+    required this.title,
+    required this.height,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.onSeeAll,
+    this.spacing = 14,
+  });
+
+  @override
+  State<HorizontalShelf> createState() => _HorizontalShelfState();
+}
+
+class _HorizontalShelfState extends State<HorizontalShelf> {
+  final _controller = ScrollController();
+  bool _canBack = false;
+  bool _canForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_update);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _update());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _update() {
+    if (!mounted || !_controller.hasClients) return;
+    final p = _controller.position;
+    final back = p.pixels > p.minScrollExtent + 1;
+    final forward = p.pixels < p.maxScrollExtent - 1;
+    if (back != _canBack || forward != _canForward) {
+      setState(() {
+        _canBack = back;
+        _canForward = forward;
+      });
+    }
+  }
+
+  void _page(int direction) {
+    final p = _controller.position;
+    final target = (p.pixels + direction * p.viewportDimension * 0.8).clamp(
+      p.minScrollExtent,
+      p.maxScrollExtent,
+    );
+    _controller.animateTo(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Shift + wheel over the row scrolls it sideways. A plain wheel turn
+  /// still scrolls the page, so the rows never trap vertical scrolling.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent || !_controller.hasClients) return;
+    if (!HardwareKeyboard.instance.isShiftPressed) return;
+    final dy = e.scrollDelta.dy;
+    if (dy == 0 || e.scrollDelta.dx != 0) return;
+    final p = _controller.position;
+    final target = (p.pixels + dy).clamp(p.minScrollExtent, p.maxScrollExtent);
+    if (target == p.pixels) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (_) {
+      _controller.jumpTo(target);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(title, onSeeAll: onSeeAll),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 4, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              if (widget.onSeeAll != null)
+                TextButton(
+                  onPressed: widget.onSeeAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: OAmpColors.textMuted,
+                  ),
+                  child: const Text('See all'),
+                ),
+              if (_canBack || _canForward) ...[
+                IconButton(
+                  tooltip: 'Scroll ${widget.title} back',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _canBack ? () => _page(-1) : null,
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Scroll ${widget.title} forward',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _canForward ? () => _page(1) : null,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ],
+          ),
+        ),
         SizedBox(
-          height: _cardSize + 52,
-          child: list == null
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : ListView.separated(
+          height: widget.height,
+          child: Listener(
+            onPointerSignal: _onPointerSignal,
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (_) {
+                _update();
+                return false;
+              },
+              child: ScrollConfiguration(
+                // Let a mouse drag the row as well as touch and trackpad.
+                behavior: ScrollConfiguration.of(context).copyWith(
+                  dragDevices: PointerDeviceKind.values.toSet(),
+                  scrollbars: false,
+                ),
+                child: ListView.separated(
+                  controller: _controller,
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: list.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 14),
-                  itemBuilder: (_, i) => SizedBox(
-                    width: _cardSize,
-                    child: AlbumCard(album: list[i], size: _cardSize),
-                  ),
+                  itemCount: widget.itemCount,
+                  separatorBuilder: (_, _) => SizedBox(width: widget.spacing),
+                  itemBuilder: widget.itemBuilder,
                 ),
+              ),
+            ),
+          ),
         ),
       ],
     );

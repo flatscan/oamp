@@ -24,12 +24,13 @@ Windows is the first target. macOS, Android and iOS build from the same code.
   playlists and liked tracks. Artist pages play or shuffle everything by the
   artist; album pages group tracks by disc.
 - **Search** across artists, albums and tracks as you type.
-- Hover an album (or an artist in search) for a play button that plays it
-  without opening it.
+- Hover an album (or an artist in search) for a play button in the middle of
+  the cover that plays it without opening it.
 - **Mini-player** above the tabs. Click it (or swipe up) for **now playing**,
   one scrolling screen tinted from the cover: the artwork edge to edge, seek
   bar, artist / title / album, format and quality, play controls, volume,
-  like, shuffle up next and repeat, then the queue directly below. *Up next*:
+  like, shuffle up next and repeat, then the queue directly below. The close
+  arrow sits over the top of the artwork. *Up next*:
   click to jump, drag to reorder, swipe or click to remove, clear. *Earlier*
   lists what already played. Swipe the artwork sideways to skip.
 - Right-click (or long-press) any track for play next, add to queue, like,
@@ -37,9 +38,13 @@ Windows is the first target. macOS, Android and iOS build from the same code.
 - Plays are reported to the server (scrobbles), so Navidrome's play counts and
   "recently played" stay current.
 - One tall column on every platform, the same as on a phone. On Windows the
-  window has its own dark title bar. Its sidebar button opens a library fly-out
-  to the right of the column and widens the window; while it is open the
-  column shows now playing and browsing moves into the fly-out.
+  window has its own dark title bar, and in single-column mode only its height
+  can be changed. The mode button at the top right of the now playing artwork
+  switches to expanded mode: a library fly-out opens to the right of the
+  column, the window widens and can be resized or maximised freely, and the
+  column shows now playing while browsing moves into the fly-out.
+- Album rows on Home scroll sideways on their own: drag them with the mouse,
+  use the arrows next to each heading, or Shift + mouse wheel.
 - Keyboard: `Space` play/pause, `Ctrl+←`/`Ctrl+→` previous/next,
   `Ctrl+↑`/`Ctrl+↓` volume, `Ctrl+F` search, `Esc` closes now playing, and the
   mouse's back button goes back.
@@ -143,6 +148,7 @@ lib/
     system_controls_bridge.dart  Mirrors the player into SystemControls
   ui/
     app_frame.dart          Window bar and keyboard shortcuts around every screen
+    window_mode.dart        Single-column / expanded mode and window size limits
     login_screen.dart
     home_shell.dart         Single column with mini-player, desktop fly-out
     browser.dart            Home / Library / Search tabs, each with its history
