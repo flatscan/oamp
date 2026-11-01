@@ -28,9 +28,16 @@ class ModeSwitchButton extends ConsumerWidget {
 
   /// A page's top bar actions followed by the mode switch, so every page
   /// has it in the same top-right spot.
-  static List<Widget> withActions(List<Widget>? actions) => [
+  /// Set [overArt] when the bar sits over a picture.
+  static List<Widget> withActions(
+    List<Widget>? actions, {
+    bool overArt = false,
+  }) => [
     ...?actions,
-    if (isDesktop) ...const [ModeSwitchButton(), SizedBox(width: inset)],
+    if (isDesktop) ...[
+      ModeSwitchButton(overArt: overArt),
+      const SizedBox(width: inset),
+    ],
   ];
 
   @override

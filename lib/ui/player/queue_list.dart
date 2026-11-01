@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
+import '../playlist_dialogs.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -72,6 +73,15 @@ class _QueueSliversState extends ConsumerState<QueueSlivers> {
                     style: t.bodySmall,
                   ),
                 ),
+                if (s.queue.isNotEmpty)
+                  TextButton(
+                    onPressed: () => createPlaylist(context, ref, s.queue),
+                    style: TextButton.styleFrom(
+                      foregroundColor: OAmpColors.textMuted,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text('Save as playlist'),
+                  ),
                 if (_tab == _QueueTab.upNext && upcoming.isNotEmpty)
                   TextButton(
                     onPressed: p.clearUpcoming,
