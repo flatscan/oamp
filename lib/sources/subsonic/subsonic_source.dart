@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/models.dart';
 import '../../core/music_source.dart';
+import '../../core/playback_options.dart';
 import 'subsonic_client.dart';
 
 /// [MusicSource] for Navidrome and other Subsonic/OpenSubsonic servers.
@@ -294,8 +295,20 @@ class SubsonicSource implements MusicSource {
 
   /// Auth rides in the query string, which is how Subsonic clients stream.
   @override
-  Uri streamUrl(String trackId) =>
-      client.endpointUri('stream', {'id': trackId});
+  Uri streamUrl(
+    String trackId, {
+    StreamQuality quality = StreamQuality.original,
+  }) => client.endpointUri('stream', {
+    'id': trackId,
+    // `raw` asks for the stored file even when the server has a default
+    // transcoding set up for this client.
+    if (quality.isOriginal)
+      'format': 'raw'
+    else ...{
+      'format': quality.format.name,
+      'maxBitRate': '${quality.bitRate}',
+    },
+  });
 
   @override
   Uri? coverArtUrl(String? coverArtId, {int size = 300}) => coverArtId == null
@@ -398,7 +411,22 @@ class SubsonicSource implements MusicSource {
       // OpenSubsonic fields; plain Subsonic servers leave them out.
       sampleRate: _int(j['samplingRate']),
       bitDepth: _int(j['bitDepth']),
+      replayGain: _replayGain(j['replayGain']),
     );
+  }
+
+  /// OpenSubsonic's `replayGain` object. Navidrome fills it from the
+  /// file's tags.
+  static ReplayGain? _replayGain(Object? raw) {
+    if (raw is! Map) return null;
+    double? d(Object? v) => v is num ? v.toDouble() : double.tryParse('$v');
+    final rg = ReplayGain(
+      trackGain: d(raw['trackGain']),
+      albumGain: d(raw['albumGain']),
+      trackPeak: d(raw['trackPeak']),
+      albumPeak: d(raw['albumPeak']),
+    );
+    return rg.isEmpty ? null : rg;
   }
 
   static Playlist _playlist(Map<String, dynamic> j) {

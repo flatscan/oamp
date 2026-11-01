@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/models.dart';
-import '../core/track_resolver.dart';
 import '../audio/audio_engine.dart';
+import '../audio/just_audio_deck.dart';
+import '../core/models.dart';
+import '../core/playback_options.dart';
+import '../core/track_resolver.dart';
 import 'session.dart';
+import 'settings.dart';
 
 /// Immutable view of the queue and transport state for the UI.
 class PlayerState {
@@ -60,8 +63,14 @@ class PlayerState {
   );
 }
 
+/// Makes the players the engine plays through. main.dart swaps in libmpv
+/// on Windows.
+final audioDeckFactoryProvider = Provider<AudioDeck Function()>(
+  (_) => JustAudioDeck.new,
+);
+
 final audioEngineProvider = Provider<AudioEngine>((ref) {
-  final engine = JustAudioEngine();
+  final engine = MixingEngine(ref.watch(audioDeckFactoryProvider));
   ref.onDispose(engine.dispose);
   return engine;
 });
@@ -84,8 +93,9 @@ final playerProvider = NotifierProvider<PlayerController, PlayerState>(
 /// through the same code path, and a v2 cast engine can take over the output
 /// without the queue moving. Tracks become playable URIs through the
 /// [TrackResolver], which is where v2 offline downloads plug in.
-class PlayerController extends Notifier<PlayerState> {
+class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   late AudioEngine _engine;
+  PlaybackOptions _options = const PlaybackOptions();
 
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
@@ -107,7 +117,58 @@ class PlayerController extends Notifier<PlayerState> {
       final before = prev?.value?.serverId;
       if (before != null && before != next.value?.serverId) unawaited(clear());
     });
+    _engine.queueInfo = this;
+    ref.listen(
+      playbackOptionsProvider,
+      (_, o) => unawaited(_applyOptions(o)),
+      fireImmediately: true,
+    );
+    // A new streaming quality applies to the tracks still to come; the one
+    // playing carries on as it is.
+    ref.listen(streamQualityProvider, (prev, next) {
+      if (prev != next) unawaited(_reresolveUpcoming());
+    });
     return const PlayerState();
+  }
+
+  Future<void> _applyOptions(PlaybackOptions o) async {
+    final before = _options;
+    _options = o;
+    if (o.gapless != before.gapless) await _engine.setGapless(o.gapless);
+    if (o.crossfade != before.crossfade) {
+      await _engine.setCrossfade(o.crossfade);
+    }
+    await _engine.refreshGain();
+  }
+
+  @override
+  double gainAt(int index) {
+    final q = state.queue;
+    return index >= 0 && index < q.length ? _options.gainFor(q[index]) : 1;
+  }
+
+  @override
+  bool crossfadeBetween(int from, int to) {
+    final q = state.queue;
+    if (from < 0 || to < 0 || from >= q.length || to >= q.length) return false;
+    return _options.shouldCrossfade(q[from], q[to]);
+  }
+
+  @override
+  Duration? durationAt(int index) {
+    final q = state.queue;
+    return index >= 0 && index < q.length ? q[index].duration : null;
+  }
+
+  Future<void> _reresolveUpcoming() async {
+    final cur = state.currentIndex;
+    if (cur == null || !_signedIn) return;
+    final rest = state.queue.sublist(cur + 1);
+    if (rest.isEmpty) return;
+    for (var i = cur + rest.length; i > cur; i--) {
+      await _engine.removeAt(i);
+    }
+    await _engine.addAll(await _uris(rest));
   }
 
   Future<List<Uri>> _uris(List<Track> tracks) =>

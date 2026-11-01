@@ -7,6 +7,12 @@ abstract class Preferences {
   Future<void> setBool(String key, bool value);
   List<String>? getStringList(String key);
   Future<void> setStringList(String key, List<String> value);
+  String? getString(String key);
+  Future<void> setString(String key, String value);
+  int? getInt(String key);
+  Future<void> setInt(String key, int value);
+  double? getDouble(String key);
+  Future<void> setDouble(String key, double value);
 }
 
 /// [Preferences] on the platform's settings store (the registry-backed
@@ -31,6 +37,21 @@ class PlatformPreferences implements Preferences {
   @override
   Future<void> setStringList(String key, List<String> value) =>
       _prefs.setStringList(key, value);
+
+  @override
+  String? getString(String key) => _prefs.getString(key);
+  @override
+  Future<void> setString(String key, String value) =>
+      _prefs.setString(key, value);
+  @override
+  int? getInt(String key) => _prefs.getInt(key);
+  @override
+  Future<void> setInt(String key, int value) => _prefs.setInt(key, value);
+  @override
+  double? getDouble(String key) => _prefs.getDouble(key);
+  @override
+  Future<void> setDouble(String key, double value) =>
+      _prefs.setDouble(key, value);
 }
 
 /// In-memory [Preferences], for tests and as the default before startup
@@ -50,4 +71,19 @@ class MemoryPreferences implements Preferences {
   @override
   Future<void> setStringList(String key, List<String> value) async =>
       _values[key] = List<String>.of(value);
+
+  @override
+  String? getString(String key) => _values[key] as String?;
+  @override
+  Future<void> setString(String key, String value) async =>
+      _values[key] = value;
+  @override
+  int? getInt(String key) => _values[key] as int?;
+  @override
+  Future<void> setInt(String key, int value) async => _values[key] = value;
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+  @override
+  Future<void> setDouble(String key, double value) async =>
+      _values[key] = value;
 }
