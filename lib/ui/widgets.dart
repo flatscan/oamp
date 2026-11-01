@@ -57,8 +57,9 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// Cover, title and subtitle, used in rows and grids of albums.
-class AlbumCard extends StatelessWidget {
+/// Cover, title and subtitle, used in rows and grids of albums. Hovering
+/// the cover shows a play button that plays the album without opening it.
+class AlbumCard extends ConsumerWidget {
   final Album album;
   final double? size;
   final bool showArtist;
@@ -70,24 +71,45 @@ class AlbumCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context).textTheme;
     final sub = [
       if (showArtist) album.artist,
       if (!showArtist) album.year,
     ].whereType<Object>().join(' · ');
+    Future<void> play() async {
+      try {
+        final detail = await ref.read(albumDetailProvider(album.id).future);
+        await ref
+            .read(playerProvider.notifier)
+            .playTracks(detail.tracks, from: detail.album.name);
+      } catch (e) {
+        if (context.mounted) toast(context, 'Could not play album: $e');
+      }
+    }
+
     return Semantics(
       button: true,
       label: album.name,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
+        // The cover's own hover overlay is the hover cue.
+        hoverColor: Colors.transparent,
         onTap: () => openAlbum(album),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             LayoutBuilder(
-              builder: (_, c) =>
-                  CoverArt(album.coverArt, size: size ?? c.maxWidth, radius: 8),
+              builder: (_, c) => HoverPlay(
+                tooltip: 'Play ${album.name}',
+                onPlay: play,
+                radius: 8,
+                child: CoverArt(
+                  album.coverArt,
+                  size: size ?? c.maxWidth,
+                  radius: 8,
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -105,6 +127,88 @@ class AlbumCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Shows a round play button over [child] while the mouse is over it, and
+/// dims the cover a little so the button stands out.
+class HoverPlay extends StatefulWidget {
+  final Widget child;
+  final Future<void> Function() onPlay;
+  final String tooltip;
+  final double radius;
+  final bool circle;
+
+  const HoverPlay({
+    super.key,
+    required this.child,
+    required this.onPlay,
+    required this.tooltip,
+    this.radius = 0,
+    this.circle = false,
+  });
+
+  @override
+  State<HoverPlay> createState() => _HoverPlayState();
+}
+
+class _HoverPlayState extends State<HoverPlay> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Stack(
+        alignment: widget.circle ? Alignment.center : Alignment.bottomLeft,
+        children: [
+          widget.child,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _hover ? 1 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    shape: widget.circle ? BoxShape.circle : BoxShape.rectangle,
+                    borderRadius: widget.circle
+                        ? null
+                        : BorderRadius.circular(widget.radius),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(widget.circle ? 0 : 8),
+            child: AnimatedScale(
+              scale: _hover ? 1 : 0.6,
+              duration: const Duration(milliseconds: 150),
+              child: AnimatedOpacity(
+                opacity: _hover ? 1 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: IgnorePointer(
+                  ignoring: !_hover,
+                  child: IconButton.filled(
+                    tooltip: widget.tooltip,
+                    iconSize: 28,
+                    style: IconButton.styleFrom(
+                      backgroundColor: oampAccent,
+                      foregroundColor: Colors.black,
+                      elevation: 4,
+                    ),
+                    onPressed: widget.onPlay,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -155,13 +259,24 @@ class AlbumCarousel extends StatelessWidget {
 }
 
 /// Round artist picture with the name beneath.
-class ArtistBubble extends StatelessWidget {
+class ArtistBubble extends ConsumerWidget {
   final Artist artist;
   final double size;
   const ArtistBubble({super.key, required this.artist, this.size = 112});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    Future<void> play() async {
+      try {
+        final tracks = await ref.read(artistTracksProvider(artist.id).future);
+        await ref
+            .read(playerProvider.notifier)
+            .playTracks(tracks, from: artist.name);
+      } catch (e) {
+        if (context.mounted) toast(context, 'Could not play artist: $e');
+      }
+    }
+
     return InkWell(
       borderRadius: BorderRadius.circular(size),
       onTap: () => openArtist(artist),
@@ -169,11 +284,16 @@ class ArtistBubble extends StatelessWidget {
         width: size,
         child: Column(
           children: [
-            CoverArt(
-              artist.coverArt,
-              size: size,
+            HoverPlay(
+              tooltip: 'Play ${artist.name}',
+              onPlay: play,
               circle: true,
-              placeholderIcon: Icons.person_rounded,
+              child: CoverArt(
+                artist.coverArt,
+                size: size,
+                circle: true,
+                placeholderIcon: Icons.person_rounded,
+              ),
             ),
             const SizedBox(height: 8),
             Text(

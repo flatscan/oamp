@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,19 +64,23 @@ void main() {
     expect(find.byTooltip('Pause'), findsOneWidget);
     await tester.tap(find.text('La femme d’argent').last);
     await tester.pumpAndSettle();
-    expect(find.text('PLAYING FROM'), findsOneWidget);
+    expect(find.text('Moon Safari (1998)'), findsNothing); // no year on track
     expect(find.text('Moon Safari'), findsWidgets);
 
-    // Up next swaps the artwork for the queue.
-    await tester.tap(find.byTooltip('Up next'));
-    await tester.pumpAndSettle();
-    expect(find.text('1 track'), findsOneWidget);
+    // The queue sits directly under the controls on the same screen.
+    expect(find.text('UP NEXT'), findsOneWidget);
+    expect(find.textContaining('Playing from Moon Safari'), findsOneWidget);
     expect(find.text('Sexy Boy'), findsWidgets);
+
+    // Earlier lists nothing yet, since this is the first track.
+    await tester.tap(find.text('EARLIER'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing has played yet.'), findsOneWidget);
 
     // Escape closes it again, back to the album page.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(find.text('PLAYING FROM'), findsNothing);
+    expect(find.text('UP NEXT'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Play'), findsOneWidget);
   });
 
@@ -124,10 +129,43 @@ void main() {
     // Open now playing and like the current track.
     await tester.fling(find.byTooltip('Play'), const Offset(0, -200), 1000);
     await tester.pumpAndSettle();
-    expect(find.text('Library shuffle'), findsOneWidget);
+    expect(find.textContaining('Playing from Library shuffle'), findsOneWidget);
     await tester.tap(find.byTooltip('Like'));
     await tester.pumpAndSettle();
     expect(source.calls, contains('like:t1'));
     expect(find.byTooltip('Unlike'), findsOneWidget);
+  });
+
+  testWidgets('hovering an album on home shows a play button that plays it', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    final play = find.byTooltip('Play Moon Safari').first;
+    // Hidden until the mouse is over the cover.
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find
+                .ancestor(of: play, matching: find.byType(AnimatedOpacity))
+                .first,
+          )
+          .opacity,
+      0,
+    );
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(find.text('Moon Safari').first) - const Offset(0, 80),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(play);
+    await tester.pumpAndSettle();
+
+    expect(engine.queue, hasLength(2));
+    expect(engine.playing, isTrue);
+    // Played in place: still on Home, not the album page.
+    expect(find.text('Recently added'), findsOneWidget);
   });
 }

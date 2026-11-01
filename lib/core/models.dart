@@ -52,6 +52,18 @@ class Track {
   /// Whether the user has liked (starred) the track on the server.
   final bool liked;
 
+  final int? year;
+
+  /// File format as the server stores it, such as `flac` or `mp3`.
+  final String? format;
+
+  /// Kilobits per second.
+  final int? bitRate;
+
+  /// Hertz, such as 44100.
+  final int? sampleRate;
+  final int? bitDepth;
+
   const Track({
     required this.id,
     required this.title,
@@ -64,6 +76,11 @@ class Track {
     this.duration,
     this.coverArt,
     this.liked = false,
+    this.year,
+    this.format,
+    this.bitRate,
+    this.sampleRate,
+    this.bitDepth,
   });
 }
 
