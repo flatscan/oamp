@@ -27,6 +27,10 @@ abstract class MusicSource {
   /// Short human label, such as `ed @ music.example.com`.
   String get displayName;
 
+  /// The signed-in user's name on the server, which decides whose
+  /// playlists can be edited.
+  String get userName;
+
   SourceCapabilities get capabilities;
 
   /// Checks the server is reachable and the credentials work.
@@ -34,6 +38,17 @@ abstract class MusicSource {
 
   Future<List<Artist>> getArtists();
   Future<ArtistDetail> getArtist(String id);
+
+  /// Biography and similar artists. Empty when the server has none.
+  Future<ArtistInfo> getArtistInfo(String id);
+
+  /// The artist's most popular tracks that are in this library, most
+  /// popular first. Empty when the server does not know.
+  Future<List<Track>> getTopTracks(Artist artist, {int count = 10});
+
+  /// Tracks like the given track or artist, for an instant mix. Only
+  /// meaningful when [SourceCapabilities.hasSimilar] is set.
+  Future<List<Track>> getSimilarTracks(String id, {int count = 50});
   Future<List<Album>> getAlbums({
     AlbumSort sort = AlbumSort.alphabetical,
     int size = 100,
@@ -47,14 +62,36 @@ abstract class MusicSource {
   Future<List<Playlist>> getPlaylists();
   Future<PlaylistDetail> getPlaylist(String id);
 
+  /// Creates a playlist owned by the signed-in user.
+  Future<Playlist> createPlaylist(
+    String name, {
+    List<String> trackIds = const [],
+  });
+  Future<void> renamePlaylist(String id, String name);
+
+  /// Appends tracks to the end of a playlist.
+  Future<void> addToPlaylist(String id, List<String> trackIds);
+
+  /// Removes the entries at [indexes] (positions in the playlist, so the
+  /// same track listed twice can be removed once).
+  Future<void> removeFromPlaylist(String id, List<int> indexes);
+
+  /// Replaces a playlist's tracks, which is how a new order is saved.
+  Future<void> replacePlaylistTracks(String id, List<String> trackIds);
+  Future<void> deletePlaylist(String id);
+
   /// A random selection from the whole library, for "shuffle everything".
   Future<List<Track>> getRandomTracks({int size = 100});
 
   /// Tracks the user has liked.
   Future<List<Track>> getLikedTracks();
 
-  /// Likes or unlikes a track.
-  Future<void> setLiked(String trackId, bool liked);
+  /// Likes or unlikes a track, album or artist.
+  Future<void> setLiked(
+    String id,
+    bool liked, {
+    LikeTarget target = LikeTarget.track,
+  });
 
   /// Tells the server a track is playing ([submission] false) or has been
   /// listened to ([submission] true), which drives play counts and the

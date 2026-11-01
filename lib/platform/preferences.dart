@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 abstract class Preferences {
   bool? getBool(String key);
   Future<void> setBool(String key, bool value);
+  List<String>? getStringList(String key);
+  Future<void> setStringList(String key, List<String> value);
 }
 
 /// [Preferences] on the platform's settings store (the registry-backed
@@ -22,6 +24,13 @@ class PlatformPreferences implements Preferences {
 
   @override
   Future<void> setBool(String key, bool value) => _prefs.setBool(key, value);
+
+  @override
+  List<String>? getStringList(String key) => _prefs.getStringList(key);
+
+  @override
+  Future<void> setStringList(String key, List<String> value) =>
+      _prefs.setStringList(key, value);
 }
 
 /// In-memory [Preferences], for tests and as the default before startup
@@ -34,4 +43,11 @@ class MemoryPreferences implements Preferences {
 
   @override
   Future<void> setBool(String key, bool value) async => _values[key] = value;
+
+  @override
+  List<String>? getStringList(String key) => _values[key] as List<String>?;
+
+  @override
+  Future<void> setStringList(String key, List<String> value) async =>
+      _values[key] = List<String>.of(value);
 }
