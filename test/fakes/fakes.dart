@@ -26,6 +26,8 @@ class FakeMusicSource implements MusicSource {
       title: 'La femme d’argent',
       artist: 'Air',
       album: 'Moon Safari',
+      artistId: 'ar1',
+      albumId: 'al1',
       track: 1,
       duration: Duration(minutes: 7, seconds: 8),
     ),
@@ -34,6 +36,8 @@ class FakeMusicSource implements MusicSource {
       title: 'Sexy Boy',
       artist: 'Air',
       album: 'Moon Safari',
+      artistId: 'ar1',
+      albumId: 'al1',
       track: 2,
       duration: Duration(minutes: 4, seconds: 58),
     ),
@@ -61,6 +65,42 @@ class FakeMusicSource implements MusicSource {
   @override
   Future<AlbumDetail> getAlbum(String id) async =>
       const AlbumDetail(moonSafari, tracks);
+  static const mixtape = Playlist(id: 'pl1', name: 'Mixtape', songCount: 2);
+
+  /// Calls made to the server's write endpoints, for assertions.
+  final List<String> calls = [];
+
+  @override
+  Future<SearchResults> search(String query, {int limit = 20}) async {
+    bool m(String s) => s.toLowerCase().contains(query.toLowerCase());
+    return SearchResults(
+      artists: [if (m(air.name)) air],
+      albums: [if (m(moonSafari.name)) moonSafari],
+      tracks: [
+        for (final t in tracks)
+          if (m(t.title)) t,
+      ],
+    );
+  }
+
+  @override
+  Future<List<Playlist>> getPlaylists() async => [mixtape];
+  @override
+  Future<PlaylistDetail> getPlaylist(String id) async =>
+      PlaylistDetail(mixtape, tracks.reversed.toList());
+  @override
+  Future<List<Track>> getRandomTracks({int size = 100}) async => tracks;
+  @override
+  Future<List<Track>> getLikedTracks() async => [];
+  @override
+  Future<void> setLiked(String trackId, bool liked) async =>
+      calls.add('${liked ? 'like' : 'unlike'}:$trackId');
+  @override
+  Future<void> reportPlayback(
+    String trackId, {
+    required bool submission,
+  }) async => calls.add('${submission ? 'played' : 'playing'}:$trackId');
+
   @override
   Uri streamUrl(String trackId) => Uri.parse('fake://stream/$trackId');
   @override
@@ -70,8 +110,12 @@ class FakeMusicSource implements MusicSource {
 }
 
 class FakeSessionNotifier extends SessionNotifier {
+  FakeSessionNotifier([FakeMusicSource? source])
+    : source = source ?? FakeMusicSource();
+  final FakeMusicSource source;
+
   @override
-  Future<ServerSession?> build() async => ServerSession(FakeMusicSource());
+  Future<ServerSession?> build() async => ServerSession(source);
 }
 
 /// Records what the player asks for and reports it back as engine state.
@@ -80,6 +124,13 @@ class FakeAudioEngine implements AudioEngine {
   final List<Uri> queue = [];
   int? index;
   bool playing = false;
+  PlaybackRepeat repeat = PlaybackRepeat.off;
+  double volume = 1;
+  final _position = StreamController<Duration>.broadcast();
+  final _duration = StreamController<Duration?>.broadcast();
+
+  /// Pretends playback has reached [p].
+  void emitPosition(Duration p) => _position.add(p);
 
   void _emit() =>
       _state.add(EngineState(playing: playing, currentIndex: index));
@@ -87,9 +138,9 @@ class FakeAudioEngine implements AudioEngine {
   @override
   Stream<EngineState> get stateStream => _state.stream;
   @override
-  Stream<Duration> get positionStream => const Stream.empty();
+  Stream<Duration> get positionStream => _position.stream;
   @override
-  Stream<Duration?> get durationStream => const Stream.empty();
+  Stream<Duration?> get durationStream => _duration.stream;
   @override
   Duration get position => Duration.zero;
 
@@ -151,7 +202,16 @@ class FakeAudioEngine implements AudioEngine {
   }
 
   @override
-  Future<void> dispose() => _state.close();
+  Future<void> setRepeatMode(PlaybackRepeat mode) async => repeat = mode;
+  @override
+  Future<void> setVolume(double v) async => volume = v;
+
+  @override
+  Future<void> dispose() async {
+    await _state.close();
+    await _position.close();
+    await _duration.close();
+  }
 }
 
 /// Records what the app shows in the OS media UI, and lets a test press its

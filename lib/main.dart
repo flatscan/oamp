@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
@@ -5,8 +6,10 @@ import 'package:window_manager/window_manager.dart';
 
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
+import 'state/playback_reporter.dart';
 import 'state/session.dart';
 import 'state/system_controls_bridge.dart';
+import 'ui/app_frame.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 import 'ui/theme.dart';
@@ -19,14 +22,19 @@ Future<void> main() async {
   JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
 
   if (isDesktop) {
-    // Open as a tall, phone-shaped column like Plexamp's desktop window.
+    // Open as a tall, phone-shaped column. On Windows the system title bar
+    // is replaced by the app's own dark one (see WindowBar).
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(
-        size: Size(460, 860),
-        minimumSize: Size(360, 560),
+      WindowOptions(
+        size: const Size(440, 880),
+        minimumSize: const Size(360, 600),
         center: true,
         title: 'OAmp',
+        backgroundColor: oampBackground,
+        titleBarStyle: defaultTargetPlatform == TargetPlatform.windows
+            ? TitleBarStyle.hidden
+            : TitleBarStyle.normal,
       ),
       () async {
         await windowManager.show();
@@ -54,9 +62,10 @@ class OAmpApp extends StatelessWidget {
     return MaterialApp(
       title: 'OAmp',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
+      navigatorKey: rootNavigatorKey,
+      theme: buildTheme(),
       themeMode: ThemeMode.dark,
+      builder: (context, child) => AppFrame(child: child!),
       home: const _Root(),
     );
   }
@@ -67,8 +76,10 @@ class _Root extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Mirror the player into the OS media controls for the app's lifetime.
+    // Mirror the player into the OS media controls, and report plays to the
+    // server, for the app's lifetime.
     ref.watch(systemControlsBridgeProvider);
+    ref.watch(playbackReporterProvider);
     final session = ref.watch(sessionProvider);
     return switch (session) {
       AsyncData(value: final session?) => HomeShell(

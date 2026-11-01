@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
 
+import '../core/models.dart';
+
 /// Snapshot of what the engine is doing, independent of the backend.
 class EngineState {
   final bool playing;
@@ -40,6 +42,10 @@ abstract class AudioEngine {
   Future<void> seek(Duration position, {int? index});
   Future<void> next();
   Future<void> previous();
+  Future<void> setRepeatMode(PlaybackRepeat mode);
+
+  /// Output volume from 0 to 1.
+  Future<void> setVolume(double volume);
   Future<void> dispose();
 }
 
@@ -114,6 +120,16 @@ class JustAudioEngine implements AudioEngine {
   Future<void> next() => _player.seekToNext();
   @override
   Future<void> previous() => _player.seekToPrevious();
+
+  @override
+  Future<void> setRepeatMode(PlaybackRepeat mode) =>
+      _player.setLoopMode(switch (mode) {
+        PlaybackRepeat.off => LoopMode.off,
+        PlaybackRepeat.all => LoopMode.all,
+        PlaybackRepeat.one => LoopMode.one,
+      });
+  @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   @override
   Future<void> dispose() async {
