@@ -208,7 +208,7 @@ class _ArtOverlayBar extends StatelessWidget {
                     ),
             ),
           ),
-          const ModeSwitchButton(),
+          const ModeSwitchButton(overArt: true),
         ],
       ),
     );
