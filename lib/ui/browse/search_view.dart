@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
+import '../app_frame.dart';
 import '../async_view.dart';
 import '../widgets.dart';
 
@@ -45,6 +46,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
         slivers: [
           SliverAppBar(
             pinned: true,
+            // With the title bar hidden, the bar moves the window.
+            flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
             toolbarHeight: 72,
             title: TextField(
               controller: _controller,
