@@ -35,3 +35,30 @@ class AsyncView<T> extends StatelessWidget {
     };
   }
 }
+
+/// [AsyncView] for use inside a [CustomScrollView].
+class AsyncSliver<T> extends StatelessWidget {
+  final AsyncValue<T> value;
+  final Widget Function(T data) builder;
+  final VoidCallback onRetry;
+
+  const AsyncSliver({
+    super.key,
+    required this.value,
+    required this.builder,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (value case AsyncData(:final value)) return builder(value);
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: AsyncView<T>(
+        value: value,
+        builder: (_) => const SizedBox(),
+        onRetry: onRetry,
+      ),
+    );
+  }
+}

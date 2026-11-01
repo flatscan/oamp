@@ -2,14 +2,14 @@
 
 An open source music player for [Navidrome](https://www.navidrome.org/),
 built with Flutter. It talks to your server over the Subsonic / OpenSubsonic
-API and uses a tall, Plexamp-style layout where the play queue is always on
-screen.
+API and uses a tall, single-column layout: browse above, a mini-player along
+the bottom, and a full now playing screen one click away.
 
 Windows is the first target. macOS, Android and iOS build from the same code.
 
-> Status: early scaffold. Sign in, browse artists and albums, play tracks,
-> manage the queue, and control playback from the Windows media overlay and
-> media keys. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
+> Status: early prototype. Sign in, browse and search the library, play,
+> manage the queue, like tracks, and control playback from the Windows media
+> overlay and media keys. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
 > for the v1 plan.
 
 ## Features so far
@@ -18,16 +18,43 @@ Windows is the first target. macOS, Android and iOS build from the same code.
   auth (`t = md5(password + salt)`), so the password is never sent or stored.
   The token, salt, URL and username are kept in the OS secure store (Windows
   Credential Manager, macOS/iOS Keychain, Android Keystore).
-- Browse artists, albums (A–Z), an artist's albums, and an album's tracks.
-- Play an album, shuffle it, play a track next, or add it to the end of the
-  queue.
-- Queue panel that is always visible: tap to jump, drag to reorder, swipe or
-  click to remove, clear all.
-- One tall column on every platform, the same as on a phone: now playing,
-  library and queue, with a draggable divider between library and queue.
-- On desktop, the sidebar button in the top bar opens a library fly-out to the
-  right of the column and widens the window to make room. While it is open the
-  column shows large artwork and the queue. Press it again to close it.
+- **Home:** one-click *Shuffle library* and *Liked tracks*, then rows of
+  recently played, recently added, most played, liked and random albums.
+- **Library:** artists A to Z, every album (sortable, loaded as you scroll),
+  playlists and liked tracks. Artist pages play or shuffle everything by the
+  artist; album pages group tracks by disc.
+- **Search** across artists, albums and tracks as you type.
+- Hover an album (or an artist in search) for a play button in the middle of
+  the cover that plays it without opening it.
+- **Mini-player** above the tabs. Click it (or swipe up) for **now playing**,
+  one scrolling screen tinted from the cover: the artwork edge to edge, seek
+  bar, artist / title / album, format and quality, play controls, volume,
+  like, shuffle up next and repeat, then the queue directly below. The close
+  arrow sits over the top of the artwork. *Up next*:
+  click to jump, drag to reorder, swipe or click to remove, clear. *Earlier*
+  lists what already played. Swipe the artwork sideways to skip.
+- Right-click (or long-press) any track for play next, add to queue, like,
+  go to album and go to artist.
+- Plays are reported to the server (scrobbles), so Navidrome's play counts and
+  "recently played" stay current.
+- One tall column on every platform, the same as on a phone. On Windows the
+  window has its own dark title bar (it can be hidden in Settings; then drag
+  the top of Home or of the now playing artwork to move the window), and in
+  single-column mode only its height can be changed.
+- The mode button switches to expanded mode: a library fly-out opens to the
+  right of the column, the window widens and can be resized or maximised
+  freely, and the column shows now playing while browsing moves into the
+  fly-out. The button sits in exactly the same spot on single-column Home and
+  Library, single-column now playing and the expanded column, so switching
+  back and forth needs no mouse movement; expanded Home and Library have a
+  second one at their top right. Switching back to one column lands on now
+  playing.
+- Settings (gear on Home): server, sign out, and the title bar toggle.
+- Album rows on Home scroll sideways on their own: drag them with the mouse,
+  use the arrows next to each heading, or Shift + mouse wheel.
+- Keyboard: `Space` play/pause, `Ctrl+←`/`Ctrl+→` previous/next,
+  `Ctrl+↑`/`Ctrl+↓` volume, `Ctrl+F` search, `Esc` closes now playing, and the
+  mouse's back button goes back.
 - On Windows, keeps playing in the background and shows up in the Windows
   media overlay (the panel next to the volume flyout, and the lock screen)
   with title, artist, album, cover and play/pause, next and previous. The
@@ -106,7 +133,7 @@ capability added in Xcode before sign-in persists.
 lib/
   main.dart                 App entry: audio backend, desktop window, routing
   core/                     Backend-neutral, no dart:io
-    models.dart             Artist, Album, Track (OAmp's own models)
+    models.dart             Artist, Album, Track, Playlist (OAmp's own models)
     music_source.dart       MusicSource interface + capability flags
     track_resolver.dart     Track -> playable URI (stream now, downloads in v2)
   sources/subsonic/         The only v1 MusicSource: Navidrome / Subsonic
@@ -116,6 +143,7 @@ lib/
     audio_engine.dart       AudioEngine output interface + just_audio engine
   platform/                 Platform code behind interfaces
     secure_store.dart       SecureStore (OS keychain)
+    preferences.dart        Preferences (plain settings, shared_preferences)
     platform_info.dart      isDesktop without dart:io
     system_controls.dart    SystemControls: the OS media session interface
     windows_system_controls.dart   SMTC: media overlay and media keys
@@ -124,16 +152,25 @@ lib/
     session.dart            ServerSession keyed by serverId, sign-in
     library.dart            Cached library queries
     player.dart             PlayerController: the queue; engine is its output
+    playback_reporter.dart  Reports now playing and plays to the server
+    settings.dart           App settings, such as showing the title bar
     system_controls_bridge.dart  Mirrors the player into SystemControls
   ui/
+    app_frame.dart          Window bar and keyboard shortcuts around every screen
+    window_mode.dart        Single-column / expanded mode and window size limits
+    mode_switch.dart        The mode switch button and where it sits
     login_screen.dart
-    home_shell.dart         Single column, queue always visible, desktop fly-out
-    library/                Artists, albums, album page
-    player/                 Now playing and queue panel
+    home_shell.dart         Single column with mini-player, desktop fly-out
+    browser.dart            Home / Library / Search tabs, each with its history
+    browse/                 Home, library, search, album, artist, playlist pages
+    player/                 Mini-player, now playing with its queue, controls
+    widgets.dart            Shared rows, cards and the track menu
 test/
   fakes/                    FakeMusicSource, FakeAudioEngine, FakeSystemControls
   system_controls_test.dart Media keys and overlay, driven through fakes
   ui_with_fake_source_test.dart  Drives the whole UI with no server
+  player_test.dart          Queue, repeat, shuffle, volume and play reports
+  window_mode_test.dart     Mode switch position across modes, title bar setting
   architecture_test.dart    Enforces the seams below
 ```
 
@@ -170,7 +207,9 @@ implementations rather than rewrite v1:
 - [`http`](https://pub.dev/packages/http) and
   [`crypto`](https://pub.dev/packages/crypto) for the API and token auth.
 - [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage)
-  for saved credentials.
+  for saved credentials, and
+  [`shared_preferences`](https://pub.dev/packages/shared_preferences) for
+  plain settings.
 - [`window_manager`](https://pub.dev/packages/window_manager) for the
   phone-shaped desktop window and the library fly-out.
 - [`smtc_windows`](https://pub.dev/packages/smtc_windows) for the Windows

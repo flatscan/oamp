@@ -47,6 +47,7 @@ dependencies:
   # refuse to start against any other runtime version. Move this only
   # together with an smtc_windows release built for the new version.
   flutter_rust_bridge: 2.11.1
+  shared_preferences: ^2.5.6
 dev_dependencies:
   flutter_test:
     sdk: flutter

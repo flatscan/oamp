@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:window_manager/window_manager.dart';
 
-import '../platform/platform_info.dart';
-import '../state/session.dart';
-import '../state/system_controls_bridge.dart';
-import 'library/library_pane.dart';
+import 'browser.dart';
+import 'player/mini_player.dart';
 import 'player/now_playing.dart';
-import 'player/queue_panel.dart';
+import 'window_mode.dart';
 
-/// Main screen: a Plexamp-style single column, the same on desktop as on a
-/// phone: now playing / library / queue, with a draggable divider between
-/// library and queue so the queue is always on screen.
+/// Main screen: one column, the same on desktop as on a phone. Browsing
+/// (Home, Library, Search) fills the column, a mini-player sits above the
+/// tabs, and clicking it slides up the full now playing view over them.
 ///
-/// On desktop a toggle opens a library fly-out to the right of the column and
-/// widens the window to make room. While it is open, the column shows large
-/// artwork and the queue, and library browsing moves into the fly-out.
+/// On desktop the mode button on now playing switches to expanded mode: a
+/// library panel opens to the right and the window widens. While it is
+/// open, the column shows now playing permanently and browsing moves into
+/// the panel.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -23,170 +21,107 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
-  static const _columnWidth = 420.0;
-  static const _flyoutWidth = 720.0;
+class _HomeShellState extends ConsumerState<HomeShell>
+    with SingleTickerProviderStateMixin {
+  /// Now playing is one widget for the shell's lifetime. It moves between
+  /// the single column's sheet and the expanded column, so switching modes
+  /// never rebuilds it: no reload, no flicker, same scroll position.
+  final _nowPlayingKey = GlobalKey(debugLabel: 'now playing');
 
-  /// Fraction of the split area given to the queue in the column.
-  double _queueFraction = 0.4;
-  bool _flyoutOpen = false;
+  late final _sheet = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    reverseDuration: const Duration(milliseconds: 260),
+  );
 
-  Future<void> _toggleFlyout() async {
-    final open = !_flyoutOpen;
-    setState(() => _flyoutOpen = open);
-    // Grow or shrink the window by the fly-out's width, unless the user has
-    // maximised it, in which case the existing space is reused.
-    if (await windowManager.isMaximized() ||
-        await windowManager.isFullScreen()) {
-      return;
-    }
-    final size = await windowManager.getSize();
-    final width = open
-        ? size.width + _flyoutWidth
-        : (size.width - _flyoutWidth).clamp(360.0, double.infinity);
-    await windowManager.setSize(Size(width, size.height), animate: true);
+  @override
+  void dispose() {
+    _sheet.dispose();
+    super.dispose();
   }
+
+  void _close() => ref.read(nowPlayingSheetProvider.notifier).close();
 
   @override
   Widget build(BuildContext context) {
-    final source = ref.watch(musicSourceProvider);
-    final mediaProblem = ref.watch(systemControlsProblemProvider);
+    ref.listen(nowPlayingSheetProvider, (_, next) {
+      if (!next.animate) {
+        _sheet.value = next.open ? 1 : 0;
+      } else if (next.open) {
+        _sheet.forward();
+      } else {
+        _sheet.reverse();
+      }
+    });
+    final expanded = ref.watch(flyoutOpenProvider);
+    final reveal = ref.watch(flyoutRevealProvider);
+
+    // One layout for both modes, so switching never rebuilds or moves now
+    // playing: a column exactly one column wide pinned left, and a panel
+    // that takes whatever width the window adds. In single-column mode the
+    // panel is empty and the window is one column wide; in expanded mode
+    // the browser slides out into it and now playing stays up in the
+    // column.
+    final browser = Browser(
+      key: Browser.globalKey,
+      footer: expanded ? null : const MiniPlayer(),
+    );
+    final sheet = expanded ? kAlwaysCompleteAnimation : _sheet;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('OAmp'),
-        actions: [
-          if (mediaProblem != null)
-            IconButton(
-              tooltip: 'Media keys and overlay are not working',
-              icon: const Icon(Icons.warning_amber_rounded),
-              color: Theme.of(context).colorScheme.error,
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Media controls unavailable'),
-                  content: SelectableText(mediaProblem),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Close'),
+      body: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: constraints.maxWidth < FlyoutController.columnWidth
+                  ? constraints.maxWidth
+                  : FlyoutController.columnWidth,
+              child: AnimatedBuilder(
+                animation: sheet,
+                builder: (context, _) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Covered (and paused) while now playing is fully up.
+                    Offstage(
+                      offstage: expanded || sheet.isCompleted,
+                      child: expanded ? const SizedBox.shrink() : browser,
                     ),
+                    if (!sheet.isDismissed)
+                      SlideTransition(
+                        position:
+                            Tween(
+                              begin: const Offset(0, 1),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: sheet,
+                                curve: Curves.easeOutCubic,
+                                reverseCurve: Curves.easeInCubic,
+                              ),
+                            ),
+                        child: NowPlayingView(
+                          key: _nowPlayingKey,
+                          onClose: expanded ? null : _close,
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
-          if (isDesktop)
-            IconButton(
-              tooltip: _flyoutOpen
-                  ? 'Close library panel'
-                  : 'Open library panel',
-              isSelected: _flyoutOpen,
-              icon: const Icon(Icons.view_sidebar_outlined),
-              selectedIcon: const Icon(Icons.view_sidebar),
-              onPressed: _toggleFlyout,
+            Expanded(
+              child: expanded
+                  ? FlyoutSlide(
+                      reveal: reveal,
+                      child: Row(
+                        children: [
+                          const VerticalDivider(width: 1),
+                          Expanded(child: browser),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'Account',
-            icon: const Icon(Icons.account_circle_outlined),
-            onSelected: (v) {
-              if (v == 'logout') ref.read(sessionProvider.notifier).logout();
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(enabled: false, child: Text(source.displayName)),
-              const PopupMenuItem(value: 'logout', child: Text('Sign out')),
-            ],
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, c) {
-          // Fall back to the single column if the window is too narrow to
-          // fit the fly-out (e.g. while it is still resizing).
-          if (_flyoutOpen && c.maxWidth >= _columnWidth + 360) {
-            return _withFlyout();
-          }
-          return _column(c.maxHeight);
-        },
-      ),
-    );
-  }
-
-  Widget _withFlyout() {
-    return const Row(
-      children: [
-        SizedBox(
-          width: _columnWidth,
-          child: Column(
-            children: [
-              NowPlaying(),
-              Divider(height: 1),
-              Expanded(child: QueuePanel()),
-            ],
-          ),
-        ),
-        VerticalDivider(width: 1),
-        Expanded(child: LibraryPane()),
-      ],
-    );
-  }
-
-  Widget _column(double height) {
-    return Column(
-      children: [
-        const NowPlaying(compact: true),
-        const Divider(height: 1),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final total = c.maxHeight;
-              final queueH = (total * _queueFraction).clamp(
-                120.0,
-                total - 120.0,
-              );
-              return Column(
-                children: [
-                  const Expanded(child: LibraryPane()),
-                  _SplitHandle(
-                    onDrag: (dy) => setState(() {
-                      _queueFraction = ((queueH - dy) / total).clamp(
-                        0.15,
-                        0.85,
-                      );
-                    }),
-                  ),
-                  SizedBox(height: queueH, child: const QueuePanel()),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SplitHandle extends StatelessWidget {
-  final ValueChanged<double> onDrag;
-  const _SplitHandle({required this.onDrag});
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeRow,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (d) => onDrag(d.delta.dy),
-        child: SizedBox(
-          height: 14,
-          child: Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
+          ],
         ),
       ),
     );
