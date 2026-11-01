@@ -25,17 +25,27 @@ class WindowsSystemControls implements SystemControls {
 
   WindowsSystemControls._(this._smtc) {
     _sub = _smtc.buttonPressStream.listen((b) {
-      final cmd = switch (b) {
-        PressedButton.play => const PlayCommand(),
-        PressedButton.pause => const PauseCommand(),
-        PressedButton.next => const NextCommand(),
-        PressedButton.previous => const PreviousCommand(),
-        PressedButton.stop => const StopCommand(),
-        _ => null,
-      };
+      final cmd = commandFor(b);
       if (cmd != null) _commands.add(cmd);
     }, onError: (Object e) => _fail('Media key events failed', e));
   }
+
+  /// Maps an SMTC button to a player command.
+  ///
+  /// A keyboard's single play/pause key reaches SMTC as Play or Pause,
+  /// chosen from the status OAmp last reported. If that status lags the
+  /// player by a moment (a track change, buffering, a press right after
+  /// another), Windows sends the wrong one and an explicit Play/Pause would
+  /// do nothing. Both are treated as a toggle of the player's real state,
+  /// which is the same thing whenever the status is current.
+  @visibleForTesting
+  static MediaCommand? commandFor(PressedButton b) => switch (b) {
+    PressedButton.play || PressedButton.pause => const TogglePlayCommand(),
+    PressedButton.next => const NextCommand(),
+    PressedButton.previous => const PreviousCommand(),
+    PressedButton.stop => const StopCommand(),
+    _ => null,
+  };
 
   /// Loads the native library and registers with SMTC. If that fails the app
   /// still runs, with [NoSystemControls] reporting why.
