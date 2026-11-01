@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../state/library.dart';
 import '../state/player.dart';
+import 'app_frame.dart';
 import 'browse/album_page.dart';
 import 'browse/artist_page.dart';
 import 'browser.dart';
@@ -542,6 +543,8 @@ class _DetailScaffoldState extends State<DetailScaffold> {
       slivers: [
         SliverAppBar(
           pinned: true,
+          // With the title bar hidden, the bar moves the window.
+          flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
           title: AnimatedOpacity(
             opacity: _showTitle ? 1 : 0,
             duration: const Duration(milliseconds: 150),
@@ -598,6 +601,8 @@ class ListScaffold extends StatelessWidget {
       slivers: [
         SliverAppBar(
           pinned: true,
+          // With the title bar hidden, the bar moves the window.
+          flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
           title: Text(title, style: Theme.of(context).textTheme.headlineSmall),
           actions: actions,
         ),

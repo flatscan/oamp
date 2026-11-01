@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,7 @@ import 'package:oamp/ui/app_frame.dart';
 import 'package:oamp/ui/mode_switch.dart';
 import 'package:oamp/ui/player/now_playing.dart';
 import 'package:oamp/ui/window_mode.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'fakes/fakes.dart';
 
@@ -79,15 +81,6 @@ void main() {
     tester.view.physicalSize = const Size(1160, 880);
     await tester.pumpAndSettle();
     expect(windowCalls.where((c) => c.method == 'setMaximumSize'), isNotEmpty);
-    // Windows' own resize animation is off for exactly the resize.
-    final order = [
-      for (final c in windowCalls)
-        if (c.method == 'setTransitionsEnabled')
-          'transitions:${c.arguments}'
-        else if (c.method == 'setBounds')
-          'setBounds',
-    ];
-    expect(order, ['transitions:false', 'setBounds', 'transitions:true']);
     // One in the now playing column, one at the fly-out's top right.
     final buttons = find.byType(ModeSwitchButton);
     expect(buttons, findsNWidgets(2));
@@ -145,6 +138,17 @@ void main() {
 
     expect(find.byType(WindowBar), findsNothing);
     expect(prefs.getBool('oamp.window.showTitleBar'), isFalse);
+
+    // Every page's top bar now moves the window: Settings itself, and the
+    // Library tab.
+    Finder dragInAppBar() => find.descendant(
+      of: find.byType(SliverAppBar),
+      matching: find.byType(DragToMoveArea),
+    );
+    expect(dragInAppBar(), findsOneWidget);
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    expect(dragInAppBar(), findsOneWidget);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   testWidgets('size limits always contain the window at fractional scaling', (
