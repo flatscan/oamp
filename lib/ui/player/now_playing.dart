@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
+import '../../platform/platform_info.dart';
 import '../cover_art.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../window_mode.dart';
 import 'art_colors.dart';
 import 'controls.dart';
 import 'queue_list.dart';
@@ -78,16 +80,24 @@ class NowPlayingView extends ConsumerWidget {
           child: Scrollbar(
             child: CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(child: _Artwork(track: track)),
+                SliverToBoxAdapter(
+                  child: Stack(
+                    children: [
+                      _Artwork(track: track),
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        right: 8,
+                        child: _ArtOverlayBar(onClose: onClose),
+                      ),
+                    ],
+                  ),
+                ),
                 SliverToBoxAdapter(
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 560),
-                      child: _Controls(
-                        track: track,
-                        accent: accent,
-                        onClose: onClose,
-                      ),
+                      child: _Controls(track: track, accent: accent),
                     ),
                   ),
                 ),
@@ -106,6 +116,63 @@ class NowPlayingView extends ConsumerWidget {
         autofocus: onClose != null,
         child: Material(color: oampBackground, child: view),
       ),
+    );
+  }
+}
+
+/// Buttons over the top of the artwork: close in the middle (when shown
+/// full-screen) and, on desktop, the switch between single-column and
+/// expanded mode on the right.
+class _ArtOverlayBar extends ConsumerWidget {
+  final VoidCallback? onClose;
+  const _ArtOverlayBar({required this.onClose});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final expanded = ref.watch(flyoutOpenProvider);
+    final style = IconButton.styleFrom(
+      backgroundColor: Colors.black45,
+      foregroundColor: Colors.white,
+      hoverColor: Colors.white24,
+    );
+    return Row(
+      children: [
+        const SizedBox(width: 48),
+        Expanded(
+          child: Center(
+            child: onClose == null
+                ? null
+                : IconButton(
+                    tooltip: 'Close',
+                    style: style,
+                    iconSize: 30,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    onPressed: onClose,
+                  ),
+          ),
+        ),
+        SizedBox(
+          width: 48,
+          child: !isDesktop
+              ? null
+              : IconButton(
+                  tooltip: expanded ? 'Single column' : 'Expanded view',
+                  style: style,
+                  iconSize: 20,
+                  icon: Icon(
+                    expanded
+                        ? Icons.close_fullscreen_rounded
+                        : Icons.open_in_full_rounded,
+                  ),
+                  onPressed: () {
+                    // Expanded mode shows now playing in the column, so the
+                    // full-screen copy closes first.
+                    onClose?.call();
+                    ref.read(flyoutOpenProvider.notifier).toggle();
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
@@ -155,8 +222,7 @@ class _Artwork extends ConsumerWidget {
 class _Controls extends ConsumerWidget {
   final Track? track;
   final Color accent;
-  final VoidCallback? onClose;
-  const _Controls({required this.track, required this.accent, this.onClose});
+  const _Controls({required this.track, required this.accent});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -259,14 +325,6 @@ class _Controls extends ConsumerWidget {
                     : () => toggleLike(context, ref, tr),
               ),
               const ShuffleButton(),
-              if (onClose != null)
-                IconButton(
-                  tooltip: 'Close',
-                  color: OAmpColors.textMuted,
-                  iconSize: 30,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                  onPressed: onClose,
-                ),
               const RepeatButton(),
             ],
           ),

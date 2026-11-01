@@ -13,6 +13,7 @@ import 'ui/app_frame.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 import 'ui/theme.dart';
+import 'ui/window_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,8 +28,7 @@ Future<void> main() async {
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
       WindowOptions(
-        size: const Size(440, 880),
-        minimumSize: const Size(360, 600),
+        size: const Size(FlyoutController.columnWidth, 880),
         center: true,
         title: 'OAmp',
         backgroundColor: oampBackground,
@@ -37,6 +37,7 @@ Future<void> main() async {
             : TitleBarStyle.normal,
       ),
       () async {
+        await FlyoutController.lockToColumn();
         await windowManager.show();
         await windowManager.focus();
       },

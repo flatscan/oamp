@@ -113,20 +113,15 @@ class _Results extends ConsumerWidget {
     final tracks = results.tracks;
     return SliverList.list(
       children: [
-        if (results.artists.isNotEmpty) ...[
-          const SectionHeader('Artists'),
-          SizedBox(
+        if (results.artists.isNotEmpty)
+          HorizontalShelf(
+            title: 'Artists',
             height: 140,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: results.artists.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 16),
-              itemBuilder: (_, i) =>
-                  ArtistBubble(artist: results.artists[i], size: 100),
-            ),
+            spacing: 16,
+            itemCount: results.artists.length,
+            itemBuilder: (_, i) =>
+                ArtistBubble(artist: results.artists[i], size: 100),
           ),
-        ],
         AlbumCarousel(title: 'Albums', albums: AsyncData(results.albums)),
         if (tracks.isNotEmpty) ...[
           const SectionHeader('Tracks'),
