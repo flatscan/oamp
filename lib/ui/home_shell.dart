@@ -4,6 +4,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
 import '../state/session.dart';
+import '../state/system_controls_bridge.dart';
 import 'library/library_pane.dart';
 import 'player/now_playing.dart';
 import 'player/queue_panel.dart';
@@ -49,10 +50,30 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final source = ref.watch(musicSourceProvider);
+    final mediaProblem = ref.watch(systemControlsProblemProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('OAmp'),
         actions: [
+          if (mediaProblem != null)
+            IconButton(
+              tooltip: 'Media keys and overlay are not working',
+              icon: const Icon(Icons.warning_amber_rounded),
+              color: Theme.of(context).colorScheme.error,
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Media controls unavailable'),
+                  content: SelectableText(mediaProblem),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (isDesktop)
             IconButton(
               tooltip: _flyoutOpen

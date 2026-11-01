@@ -29,6 +29,14 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release
+      - name: Check native plugin DLLs shipped
+        shell: pwsh
+        run: |
+          $dir = 'build/windows/x64/runner/Release'
+          Get-ChildItem $dir | Format-Table Name, Length
+          foreach ($dll in 'smtc_windows.dll', 'libmpv-2.dll') {
+            if (-not (Test-Path "$dir/$dll")) { throw "$dll missing from the Windows build" }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: oamp-windows

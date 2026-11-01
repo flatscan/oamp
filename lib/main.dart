@@ -4,7 +4,9 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'platform/platform_info.dart';
+import 'platform/platform_system_controls.dart';
 import 'state/session.dart';
+import 'state/system_controls_bridge.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 import 'ui/theme.dart';
@@ -33,7 +35,15 @@ Future<void> main() async {
     );
   }
 
-  runApp(const ProviderScope(child: OAmpApp()));
+  // The OS media session: the Windows media overlay and keyboard media keys.
+  final systemControls = await createSystemControls();
+
+  runApp(
+    ProviderScope(
+      overrides: [systemControlsProvider.overrideWithValue(systemControls)],
+      child: const OAmpApp(),
+    ),
+  );
 }
 
 class OAmpApp extends StatelessWidget {
@@ -57,6 +67,8 @@ class _Root extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Mirror the player into the OS media controls for the app's lifetime.
+    ref.watch(systemControlsBridgeProvider);
     final session = ref.watch(sessionProvider);
     return switch (session) {
       AsyncData(value: final session?) => HomeShell(

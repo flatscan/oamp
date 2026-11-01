@@ -59,7 +59,7 @@ final playerProvider = NotifierProvider<PlayerController, PlayerState>(
 /// Owns the play queue and treats the [AudioEngine] as an output.
 ///
 /// The list of [Track]s lives here and is mirrored into the engine, so in-app
-/// buttons and (next milestone) system media controls via `audio_service` go
+/// buttons and the OS media controls (see system_controls_bridge.dart) go
 /// through the same code path, and a v2 cast engine can take over the output
 /// without the queue moving. Tracks become playable URIs through the
 /// [TrackResolver], which is where v2 offline downloads plug in.
@@ -148,7 +148,12 @@ class PlayerController extends Notifier<PlayerState> {
     await _engine.clear();
   }
 
-  Future<void> togglePlay() => state.playing ? _engine.pause() : _engine.play();
+  Future<void> play() async {
+    if (state.queue.isNotEmpty) await _engine.play();
+  }
+
+  Future<void> pause() => _engine.pause();
+  Future<void> togglePlay() => state.playing ? pause() : play();
   Future<void> next() => _engine.next();
 
   /// Restarts the track when more than three seconds in, like most players.

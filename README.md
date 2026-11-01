@@ -7,8 +7,9 @@ screen.
 
 Windows is the first target. macOS, Android and iOS build from the same code.
 
-> Status: early scaffold. Sign in, browse artists and albums, play tracks and
-> manage the queue. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
+> Status: early scaffold. Sign in, browse artists and albums, play tracks,
+> manage the queue, and control playback from the Windows media overlay and
+> media keys. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
 > for the v1 plan.
 
 ## Features so far
@@ -27,6 +28,10 @@ Windows is the first target. macOS, Android and iOS build from the same code.
 - On desktop, the sidebar button in the top bar opens a library fly-out to the
   right of the column and widens the window to make room. While it is open the
   column shows large artwork and the queue. Press it again to close it.
+- On Windows, keeps playing in the background and shows up in the Windows
+  media overlay (the panel next to the volume flyout, and the lock screen)
+  with title, artist, album, cover and play/pause, next and previous. The
+  keyboard's media keys control OAmp even when its window is minimised.
 
 ## Setting up on Windows with VS Code
 
@@ -39,7 +44,12 @@ Windows is the first target. macOS, Android and iOS build from the same code.
    Developer Mode. Flutter plugins need symlink support, which this enables.
 4. **Install VS Code** from <https://code.visualstudio.com/> and then the
    **Flutter** extension (it installs the Dart extension too).
-5. **Install the Flutter SDK.** The easiest way is from VS Code: open the
+5. **Install Rust.** The Windows media overlay package
+   ([`smtc_windows`](https://pub.dev/packages/smtc_windows)) is written in
+   Rust and compiled during the Windows build. In a terminal run
+   `winget install Rustlang.Rustup`, or use the installer from
+   <https://rustup.rs>, then open a new terminal. You only need to do this once.
+6. **Install the Flutter SDK.** The easiest way is from VS Code: open the
    Command Palette (`Ctrl+Shift+P`), run **Flutter: New Project**, and when it
    says the SDK is missing choose **Download SDK**. Pick a folder without
    spaces or admin rights, such as `C:\dev\flutter`, and let it add Flutter to
@@ -48,7 +58,7 @@ Windows is the first target. macOS, Android and iOS build from the same code.
    To do it by hand instead, follow
    <https://docs.flutter.dev/get-started/install/windows/desktop>, unzip the
    SDK to `C:\dev\flutter` and add `C:\dev\flutter\bin` to your user PATH.
-6. **Check the install.** Open a new terminal and run:
+7. **Check the install.** Open a new terminal and run:
 
    ```powershell
    flutter doctor
@@ -56,7 +66,7 @@ Windows is the first target. macOS, Android and iOS build from the same code.
 
    The *Flutter* and *Visual Studio - develop Windows apps* lines should be
    green. Android and Chrome warnings can be ignored for now.
-7. **Get the code and its packages:**
+8. **Get the code and its packages:**
 
    ```powershell
    git clone https://github.com/flatscan/oamp.git
@@ -64,7 +74,7 @@ Windows is the first target. macOS, Android and iOS build from the same code.
    flutter pub get
    code .
    ```
-8. **Run it.** In VS Code pick **Windows (windows-x64)** as the device in the
+9. **Run it.** In VS Code pick **Windows (windows-x64)** as the device in the
    status bar, then press `F5` (or choose *OAmp (Windows)* in the Run and Debug
    panel). From a terminal, `flutter run -d windows` does the same.
 
@@ -86,8 +96,8 @@ to share it; `oamp.exe` needs the DLLs and `data` folder next to it.
 | iOS | A Mac with Xcode, CocoaPods and a device or simulator | `flutter run -d ios` |
 
 Plain `http://` servers on your LAN are allowed on every platform. Background
-playback and lock-screen controls are not wired up yet (see the design doc),
-and on macOS the secure-storage package may need the Keychain Sharing
+playback and lock-screen controls are wired up on Windows only so far; Android,
+iOS and macOS get them through `audio_service` in a later milestone. On macOS the secure-storage package may need the Keychain Sharing
 capability added in Xcode before sign-in persists.
 
 ## Project layout
@@ -107,17 +117,22 @@ lib/
   platform/                 Platform code behind interfaces
     secure_store.dart       SecureStore (OS keychain)
     platform_info.dart      isDesktop without dart:io
+    system_controls.dart    SystemControls: the OS media session interface
+    windows_system_controls.dart   SMTC: media overlay and media keys
+    platform_system_controls.dart  Picks the implementation per platform
   state/                    Riverpod providers
     session.dart            ServerSession keyed by serverId, sign-in
     library.dart            Cached library queries
     player.dart             PlayerController: the queue; engine is its output
+    system_controls_bridge.dart  Mirrors the player into SystemControls
   ui/
     login_screen.dart
     home_shell.dart         Single column, queue always visible, desktop fly-out
     library/                Artists, albums, album page
     player/                 Now playing and queue panel
 test/
-  fakes/                    FakeMusicSource, FakeAudioEngine
+  fakes/                    FakeMusicSource, FakeAudioEngine, FakeSystemControls
+  system_controls_test.dart Media keys and overlay, driven through fakes
   ui_with_fake_source_test.dart  Drives the whole UI with no server
   architecture_test.dart    Enforces the seams below
 ```
@@ -135,9 +150,15 @@ implementations rather than rewrite v1:
   the track is downloaded.
 - **Chromecast:** `PlayerController` owns the queue and sends it to an
   `AudioEngine`, so a cast engine is another output.
-- **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`
-  and `platform_info`. `architecture_test.dart` fails if `lib/ui` imports
-  the Subsonic or audio code, or if core, state or UI import `dart:io`.
+- **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`,
+  `SystemControls` and `platform_info`. `architecture_test.dart` fails if
+  `lib/ui` imports the Subsonic or audio code, if core, state or UI import
+  `dart:io`, or if anything outside `lib/platform` touches a media session
+  package.
+- **Lock screens, CarPlay and Android Auto:** the player talks to the OS only
+  through `SystemControls`, and OS buttons call the same `PlayerController`
+  methods as the app's own. Android, iOS and macOS add an `audio_service`
+  implementation, and Linux an MPRIS one, as new files in `lib/platform`.
 
 ### Packages
 
@@ -152,6 +173,8 @@ implementations rather than rewrite v1:
   for saved credentials.
 - [`window_manager`](https://pub.dev/packages/window_manager) for the
   phone-shaped desktop window and the library fly-out.
+- [`smtc_windows`](https://pub.dev/packages/smtc_windows) for the Windows
+  media overlay and media keys (needs Rust to build).
 
 ## Development
 
