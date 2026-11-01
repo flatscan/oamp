@@ -95,7 +95,21 @@ void main() {
     ];
     expect(widths.last, 1160);
     expect(widths.where((w) => w > 440 && w < 1160), isEmpty);
-    expect(tester.getRect(buttons.last).right, 1160 - ModeSwitchButton.inset);
+    final panelButton = tester.getRect(buttons.last);
+    expect(panelButton.right, 1160 - ModeSwitchButton.inset);
+    // Every page in the panel has it in exactly the same spot.
+    Future<void> expectPanelButtonAfterTapping(Finder target) async {
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(buttons.last), panelButton);
+    }
+
+    await expectPanelButtonAfterTapping(find.text('Library'));
+    await expectPanelButtonAfterTapping(find.text('Artists'));
+    await expectPanelButtonAfterTapping(find.text('Air').first);
+    await expectPanelButtonAfterTapping(find.text('Search'));
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
 
     // Expanded -> single column lands on now playing, same spot again, and
     // it is the very same widget (not a fresh copy that could flicker).

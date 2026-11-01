@@ -21,6 +21,18 @@ class ModeSwitchButton extends ConsumerWidget {
   static const size = 48.0;
   static const inset = 8.0;
 
+  /// Height for a page's top bar so the mode switch in it lands exactly
+  /// where it is on Home and over the now playing artwork.
+  static double get toolbarHeight =>
+      isDesktop ? size + 2 * inset : kToolbarHeight;
+
+  /// A page's top bar actions followed by the mode switch, so every page
+  /// has it in the same top-right spot.
+  static List<Widget> withActions(List<Widget>? actions) => [
+    ...?actions,
+    if (isDesktop) ...const [ModeSwitchButton(), SizedBox(width: inset)],
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!isDesktop) return const SizedBox.shrink();

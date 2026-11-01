@@ -11,6 +11,7 @@ import 'browse/album_page.dart';
 import 'browse/artist_page.dart';
 import 'browser.dart';
 import 'cover_art.dart';
+import 'mode_switch.dart';
 import 'theme.dart';
 
 void toast(BuildContext context, String message) {
@@ -545,12 +546,13 @@ class _DetailScaffoldState extends State<DetailScaffold> {
           pinned: true,
           // With the title bar hidden, the bar moves the window.
           flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
+          toolbarHeight: ModeSwitchButton.toolbarHeight,
           title: AnimatedOpacity(
             opacity: _showTitle ? 1 : 0,
             duration: const Duration(milliseconds: 150),
             child: Text(widget.title, maxLines: 1),
           ),
-          actions: widget.actions,
+          actions: ModeSwitchButton.withActions(widget.actions),
         ),
         ...widget.slivers,
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -582,7 +584,6 @@ class ListScaffold extends StatelessWidget {
   final List<Widget>? actions;
   final Future<void> Function()? onRefresh;
   final ScrollController? controller;
-  final double toolbarHeight;
 
   const ListScaffold({
     super.key,
@@ -591,7 +592,6 @@ class ListScaffold extends StatelessWidget {
     this.actions,
     this.onRefresh,
     this.controller,
-    this.toolbarHeight = kToolbarHeight,
   });
 
   @override
@@ -603,8 +603,9 @@ class ListScaffold extends StatelessWidget {
           pinned: true,
           // With the title bar hidden, the bar moves the window.
           flexibleSpace: const WindowDragArea(child: SizedBox.expand()),
+          toolbarHeight: ModeSwitchButton.toolbarHeight,
           title: Text(title, style: Theme.of(context).textTheme.headlineSmall),
-          actions: actions,
+          actions: ModeSwitchButton.withActions(actions),
         ),
         ...slivers,
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
