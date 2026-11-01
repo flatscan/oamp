@@ -39,6 +39,16 @@ void main() {
         });
   });
 
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('oamp/window'), (
+          call,
+        ) async {
+          windowCalls.add(call);
+          return null;
+        });
+  });
+
   Future<void> pumpApp(WidgetTester tester) async {
     tester.view.physicalSize = const Size(440, 880);
     tester.view.devicePixelRatio = 1;
@@ -68,6 +78,15 @@ void main() {
     tester.view.physicalSize = const Size(1160, 880);
     await tester.pumpAndSettle();
     expect(windowCalls.where((c) => c.method == 'setMaximumSize'), isNotEmpty);
+    // Windows' own resize animation is off for exactly the resize.
+    final order = [
+      for (final c in windowCalls)
+        if (c.method == 'setTransitionsEnabled')
+          'transitions:${c.arguments}'
+        else if (c.method == 'setBounds')
+          'setBounds',
+    ];
+    expect(order, ['transitions:false', 'setBounds', 'transitions:true']);
     // One in the now playing column, one at the fly-out's top right.
     final buttons = find.byType(ModeSwitchButton);
     expect(buttons, findsNWidgets(2));
