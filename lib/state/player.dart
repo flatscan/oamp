@@ -13,29 +13,50 @@ class PlayerState {
   final int? currentIndex;
   final bool playing;
   final bool buffering;
+  final PlaybackRepeat repeat;
+  final double volume;
+
+  /// Where the queue came from, such as an album name, shown above the
+  /// now playing artwork.
+  final String? from;
 
   const PlayerState({
+    this.from,
     this.queue = const [],
     this.currentIndex,
     this.playing = false,
     this.buffering = false,
+    this.repeat = PlaybackRepeat.off,
+    this.volume = 1,
   });
 
   Track? get current => (currentIndex != null && currentIndex! < queue.length)
       ? queue[currentIndex!]
       : null;
-  bool get hasNext => currentIndex != null && currentIndex! < queue.length - 1;
+  bool get hasNext =>
+      currentIndex != null &&
+      (currentIndex! < queue.length - 1 || repeat == PlaybackRepeat.all);
+
+  /// Tracks after the current one.
+  List<Track> get upcoming =>
+      currentIndex == null ? queue : queue.sublist(currentIndex! + 1);
 
   PlayerState copyWith({
     List<Track>? queue,
     int? Function()? currentIndex,
     bool? playing,
     bool? buffering,
+    PlaybackRepeat? repeat,
+    double? volume,
+    String? Function()? from,
   }) => PlayerState(
+    from: from != null ? from() : this.from,
     queue: queue ?? this.queue,
     currentIndex: currentIndex != null ? currentIndex() : this.currentIndex,
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,
+    repeat: repeat ?? this.repeat,
+    volume: volume ?? this.volume,
   );
 }
 
@@ -92,12 +113,23 @@ class PlayerController extends Notifier<PlayerState> {
   Future<List<Uri>> _uris(List<Track> tracks) =>
       Future.wait([for (final t in tracks) _resolver.resolve(t)]);
 
-  /// Replaces the queue with [tracks] and starts at [startIndex].
-  Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
+  /// Replaces the queue with [tracks] and starts at [startIndex], or at a
+  /// random order when [shuffle] is set.
+  Future<void> playTracks(
+    List<Track> tracks, {
+    int startIndex = 0,
+    bool shuffle = false,
+    String? from,
+  }) async {
     if (!_signedIn || tracks.isEmpty) return;
+    if (shuffle) {
+      tracks = [...tracks]..shuffle();
+      startIndex = 0;
+    }
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       currentIndex: () => startIndex,
+      from: () => from,
     );
     await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
@@ -143,8 +175,54 @@ class PlayerController extends Notifier<PlayerState> {
     await _engine.move(oldIndex, newIndex);
   }
 
+  /// Puts the tracks after the current one in a random order.
+  Future<void> shuffleUpcoming() async {
+    final cur = state.currentIndex ?? -1;
+    final rest = state.queue.sublist(cur + 1);
+    if (rest.length < 2) return;
+    final shuffled = [...rest]..shuffle();
+    state = state.copyWith(
+      queue: List.unmodifiable([
+        ...state.queue.sublist(0, cur + 1),
+        ...shuffled,
+      ]),
+    );
+    for (var i = cur + rest.length; i > cur; i--) {
+      await _engine.removeAt(i);
+    }
+    await _engine.addAll(await _uris(shuffled));
+  }
+
+  /// Removes everything after the current track.
+  Future<void> clearUpcoming() async {
+    final cur = state.currentIndex;
+    if (cur == null) return clear();
+    final end = state.queue.length - 1;
+    if (end <= cur) return;
+    state = state.copyWith(
+      queue: List.unmodifiable(state.queue.sublist(0, cur + 1)),
+    );
+    for (var i = end; i > cur; i--) {
+      await _engine.removeAt(i);
+    }
+  }
+
+  /// Steps through repeat off, repeat queue and repeat track.
+  Future<void> cycleRepeat() async {
+    final next = PlaybackRepeat.values[(state.repeat.index + 1) % 3];
+    state = state.copyWith(repeat: next);
+    await _engine.setRepeatMode(next);
+  }
+
+  Future<void> setVolume(double volume) async {
+    final v = volume.clamp(0.0, 1.0);
+    state = state.copyWith(volume: v);
+    await _engine.setVolume(v);
+  }
+
+  /// Empties the queue, keeping the listener's repeat and volume settings.
   Future<void> clear() async {
-    state = const PlayerState();
+    state = PlayerState(repeat: state.repeat, volume: state.volume);
     await _engine.clear();
   }
 
