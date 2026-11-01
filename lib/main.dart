@@ -6,8 +6,10 @@ import 'package:window_manager/window_manager.dart';
 
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
+import 'platform/preferences.dart';
 import 'state/playback_reporter.dart';
 import 'state/session.dart';
+import 'state/settings.dart';
 import 'state/system_controls_bridge.dart';
 import 'ui/app_frame.dart';
 import 'ui/home_shell.dart';
@@ -46,10 +48,14 @@ Future<void> main() async {
 
   // The OS media session: the Windows media overlay and keyboard media keys.
   final systemControls = await createSystemControls();
+  final preferences = await PlatformPreferences.load();
 
   runApp(
     ProviderScope(
-      overrides: [systemControlsProvider.overrideWithValue(systemControls)],
+      overrides: [
+        systemControlsProvider.overrideWithValue(systemControls),
+        preferencesProvider.overrideWithValue(preferences),
+      ],
       child: const OAmpApp(),
     ),
   );
@@ -64,6 +70,10 @@ class OAmpApp extends StatelessWidget {
       title: 'OAmp',
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavigatorKey,
+      // No visible scrollbars; lists scroll with the wheel, trackpad or touch.
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        scrollbars: false,
+      ),
       theme: buildTheme(),
       themeMode: ThemeMode.dark,
       builder: (context, child) => AppFrame(child: child!),

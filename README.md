@@ -38,11 +38,18 @@ Windows is the first target. macOS, Android and iOS build from the same code.
 - Plays are reported to the server (scrobbles), so Navidrome's play counts and
   "recently played" stay current.
 - One tall column on every platform, the same as on a phone. On Windows the
-  window has its own dark title bar, and in single-column mode only its height
-  can be changed. The mode button at the top right of the now playing artwork
-  switches to expanded mode: a library fly-out opens to the right of the
-  column, the window widens and can be resized or maximised freely, and the
-  column shows now playing while browsing moves into the fly-out.
+  window has its own dark title bar (it can be hidden in Settings; then drag
+  the top of Home or of the now playing artwork to move the window), and in
+  single-column mode only its height can be changed.
+- The mode button switches to expanded mode: a library fly-out opens to the
+  right of the column, the window widens and can be resized or maximised
+  freely, and the column shows now playing while browsing moves into the
+  fly-out. The button sits in exactly the same spot on single-column Home and
+  Library, single-column now playing and the expanded column, so switching
+  back and forth needs no mouse movement; expanded Home and Library have a
+  second one at their top right. Switching back to one column lands on now
+  playing.
+- Settings (gear on Home): server, sign out, and the title bar toggle.
 - Album rows on Home scroll sideways on their own: drag them with the mouse,
   use the arrows next to each heading, or Shift + mouse wheel.
 - Keyboard: `Space` play/pause, `Ctrl+←`/`Ctrl+→` previous/next,
@@ -136,6 +143,7 @@ lib/
     audio_engine.dart       AudioEngine output interface + just_audio engine
   platform/                 Platform code behind interfaces
     secure_store.dart       SecureStore (OS keychain)
+    preferences.dart        Preferences (plain settings, shared_preferences)
     platform_info.dart      isDesktop without dart:io
     system_controls.dart    SystemControls: the OS media session interface
     windows_system_controls.dart   SMTC: media overlay and media keys
@@ -145,10 +153,12 @@ lib/
     library.dart            Cached library queries
     player.dart             PlayerController: the queue; engine is its output
     playback_reporter.dart  Reports now playing and plays to the server
+    settings.dart           App settings, such as showing the title bar
     system_controls_bridge.dart  Mirrors the player into SystemControls
   ui/
     app_frame.dart          Window bar and keyboard shortcuts around every screen
     window_mode.dart        Single-column / expanded mode and window size limits
+    mode_switch.dart        The mode switch button and where it sits
     login_screen.dart
     home_shell.dart         Single column with mini-player, desktop fly-out
     browser.dart            Home / Library / Search tabs, each with its history
@@ -160,6 +170,7 @@ test/
   system_controls_test.dart Media keys and overlay, driven through fakes
   ui_with_fake_source_test.dart  Drives the whole UI with no server
   player_test.dart          Queue, repeat, shuffle, volume and play reports
+  window_mode_test.dart     Mode switch position across modes, title bar setting
   architecture_test.dart    Enforces the seams below
 ```
 
@@ -196,7 +207,9 @@ implementations rather than rewrite v1:
 - [`http`](https://pub.dev/packages/http) and
   [`crypto`](https://pub.dev/packages/crypto) for the API and token auth.
 - [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage)
-  for saved credentials.
+  for saved credentials, and
+  [`shared_preferences`](https://pub.dev/packages/shared_preferences) for
+  plain settings.
 - [`window_manager`](https://pub.dev/packages/window_manager) for the
   phone-shaped desktop window and the library fly-out.
 - [`smtc_windows`](https://pub.dev/packages/smtc_windows) for the Windows
