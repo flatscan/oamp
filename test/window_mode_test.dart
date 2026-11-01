@@ -84,7 +84,9 @@ void main() {
     expect(widths.where((w) => w > 440 && w < 1160), isEmpty);
     expect(tester.getRect(buttons.last).right, 1160 - ModeSwitchButton.inset);
 
-    // Expanded -> single column lands on now playing, same spot again.
+    // Expanded -> single column lands on now playing, same spot again, and
+    // it is the very same widget (not a fresh copy that could flicker).
+    final nowPlayingState = tester.state(find.byType(NowPlayingView));
     await tester.tap(buttons.first);
     tester.view.physicalSize = const Size(440, 880);
     await tester.pumpAndSettle();
@@ -92,6 +94,7 @@ void main() {
     expect(tester.getRect(find.byType(ModeSwitchButton)), home);
     // Now playing is exactly the same size and place in both modes.
     expect(tester.getRect(find.byType(NowPlayingView)), expandedNowPlaying);
+    expect(tester.state(find.byType(NowPlayingView)), same(nowPlayingState));
 
     // And from single-column now playing back to expanded.
     await tester.tap(find.byType(ModeSwitchButton));

@@ -33,9 +33,7 @@ class ModeSwitchButton extends ConsumerWidget {
         ),
         onPressed: () {
           final c = ref.read(flyoutOpenProvider.notifier);
-          expanded
-              ? c.collapse()
-              : c.expand(nowPlayingRoute: ModalRoute.of(context));
+          expanded ? c.collapse() : c.expand();
         },
       ),
     );

@@ -8,13 +8,17 @@ import '../platform/platform_info.dart';
 import '../state/player.dart';
 import '../state/settings.dart';
 import 'browser.dart';
+import 'player/now_playing.dart';
 import 'theme.dart';
 
 /// The app's root navigator, which the now playing view is pushed onto.
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
-void _closeOverlays() =>
-    rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+void _closeOverlays() {
+  rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+  final context = rootNavigatorKey.currentContext;
+  if (context != null) hideNowPlaying(context);
+}
 
 /// Wraps every screen: the custom window bar on desktop, and app-wide
 /// keyboard shortcuts.

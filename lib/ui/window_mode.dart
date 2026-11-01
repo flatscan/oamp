@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../platform/platform_info.dart';
-import 'app_frame.dart';
 import 'player/now_playing.dart';
 
 /// Whether the desktop window is in expanded mode (the column plus the
@@ -71,19 +70,19 @@ class FlyoutController extends Notifier<bool> {
 
   bool _busy = false;
 
-  /// Single column to expanded. If the full-screen now playing is open it
-  /// is swapped for the column's own copy in the same frame, so nothing
-  /// visibly changes before the fly-out slides out.
-  Future<void> expand({Route<dynamic>? nowPlayingRoute}) async {
+  /// Single column to expanded. Now playing is one widget that moves
+  /// between the two layouts, so if it was open nothing about it changes
+  /// before the fly-out slides out.
+  Future<void> expand() async {
     if (state || _busy) return;
     _busy = true;
     final reveal = ref.read(flyoutRevealProvider.notifier);
     try {
       reveal.set(0);
       state = true;
-      if (nowPlayingRoute != null && !nowPlayingRoute.isFirst) {
-        rootNavigatorKey.currentState?.removeRoute(nowPlayingRoute);
-      }
+      // Expanded mode always shows now playing in the column; leave the
+      // single column's sheet closed underneath without animating.
+      ref.read(nowPlayingSheetProvider.notifier).close(animate: false);
       if (isDesktop) {
         final height = (await windowManager.getSize()).height;
         await windowManager.setMaximumSize(const Size(_unlimited, _unlimited));
@@ -124,12 +123,9 @@ class FlyoutController extends Notifier<bool> {
           Size(_singleWindowWidth, _unlimited),
         );
       }
-      // Same frame: the full-screen now playing covers the column as the
-      // column's own copy goes away.
-      final context = rootNavigatorKey.currentContext;
-      if (context != null && context.mounted) {
-        showNowPlaying(context, animate: false);
-      }
+      // Same frame: now playing stays where it is and becomes the single
+      // column's open sheet.
+      ref.read(nowPlayingSheetProvider.notifier).open(animate: false);
       state = false;
     } finally {
       if (ref.mounted) reveal.set(1);
