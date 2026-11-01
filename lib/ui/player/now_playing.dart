@@ -270,7 +270,9 @@ class _Controls extends ConsumerWidget {
     final quality = tr == null ? null : qualityLabel(tr);
     final liked =
         tr != null &&
-        ref.watch(likesProvider.select((m) => m[tr.id] ?? tr.liked));
+        ref.watch(
+          likesProvider(LikeTarget.track).select((m) => m[tr.id] ?? tr.liked),
+        );
     final albumLine = tr?.album == null
         ? null
         : tr!.year == null
