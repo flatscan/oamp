@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/music_source.dart';
+import '../core/track_cache.dart';
 import '../core/track_resolver.dart';
 import '../platform/secure_store.dart';
 import '../sources/subsonic/subsonic_client.dart';
 import '../sources/subsonic/subsonic_source.dart';
+import 'settings.dart';
 
 final secureStoreProvider = Provider<SecureStore>((_) => PlatformSecureStore());
 
@@ -33,8 +35,16 @@ final musicSourceProvider = Provider<MusicSource>((ref) {
   return session.source;
 });
 
+/// The playback cache. main.dart provides the on-disk one where the
+/// platform has a file system; without it tracks stream directly.
+final trackCacheProvider = Provider<TrackCache?>((_) => null);
+
 final trackResolverProvider = Provider<TrackResolver>(
-  (ref) => StreamingTrackResolver(ref.watch(musicSourceProvider)),
+  (ref) => StreamingTrackResolver(
+    ref.watch(musicSourceProvider),
+    quality: ref.watch(streamQualityProvider),
+    cache: ref.watch(trackCacheProvider),
+  ),
 );
 
 /// Saved servers are stored as `oamp.server.<serverId>` with a `type` field
