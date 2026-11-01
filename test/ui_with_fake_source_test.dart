@@ -102,9 +102,11 @@ void main() {
     await tester.enterText(find.byType(TextField), 'sexy boy');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
-    expect(find.text('Tracks'), findsOneWidget);
+    // The exact match is the top result, above the track list.
+    expect(find.text('Top result'), findsOneWidget);
+    expect(find.text('Track · Air'), findsOneWidget);
 
-    await tester.tap(find.text('Sexy Boy'));
+    await tester.tap(find.text('Sexy Boy').last);
     await tester.pumpAndSettle();
     expect(engine.queue.single.toString(), 'fake://stream/t2');
     expect(engine.playing, isTrue);

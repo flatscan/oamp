@@ -11,10 +11,18 @@ import 'package:oamp/state/session.dart';
 /// A small in-memory library. Driving the UI with this is the design doc's
 /// check that no widget depends on Subsonic.
 class FakeMusicSource implements MusicSource {
-  FakeMusicSource({this.albums = const [moonSafari]});
+  FakeMusicSource({
+    this.albums = const [moonSafari],
+    this.artists = const [air],
+  }) {
+    playlists[mixtape.id] = (mixtape, tracks.reversed.toList());
+  }
 
   /// What album lists return; tests that need long rows pass more.
   final List<Album> albums;
+
+  /// What the artist list returns.
+  final List<Artist> artists;
 
   static const air = Artist(id: 'ar1', name: 'Air', albumCount: 1);
   static const moonSafari = Album(
@@ -53,14 +61,37 @@ class FakeMusicSource implements MusicSource {
   @override
   String get displayName => 'tester @ fake';
   @override
-  SourceCapabilities get capabilities => const SourceCapabilities();
+  String get userName => 'tester';
+  @override
+  SourceCapabilities get capabilities =>
+      const SourceCapabilities(hasSimilar: true);
   @override
   Future<void> ping() async {}
   @override
-  Future<List<Artist>> getArtists() async => [air];
+  Future<List<Artist>> getArtists() async => artists;
   @override
   Future<ArtistDetail> getArtist(String id) async =>
-      const ArtistDetail(air, [moonSafari]);
+      ArtistDetail(air, [moonSafari, ...artistExtras]);
+
+  /// More releases for Air's page, such as EPs.
+  List<Album> artistExtras = const [];
+
+  static const daftPunk = Artist(id: 'ar2', name: 'Daft Punk');
+
+  @override
+  Future<ArtistInfo> getArtistInfo(String id) async => const ArtistInfo(
+    biography: 'Air are a French duo from Versailles.',
+    similar: [daftPunk],
+  );
+  @override
+  Future<List<Track>> getTopTracks(Artist artist, {int count = 10}) async =>
+      tracks.reversed.take(count).toList();
+  @override
+  Future<List<Track>> getSimilarTracks(String id, {int count = 50}) async {
+    calls.add('similar:$id');
+    return tracks;
+  }
+
   @override
   Future<List<Album>> getAlbums({
     AlbumSort sort = AlbumSort.alphabetical,
@@ -88,18 +119,84 @@ class FakeMusicSource implements MusicSource {
     );
   }
 
+  /// The server's playlists, which the write methods change.
+  final Map<String, (Playlist, List<Track>)> playlists = {};
+  int _nextPlaylist = 2;
+
+  static final _byId = {for (final t in tracks) t.id: t};
+
+  Playlist _summary(Playlist p, List<Track> ts) =>
+      Playlist(id: p.id, name: p.name, songCount: ts.length, owner: p.owner);
+
   @override
-  Future<List<Playlist>> getPlaylists() async => [mixtape];
+  Future<List<Playlist>> getPlaylists() async => [
+    for (final (p, ts) in playlists.values) _summary(p, ts),
+  ];
   @override
-  Future<PlaylistDetail> getPlaylist(String id) async =>
-      PlaylistDetail(mixtape, tracks.reversed.toList());
+  Future<PlaylistDetail> getPlaylist(String id) async {
+    final (p, ts) = playlists[id]!;
+    return PlaylistDetail(_summary(p, ts), List.of(ts));
+  }
+
+  @override
+  Future<Playlist> createPlaylist(
+    String name, {
+    List<String> trackIds = const [],
+  }) async {
+    final p = Playlist(id: 'pl${_nextPlaylist++}', name: name, owner: 'tester');
+    playlists[p.id] = (p, [for (final id in trackIds) _byId[id]!]);
+    calls.add('create:$name:${trackIds.join(',')}');
+    return _summary(p, playlists[p.id]!.$2);
+  }
+
+  @override
+  Future<void> renamePlaylist(String id, String name) async {
+    final (p, ts) = playlists[id]!;
+    playlists[id] = (Playlist(id: id, name: name, owner: p.owner), ts);
+    calls.add('rename:$id:$name');
+  }
+
+  @override
+  Future<void> addToPlaylist(String id, List<String> trackIds) async {
+    playlists[id]!.$2.addAll([for (final t in trackIds) _byId[t]!]);
+    calls.add('add:$id:${trackIds.join(',')}');
+  }
+
+  @override
+  Future<void> removeFromPlaylist(String id, List<int> indexes) async {
+    final ts = playlists[id]!.$2;
+    for (final i in [...indexes]..sort((a, b) => b.compareTo(a))) {
+      ts.removeAt(i);
+    }
+    calls.add('remove:$id:${indexes.join(',')}');
+  }
+
+  @override
+  Future<void> replacePlaylistTracks(String id, List<String> trackIds) async {
+    final (p, _) = playlists[id]!;
+    playlists[id] = (p, [for (final t in trackIds) _byId[t]!]);
+    calls.add('replace:$id:${trackIds.join(',')}');
+  }
+
+  @override
+  Future<void> deletePlaylist(String id) async {
+    playlists.remove(id);
+    calls.add('delete:$id');
+  }
+
   @override
   Future<List<Track>> getRandomTracks({int size = 100}) async => tracks;
   @override
   Future<List<Track>> getLikedTracks() async => [];
   @override
-  Future<void> setLiked(String trackId, bool liked) async =>
-      calls.add('${liked ? 'like' : 'unlike'}:$trackId');
+  Future<void> setLiked(
+    String id,
+    bool liked, {
+    LikeTarget target = LikeTarget.track,
+  }) async => calls.add(
+    '${liked ? 'like' : 'unlike'}'
+    '${target == LikeTarget.track ? '' : '-${target.name}'}:$id',
+  );
   @override
   Future<void> reportPlayback(
     String trackId, {

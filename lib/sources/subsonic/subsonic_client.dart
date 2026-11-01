@@ -100,7 +100,9 @@ class SubsonicClient {
   };
 
   /// Builds `<base>/rest/<endpoint>` with auth and extra query parameters.
-  Uri endpointUri(String endpoint, [Map<String, String> params = const {}]) {
+  /// A parameter's value is a `String`, or a `List<String>` to repeat it
+  /// (such as several `songId`s).
+  Uri endpointUri(String endpoint, [Map<String, Object> params = const {}]) {
     final base = credentials.baseUrl;
     return base.replace(
       path: '${base.path}/rest/$endpoint',
@@ -110,13 +112,43 @@ class SubsonicClient {
 
   Future<Map<String, dynamic>> get(
     String endpoint, [
-    Map<String, String> params = const {},
-  ]) async {
+    Map<String, Object> params = const {},
+  ]) => _send(endpoint, params, post: false);
+
+  /// Sends the parameters as a form body instead of in the URL (the
+  /// OpenSubsonic `formPost` extension), for long id lists that would make
+  /// the URL too long.
+  Future<Map<String, dynamic>> post(
+    String endpoint, [
+    Map<String, Object> params = const {},
+  ]) => _send(endpoint, params, post: true);
+
+  Future<Map<String, dynamic>> _send(
+    String endpoint,
+    Map<String, Object> params, {
+    required bool post,
+  }) async {
     final http.Response res;
     try {
-      res = await _http
-          .get(endpointUri(endpoint, params))
-          .timeout(const Duration(seconds: 20));
+      final Future<http.Response> request;
+      if (post) {
+        final base = credentials.baseUrl;
+        final body = Uri(queryParameters: {..._authParams, ...params}).query;
+        request = _http.post(
+          Uri(
+            scheme: base.scheme,
+            userInfo: base.userInfo,
+            host: base.host,
+            port: base.hasPort ? base.port : null,
+            path: '${base.path}/rest/$endpoint',
+          ),
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body,
+        );
+      } else {
+        request = _http.get(endpointUri(endpoint, params));
+      }
+      res = await request.timeout(const Duration(seconds: 20));
     } catch (e) {
       throw MusicSourceException('Could not reach the server: $e');
     }

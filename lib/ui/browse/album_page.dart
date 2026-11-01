@@ -9,8 +9,8 @@ import '../cover_art.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-/// An album: large centred cover, title, artist, play and shuffle, then the
-/// tracks grouped by disc.
+/// An album: large centred cover, title, artist, play and shuffle, the
+/// tracks grouped by disc, then more releases by the same artist.
 class AlbumPage extends ConsumerWidget {
   final Album album;
   const AlbumPage({super.key, required this.album});
@@ -32,22 +32,26 @@ class AlbumPage extends ConsumerWidget {
     final discs = {for (final t in tracks) t.discNumber ?? 1};
     final multiDisc = discs.length > 1;
 
+    final artistId = a.artistId;
+    final moreBy = artistId == null
+        ? null
+        : ref
+              .watch(artistDetailProvider(artistId))
+              .whenData(
+                (d) => [
+                  for (final x in d.albums)
+                    if (x.id != a.id) x,
+                ]..sort((x, y) => (y.year ?? 0).compareTo(x.year ?? 0)),
+              );
+    final total = tracks.fold(
+      Duration.zero,
+      (sum, tr) => sum + (tr.duration ?? Duration.zero),
+    );
+
     return DetailScaffold(
       title: a.name,
       titleAfter: 300,
       onRefresh: () => ref.refresh(albumDetailProvider(album.id).future),
-      actions: [
-        IconButton(
-          tooltip: 'Add album to queue',
-          icon: const Icon(Icons.playlist_add_rounded),
-          onPressed: tracks.isEmpty
-              ? null
-              : () {
-                  player.enqueue(tracks);
-                  toast(context, 'Added ${tracks.length} tracks to queue');
-                },
-        ),
-      ],
       slivers: [
         SliverToBoxAdapter(
           child: _Header(
@@ -93,6 +97,29 @@ class AlbumPage extends ConsumerWidget {
             },
           ),
         ),
+        if (tracks.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Text(
+                [
+                  '${tracks.length} track${tracks.length == 1 ? '' : 's'}',
+                  if (total > Duration.zero) formatLongDuration(total),
+                ].join(' · '),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: OAmpColors.textFaint),
+              ),
+            ),
+          ),
+        if (moreBy != null && a.artist != null)
+          SliverToBoxAdapter(
+            child: AlbumCarousel(
+              title: 'More by ${a.artist}',
+              albums: moreBy,
+              showArtist: false,
+              onSeeAll: () => openArtistById(artistId!, a.artist!),
+            ),
+          ),
       ],
     );
   }
@@ -114,15 +141,16 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final total = tracks.fold(
-      Duration.zero,
-      (sum, tr) => sum + (tr.duration ?? Duration.zero),
-    );
+    final kind = switch (album.kind) {
+      ReleaseKind.album => null,
+      ReleaseKind.single => album.releaseTypes.contains('ep') ? 'EP' : 'Single',
+      ReleaseKind.live => 'Live',
+      ReleaseKind.compilation => 'Compilation',
+    };
     final meta = [
+      ?kind,
       if (album.year != null) '${album.year}',
-      if (tracks.isNotEmpty)
-        '${tracks.length} track${tracks.length == 1 ? '' : 's'}',
-      if (total > Duration.zero) formatLongDuration(total),
+      ?album.genre,
     ].join(' · ');
 
     return Padding(
@@ -173,7 +201,33 @@ class _Header extends StatelessWidget {
                 Text(meta, style: t.bodySmall),
               ],
               const SizedBox(height: 20),
-              PlayShuffleButtons(onPlay: onPlay, onShuffle: onShuffle),
+              PlayShuffleButtons(
+                onPlay: onPlay,
+                onShuffle: onShuffle,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LikeButton(
+                      target: LikeTarget.album,
+                      id: album.id,
+                      fetched: album.liked,
+                      what: 'album',
+                    ),
+                    Consumer(
+                      builder: (context, ref, _) => IconButton(
+                        tooltip: 'More',
+                        icon: const Icon(Icons.more_horiz_rounded),
+                        onPressed: () => showAlbumMenu(
+                          context,
+                          ref,
+                          album,
+                          at: centreOf(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           );
         },
