@@ -101,19 +101,9 @@ class FlyoutController extends Notifier<bool> {
       // single column's sheet closed underneath without animating.
       ref.read(nowPlayingSheetProvider.notifier).close(animate: false);
       if (isDesktop) {
-        await NativeWindow.setTransitionsEnabled(false);
-        try {
-          await windowManager.setMaximumSize(
-            const Size(_unlimited, _unlimited),
-          );
-          await _setWidth(_singleWindowWidth + flyoutWidth);
-          await windowManager.setMinimumSize(
-            _minSize(_singleWindowWidth + 360),
-          );
-          await SchedulerBinding.instance.endOfFrame;
-        } finally {
-          await NativeWindow.setTransitionsEnabled(true);
-        }
+        await windowManager.setMaximumSize(const Size(_unlimited, _unlimited));
+        await _setWidth(_singleWindowWidth + flyoutWidth);
+        await windowManager.setMinimumSize(_minSize(_singleWindowWidth + 360));
       }
       await _animate(0, 1, reveal.set);
     } finally {
@@ -145,15 +135,9 @@ class FlyoutController extends Notifier<bool> {
         if (await windowManager.isMaximized()) {
           await windowManager.unmaximize();
         }
-        await NativeWindow.setTransitionsEnabled(false);
-        try {
-          await windowManager.setMinimumSize(_minSize(_singleWindowWidth));
-          await _setWidth(_singleWindowWidth);
-          await windowManager.setMaximumSize(_maxSize(_singleWindowWidth));
-          await SchedulerBinding.instance.endOfFrame;
-        } finally {
-          await NativeWindow.setTransitionsEnabled(true);
-        }
+        await windowManager.setMinimumSize(_minSize(_singleWindowWidth));
+        await _setWidth(_singleWindowWidth);
+        await windowManager.setMaximumSize(_maxSize(_singleWindowWidth));
       }
     } finally {
       if (ref.mounted) reveal.set(1);
