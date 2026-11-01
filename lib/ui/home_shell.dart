@@ -40,6 +40,17 @@ class _HomeShellState extends ConsumerState<HomeShell>
     super.dispose();
   }
 
+  /// The column is one column wide, pinned left, so now playing keeps its
+  /// size and place while the window grows or shrinks around it. Once the
+  /// window is back to about one column in single-column mode, the column
+  /// fills it, so a window a pixel or two off one column wide still has
+  /// everything centred with no strip at the edge.
+  static double _columnWidth(bool expanded, double available) {
+    const column = FlyoutController.columnWidth;
+    if (!expanded && available < column + 64) return available;
+    return available < column ? available : column;
+  }
+
   void _close() => ref.read(nowPlayingSheetProvider.notifier).close();
 
   @override
@@ -73,9 +84,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              width: constraints.maxWidth < FlyoutController.columnWidth
-                  ? constraints.maxWidth
-                  : FlyoutController.columnWidth,
+              width: _columnWidth(expanded, constraints.maxWidth),
               child: AnimatedBuilder(
                 animation: sheet,
                 builder: (context, _) => Stack(
