@@ -47,12 +47,33 @@ void showNowPlaying(BuildContext context, {bool animate = true}) {
 ///
 /// [onClose] adds a close button (and Esc); the desktop fly-out layout embeds
 /// this view permanently and leaves it null.
-class NowPlayingView extends ConsumerWidget {
+class NowPlayingView extends ConsumerStatefulWidget {
   final VoidCallback? onClose;
   const NowPlayingView({super.key, this.onClose});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NowPlayingView> createState() => _NowPlayingViewState();
+}
+
+class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
+  /// Where the screen was scrolled to, shared by every copy of it, so the
+  /// full-screen view and the expanded column's view pick up in the same
+  /// place when switching modes.
+  static double _sharedOffset = 0;
+
+  late final ScrollController _scroll = ScrollController(
+    initialScrollOffset: _sharedOffset,
+  )..addListener(() => _sharedOffset = _scroll.offset);
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onClose = widget.onClose;
     final track = ref.watch(playerProvider.select((s) => s.current));
     final tint = track == null
         ? null
@@ -82,6 +103,7 @@ class NowPlayingView extends ConsumerWidget {
             ),
           ),
           child: CustomScrollView(
+            controller: _scroll,
             slivers: [
               SliverToBoxAdapter(
                 child: Stack(

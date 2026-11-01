@@ -8,6 +8,7 @@ import 'package:oamp/state/session.dart';
 import 'package:oamp/state/settings.dart';
 import 'package:oamp/ui/app_frame.dart';
 import 'package:oamp/ui/mode_switch.dart';
+import 'package:oamp/ui/player/now_playing.dart';
 
 import 'fakes/fakes.dart';
 
@@ -71,6 +72,16 @@ void main() {
     final buttons = find.byType(ModeSwitchButton);
     expect(buttons, findsNWidgets(2));
     expect(tester.getRect(buttons.first), home);
+    final expandedNowPlaying = tester.getRect(find.byType(NowPlayingView));
+    expect(expandedNowPlaying.width, 440);
+    // The window grew over several frames rather than in one jump.
+    final widths = [
+      for (final c in windowCalls.where((c) => c.method == 'setBounds'))
+        (c.arguments as Map)['width'] as double,
+    ];
+    expect(widths.length, greaterThan(3));
+    expect(widths.last, 1160);
+    expect(widths, orderedEquals([...widths]..sort()));
     expect(tester.getRect(buttons.last).right, 1160 - ModeSwitchButton.inset);
 
     // Expanded -> single column lands on now playing, same spot again.
@@ -79,6 +90,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('UP NEXT'), findsOneWidget);
     expect(tester.getRect(find.byType(ModeSwitchButton)), home);
+    // Now playing is exactly the same size and place in both modes.
+    expect(tester.getRect(find.byType(NowPlayingView)), expandedNowPlaying);
 
     // And from single-column now playing back to expanded.
     await tester.tap(find.byType(ModeSwitchButton));
