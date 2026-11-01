@@ -1,16 +1,28 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 
 import 'system_controls.dart';
 
 /// [SystemControls] on Windows: the System Media Transport Controls (SMTC).
 ///
-/// Registering with SMTC puts OAmp in the media overlay (volume flyout and
-/// lock screen) and routes the keyboard's play/pause, next and previous keys
-/// to it, even while the window is minimised or unfocused.
+/// Registering with SMTC puts OAmp in the media overlay (quick settings and
+/// lock screen).
+///
+/// Keyboard media keys are caught separately: Windows' forwarding of them to
+/// the overlay session dropped most presses in testing, so while something
+/// is loaded the runner registers them as system-wide hotkeys
+/// (windows/runner/flutter_window.cpp) and reports each press on the
+/// `oamp/media_keys` channel. When nothing is loaded the hotkeys are
+/// released, so other apps get the keys back.
 class WindowsSystemControls implements SystemControls {
+  static const _mediaKeys = MethodChannel('oamp/media_keys');
+  bool _keysHeld = false;
+  MediaCommand? _lastKey;
+  final _sinceKey = Stopwatch();
+
   final SMTCWindows _smtc;
   final _commands = StreamController<MediaCommand>.broadcast();
   StreamSubscription<PressedButton>? _sub;
@@ -26,8 +38,48 @@ class WindowsSystemControls implements SystemControls {
   WindowsSystemControls._(this._smtc) {
     _sub = _smtc.buttonPressStream.listen((b) {
       final cmd = commandFor(b);
-      if (cmd != null) _commands.add(cmd);
+      // If Windows also forwards a key we caught as a hotkey, the press would
+      // toggle twice and cancel itself out, so drop the echo.
+      final echo =
+          cmd != null &&
+          cmd.runtimeType == _lastKey?.runtimeType &&
+          _sinceKey.elapsed < const Duration(milliseconds: 500);
+      if (cmd != null && !echo) _commands.add(cmd);
     }, onError: (Object e) => _fail('Media key events failed', e));
+    _mediaKeys.setMethodCallHandler((call) async {
+      if (call.method != 'pressed') return;
+      final cmd = commandForKey(call.arguments as String?);
+      if (cmd == null) return;
+      _lastKey = cmd;
+      _sinceKey
+        ..reset()
+        ..start();
+      _commands.add(cmd);
+    });
+  }
+
+  /// Maps a hotkey name from the runner to a player command.
+  @visibleForTesting
+  static MediaCommand? commandForKey(String? key) => switch (key) {
+    'playPause' => const TogglePlayCommand(),
+    'next' => const NextCommand(),
+    'previous' => const PreviousCommand(),
+    'stop' => const StopCommand(),
+    _ => null,
+  };
+
+  Future<void> _holdKeys(bool hold) async {
+    if (_keysHeld == hold) return;
+    _keysHeld = hold;
+    await _try('Registering the media keys failed', () async {
+      if (hold) {
+        // false means another app holds every key; the overlay still
+        // forwards them, so this is not reported as an error.
+        await _mediaKeys.invokeMethod<bool>('register');
+      } else {
+        await _mediaKeys.invokeMethod<void>('unregister');
+      }
+    });
   }
 
   /// Maps an SMTC button to a player command.
@@ -85,6 +137,7 @@ class WindowsSystemControls implements SystemControls {
     // cannot stop the rest from showing. Windows only lists a session once
     // its status is Playing or Paused, so that goes first.
     final last = _last;
+    await _holdKeys(true);
     await _try('Enabling the Windows media overlay failed', () async {
       if (!_smtc.enabled) await _smtc.enableSmtc();
     });
@@ -163,6 +216,7 @@ class WindowsSystemControls implements SystemControls {
   @override
   Future<void> clear() async {
     _last = null;
+    await _holdKeys(false);
     try {
       if (!_smtc.enabled) return;
       await _smtc.setPlaybackStatus(PlaybackStatus.stopped);
@@ -175,6 +229,8 @@ class WindowsSystemControls implements SystemControls {
 
   @override
   Future<void> dispose() async {
+    await _holdKeys(false);
+    _mediaKeys.setMethodCallHandler(null);
     await _sub?.cancel();
     await _commands.close();
     await _smtc.dispose();

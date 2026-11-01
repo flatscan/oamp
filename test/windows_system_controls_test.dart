@@ -25,4 +25,18 @@ void main() {
     );
     expect(WindowsSystemControls.commandFor(PressedButton.record), isNull);
   });
+
+  test('hotkeys from the runner map to player commands', () {
+    expect(
+      WindowsSystemControls.commandForKey('playPause'),
+      isA<TogglePlayCommand>(),
+    );
+    expect(WindowsSystemControls.commandForKey('next'), isA<NextCommand>());
+    expect(
+      WindowsSystemControls.commandForKey('previous'),
+      isA<PreviousCommand>(),
+    );
+    expect(WindowsSystemControls.commandForKey('stop'), isA<StopCommand>());
+    expect(WindowsSystemControls.commandForKey('bogus'), isNull);
+  });
 }
