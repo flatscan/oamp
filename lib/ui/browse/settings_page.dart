@@ -117,6 +117,16 @@ class SettingsPage extends ConsumerWidget {
                     setPlayback(playback.copyWith(preventClipping: v)),
               ),
             ],
+            SwitchListTile(
+              secondary: const Icon(Icons.bug_report_outlined),
+              title: const Text('Show ReplayGain on Now Playing'),
+              subtitle: const Text(
+                'Displays the track’s ReplayGain tags and applied gain for '
+                'debugging.',
+              ),
+              value: settings.showReplayGainDebug,
+              onChanged: notifier.setShowReplayGainDebug,
+            ),
             const SettingsHeading('Streaming quality'),
             ChoiceTile<StreamFormat>(
               icon: Icons.high_quality_outlined,

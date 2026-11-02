@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart';
+import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/state/library.dart';
 import 'package:oamp/state/playback_reporter.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
+import 'package:oamp/state/settings.dart';
+import 'package:oamp/ui/player/controls.dart';
 
 import 'fakes/fakes.dart';
 
@@ -129,5 +132,62 @@ void main() {
     final pages = container.read(albumPagesProvider(AlbumSort.alphabetical));
     expect(pages.albums.map((a) => a.name), ['Moon Safari']);
     expect(pages.done, isTrue);
+  });
+
+  test(
+    'currentQuality keeps playing track quality and updates upcoming',
+    () async {
+      await player().playTracks(many);
+      await settle();
+      expect(state().currentQuality, StreamQuality.original);
+
+      const opus128 = StreamQuality(format: StreamFormat.opus, bitRate: 128);
+      await container.read(settingsProvider.notifier).setQuality(opus128);
+      await settle();
+      expect(state().currentQuality, StreamQuality.original);
+
+      await player().next();
+      await settle();
+      expect(state().currentQuality, opus128);
+    },
+  );
+
+  test('qualityLabel and replayGainDebugLabel format display strings', () {
+    const flac = Track(
+      id: 't1',
+      title: 'T',
+      format: 'flac',
+      sampleRate: 44100,
+      bitDepth: 16,
+      replayGain: ReplayGain(trackGain: -6.4, albumGain: -5.0, trackPeak: 0.98),
+    );
+    const untagged = Track(id: 't2', title: 'U', format: 'mp3', bitRate: 320);
+
+    expect(qualityLabel(flac), 'FLAC  ·  44.1 / 16');
+    expect(
+      qualityLabel(
+        flac,
+        const StreamQuality(format: StreamFormat.opus, bitRate: 128),
+      ),
+      'FLAC → OPUS  ·  128 kbps',
+    );
+    expect(
+      replayGainDebugLabel(
+        flac,
+        const PlaybackOptions(replayGain: ReplayGainMode.track),
+      ),
+      'RG: track -6.4 dB · album -5.0 dB · peak 0.98'
+      '  ·  applied -6.4 dB (track)',
+    );
+    expect(
+      replayGainDebugLabel(
+        untagged,
+        const PlaybackOptions(
+          replayGain: ReplayGainMode.track,
+          fallbackGainDb: -4.0,
+        ),
+      ),
+      'RG: untagged  ·  applied -4.0 dB (fallback)',
+    );
   });
 }

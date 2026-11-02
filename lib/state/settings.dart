@@ -13,12 +13,17 @@ class AppSettings {
   /// the Home header or the now playing artwork.
   final bool showTitleBar;
 
+  /// Whether the now playing screen shows a debug line with the track's
+  /// ReplayGain tags and applied gain.
+  final bool showReplayGainDebug;
+
   final PlaybackOptions playback;
   final StreamQuality quality;
   final CacheOptions cache;
 
   const AppSettings({
     this.showTitleBar = true,
+    this.showReplayGainDebug = false,
     this.playback = const PlaybackOptions(),
     this.quality = StreamQuality.original,
     this.cache = const CacheOptions(),
@@ -26,11 +31,13 @@ class AppSettings {
 
   AppSettings copyWith({
     bool? showTitleBar,
+    bool? showReplayGainDebug,
     PlaybackOptions? playback,
     StreamQuality? quality,
     CacheOptions? cache,
   }) => AppSettings(
     showTitleBar: showTitleBar ?? this.showTitleBar,
+    showReplayGainDebug: showReplayGainDebug ?? this.showReplayGainDebug,
     playback: playback ?? this.playback,
     quality: quality ?? this.quality,
     cache: cache ?? this.cache,
@@ -54,6 +61,7 @@ final cacheOptionsProvider = Provider<CacheOptions>(
 
 class SettingsNotifier extends Notifier<AppSettings> {
   static const _titleBarKey = 'oamp.window.showTitleBar';
+  static const _rgDebugKey = 'oamp.debug.showReplayGain';
   static const _gapless = 'oamp.playback.gapless';
   static const _crossfadeMs = 'oamp.playback.crossfadeMs';
   static const _crossfadeAlbum = 'oamp.playback.crossfadeSameAlbum';
@@ -77,6 +85,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     const d = AppSettings();
     return AppSettings(
       showTitleBar: p.getBool(_titleBarKey) ?? true,
+      showReplayGainDebug: p.getBool(_rgDebugKey) ?? false,
       playback: PlaybackOptions(
         gapless: p.getBool(_gapless) ?? d.playback.gapless,
         crossfade: Duration(
@@ -112,6 +121,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setShowTitleBar(bool show) async {
     state = state.copyWith(showTitleBar: show);
     await _prefs.setBool(_titleBarKey, show);
+  }
+
+  Future<void> setShowReplayGainDebug(bool show) async {
+    state = state.copyWith(showReplayGainDebug: show);
+    await _prefs.setBool(_rgDebugKey, show);
   }
 
   Future<void> setPlayback(PlaybackOptions o) async {
