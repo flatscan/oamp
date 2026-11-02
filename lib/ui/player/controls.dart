@@ -286,7 +286,7 @@ String? qualityLabel(
     return '$fmt  ·  ${quality.bitRate} kbps';
   }
   final parts = <String>[
-    if (src != null) src,
+    ?src,
     if (t.sampleRate != null && t.bitDepth != null)
       '${_khz(t.sampleRate!)} / ${t.bitDepth}'
     else if (t.bitRate != null && t.bitRate! > 0)
