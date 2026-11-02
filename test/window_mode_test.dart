@@ -147,6 +147,13 @@ void main() {
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
+    // The Window section is at the bottom of a long page.
+    await tester.scrollUntilVisible(
+      find.text('Show title bar'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Show title bar'));
     await tester.pumpAndSettle();
 

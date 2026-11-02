@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
+import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/sources/subsonic/subsonic_client.dart';
 import 'package:oamp/sources/subsonic/subsonic_source.dart';
 
@@ -104,6 +105,52 @@ void main() {
     final artists = await c.getArtists();
     expect(artists.map((a) => a.name), ['Air', 'Björk']);
     expect(artists.last.albumCount, 9);
+  });
+
+  test('stream URLs ask for the original file or a transcode', () {
+    final c = sourceReturning({'status': 'ok'});
+    final raw = c.streamUrl('t1').queryParameters;
+    expect(raw['id'], 't1');
+    expect(raw['format'], 'raw');
+    expect(raw.containsKey('maxBitRate'), isFalse);
+    final opus = c
+        .streamUrl(
+          't1',
+          quality: const StreamQuality(format: StreamFormat.opus, bitRate: 128),
+        )
+        .queryParameters;
+    expect(opus['format'], 'opus');
+    expect(opus['maxBitRate'], '128');
+  });
+
+  test('OpenSubsonic ReplayGain is read from songs', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'album': {
+        'id': 'al1',
+        'name': 'Moon Safari',
+        'song': [
+          {
+            'id': 't1',
+            'title': 'Sexy Boy',
+            'replayGain': {
+              'trackGain': -7.5,
+              'albumGain': -6.25,
+              'trackPeak': 0.98,
+              'albumPeak': 1,
+            },
+          },
+          {'id': 't2', 'title': 'Untagged', 'replayGain': {}},
+        ],
+      },
+    });
+    final tracks = (await c.getAlbum('al1')).tracks;
+    final rg = tracks.first.replayGain!;
+    expect(rg.trackGain, -7.5);
+    expect(rg.albumGain, -6.25);
+    expect(rg.trackPeak, 0.98);
+    expect(rg.albumPeak, 1.0);
+    expect(tracks.last.replayGain, isNull);
   });
 
   test('getAlbum parses tracks with durations', () async {
