@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
+import '../../state/settings.dart';
 import '../cover_art.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -267,7 +268,17 @@ class _Controls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context).textTheme;
     final tr = track;
-    final quality = tr == null ? null : qualityLabel(tr);
+    final streamQuality = ref.watch(
+      playerProvider.select((s) => s.currentQuality),
+    );
+    final quality = tr == null ? null : qualityLabel(tr, streamQuality);
+    final showRgDebug = ref.watch(
+      settingsProvider.select((s) => s.showReplayGainDebug),
+    );
+    final playback = ref.watch(playbackOptionsProvider);
+    final rgDebug = (tr != null && showRgDebug)
+        ? replayGainDebugLabel(tr, playback)
+        : null;
     final liked =
         tr != null &&
         ref.watch(
@@ -324,6 +335,14 @@ class _Controls extends ConsumerWidget {
               Text(
                 quality,
                 style: t.labelLarge?.copyWith(color: OAmpColors.textMuted),
+              ),
+            ],
+            if (rgDebug != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                rgDebug,
+                textAlign: TextAlign.center,
+                style: t.labelMedium?.copyWith(color: OAmpColors.textFaint),
               ),
             ],
           ],

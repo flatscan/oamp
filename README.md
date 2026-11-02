@@ -135,12 +135,18 @@ lib/
   core/                     Backend-neutral, no dart:io
     models.dart             Artist, Album, Track, Playlist (OAmp's own models)
     music_source.dart       MusicSource interface + capability flags
+    playback_options.dart   Gapless, crossfade, ReplayGain, stream quality, cache
+    track_cache.dart        TrackCache interface: temporary playback cache
     track_resolver.dart     Track -> playable URI (stream now, downloads in v2)
   sources/subsonic/         The only v1 MusicSource: Navidrome / Subsonic
     subsonic_client.dart    Transport and token auth
     subsonic_source.dart    Maps Subsonic JSON to OAmp models
   audio/
-    audio_engine.dart       AudioEngine output interface + just_audio engine
+    audio_engine.dart       AudioEngine interface; MixingEngine crossfades decks
+    mpv_deck.dart           libmpv player (Windows)
+    just_audio_deck.dart    just_audio player (Android, iOS, macOS)
+    stream_cache.dart       On-disk cache served to the player over loopback
+    platform_audio.dart     Picks the player and opens the cache per platform
   platform/                 Platform code behind interfaces
     secure_store.dart       SecureStore (OS keychain)
     preferences.dart        Preferences (plain settings, shared_preferences)
@@ -153,7 +159,8 @@ lib/
     library.dart            Cached library queries
     player.dart             PlayerController: the queue; engine is its output
     playback_reporter.dart  Reports now playing and plays to the server
-    settings.dart           App settings, such as showing the title bar
+    settings.dart           App settings: playback, quality, cache, window
+    precache.dart           Keeps the cache fetching the next tracks in the queue
     system_controls_bridge.dart  Mirrors the player into SystemControls
   ui/
     app_frame.dart          Window bar and keyboard shortcuts around every screen
@@ -171,6 +178,11 @@ test/
   ui_with_fake_source_test.dart  Drives the whole UI with no server
   player_test.dart          Queue, repeat, shuffle, volume and play reports
   window_mode_test.dart     Mode switch position across modes, title bar setting
+  mixing_engine_test.dart   Crossfade hand-over and ReplayGain levels
+  stream_cache_test.dart    Cache pass-through, prefetch, eviction
+  playback_settings_test.dart  Settings, ReplayGain maths, settings page
+  mpv_playback_test.dart    Real libmpv playback; runs where libmpv is
+                            installed (apt install libmpv-dev), skipped on CI
   architecture_test.dart    Enforces the seams below
 ```
 
@@ -184,7 +196,8 @@ implementations rather than rewrite v1:
 - **Multiple servers:** credentials are stored per `serverId`, and the
   active one is a `ServerSession`. A switcher only changes which is active.
 - **Offline downloads:** a `TrackResolver` that returns a local file when
-  the track is downloaded.
+  the track is downloaded. The playback cache (`TrackCache`) is separate:
+  it is temporary, evicted oldest first, and never counts as downloaded.
 - **Chromecast:** `PlayerController` owns the queue and sends it to an
   `AudioEngine`, so a cast engine is another output.
 - **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`,
@@ -199,10 +212,12 @@ implementations rather than rewrite v1:
 
 ### Packages
 
-- [`just_audio`](https://pub.dev/packages/just_audio) for playback, with
-  [`just_audio_media_kit`](https://pub.dev/packages/just_audio_media_kit)
-  (libmpv) as the Windows backend. All playback goes through
-  `AudioEngine`, so the backend can be swapped in one file.
+- [`media_kit`](https://pub.dev/packages/media_kit) (libmpv) for playback
+  on Windows, and [`just_audio`](https://pub.dev/packages/just_audio) on
+  Android, iOS and macOS. All playback goes through `AudioEngine`, so the
+  backend can be swapped in one file.
+- [`path_provider`](https://pub.dev/packages/path_provider) for the
+  playback cache's folder.
 - [`flutter_riverpod`](https://pub.dev/packages/flutter_riverpod) for state.
 - [`http`](https://pub.dev/packages/http) and
   [`crypto`](https://pub.dev/packages/crypto) for the API and token auth.

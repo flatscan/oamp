@@ -37,8 +37,10 @@ dependencies:
   http: ^1.6.0
   crypto: ^3.0.8
   just_audio: ^0.10.6
-  just_audio_media_kit: ^2.1.0
+  # Windows plays through libmpv directly (lib/audio/mpv_deck.dart).
+  media_kit: ^1.2.6
   media_kit_libs_windows_audio: ^1.0.9
+  path_provider: ^2.1.5
   flutter_riverpod: ^3.4.3
   flutter_secure_storage: ^11.2.0
   window_manager: ^0.5.2

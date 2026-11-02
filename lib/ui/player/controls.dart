@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
+import '../../core/playback_options.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
 import '../theme.dart';
@@ -269,17 +272,56 @@ class _VolumeControlState extends ConsumerState<VolumeControl> {
   }
 }
 
-/// "FLAC · 44.1 / 16" or "MP3 · 320 kbps", or null when the server did
-/// not say.
-String? qualityLabel(Track t) {
+/// "FLAC · 44.1 / 16" or "MP3 · 320 kbps", or "FLAC → OPUS · 128 kbps"
+/// when transcoding is active. Returns null when original is selected and
+/// the server did not report format metadata.
+String? qualityLabel(
+  Track t, [
+  StreamQuality quality = StreamQuality.original,
+]) {
+  final src = t.format?.toUpperCase();
+  if (!quality.isOriginal) {
+    final target = quality.format.name.toUpperCase();
+    final fmt = src != null ? '$src → $target' : target;
+    return '$fmt  ·  ${quality.bitRate} kbps';
+  }
   final parts = <String>[
-    if (t.format != null) t.format!.toUpperCase(),
+    ?src,
     if (t.sampleRate != null && t.bitDepth != null)
       '${_khz(t.sampleRate!)} / ${t.bitDepth}'
     else if (t.bitRate != null && t.bitRate! > 0)
       '${t.bitRate} kbps',
   ];
   return parts.isEmpty ? null : parts.join('  ·  ');
+}
+
+/// Debug summary of the server's ReplayGain tags on [t] and the volume
+/// adjustment [options] applies.
+String replayGainDebugLabel(Track t, PlaybackOptions options) {
+  final rg = t.replayGain;
+  final String tags;
+  if (rg == null) {
+    tags = 'RG: untagged';
+  } else {
+    final parts = <String>[
+      if (rg.trackGain != null) 'track ${_fmtDb(rg.trackGain!)}',
+      if (rg.albumGain != null) 'album ${_fmtDb(rg.albumGain!)}',
+      if (rg.trackPeak != null) 'peak ${rg.trackPeak!.toStringAsFixed(2)}',
+    ];
+    tags = 'RG: ${parts.join(' · ')}';
+  }
+  if (options.replayGain == ReplayGainMode.off) {
+    return '$tags  ·  applied: off';
+  }
+  final factor = options.gainFor(t);
+  final appliedDb = factor > 0 ? 20 * math.log(factor) / math.ln10 : 0.0;
+  final source = rg == null ? 'fallback' : options.replayGain.name;
+  return '$tags  ·  applied ${_fmtDb(appliedDb)} ($source)';
+}
+
+String _fmtDb(double db) {
+  final s = db.toStringAsFixed(1);
+  return db > 0 ? '+$s dB' : '$s dB';
 }
 
 String _khz(int hz) {
