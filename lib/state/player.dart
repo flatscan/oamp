@@ -13,6 +13,9 @@ import 'settings.dart';
 /// Immutable view of the queue and transport state for the UI.
 class PlayerState {
   final List<Track> queue;
+
+  /// The streaming quality each track in [queue] was resolved with.
+  final List<StreamQuality> qualities;
   final int? currentIndex;
   final bool playing;
   final bool buffering;
@@ -26,6 +29,7 @@ class PlayerState {
   const PlayerState({
     this.from,
     this.queue = const [],
+    this.qualities = const [],
     this.currentIndex,
     this.playing = false,
     this.buffering = false,
@@ -36,6 +40,13 @@ class PlayerState {
   Track? get current => (currentIndex != null && currentIndex! < queue.length)
       ? queue[currentIndex!]
       : null;
+
+  /// The streaming quality of the currently playing track.
+  StreamQuality get currentQuality =>
+      (currentIndex != null && currentIndex! < qualities.length)
+      ? qualities[currentIndex!]
+      : StreamQuality.original;
+
   bool get hasNext =>
       currentIndex != null &&
       (currentIndex! < queue.length - 1 || repeat == PlaybackRepeat.all);
@@ -46,6 +57,7 @@ class PlayerState {
 
   PlayerState copyWith({
     List<Track>? queue,
+    List<StreamQuality>? qualities,
     int? Function()? currentIndex,
     bool? playing,
     bool? buffering,
@@ -55,6 +67,7 @@ class PlayerState {
   }) => PlayerState(
     from: from != null ? from() : this.from,
     queue: queue ?? this.queue,
+    qualities: qualities ?? this.qualities,
     currentIndex: currentIndex != null ? currentIndex() : this.currentIndex,
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,
@@ -165,11 +178,21 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (cur == null || !_signedIn) return;
     final rest = state.queue.sublist(cur + 1);
     if (rest.isEmpty) return;
+    final q = ref.read(streamQualityProvider);
+    state = state.copyWith(
+      qualities: List.unmodifiable([
+        ...state.qualities.take(cur + 1),
+        ...List.filled(rest.length, q),
+      ]),
+    );
     for (var i = cur + rest.length; i > cur; i--) {
       await _engine.removeAt(i);
     }
     await _engine.addAll(await _uris(rest));
   }
+
+  List<StreamQuality> _qualitiesFor(int count) =>
+      List.filled(count, ref.read(streamQualityProvider));
 
   Future<List<Uri>> _uris(List<Track> tracks) =>
       Future.wait([for (final t in tracks) _resolver.resolve(t)]);
@@ -189,6 +212,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     }
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
+      qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
       currentIndex: () => startIndex,
       from: () => from,
     );
@@ -202,6 +226,10 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (state.queue.isEmpty) return playTracks(tracks);
     state = state.copyWith(
       queue: List.unmodifiable([...state.queue, ...tracks]),
+      qualities: List.unmodifiable([
+        ...state.qualities,
+        ..._qualitiesFor(tracks.length),
+      ]),
     );
     await _engine.addAll(await _uris(tracks));
   }
@@ -212,7 +240,12 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (state.queue.isEmpty) return playTracks(tracks);
     final at = (state.currentIndex ?? -1) + 1;
     final q = [...state.queue]..insertAll(at, tracks);
-    state = state.copyWith(queue: List.unmodifiable(q));
+    final quals = [...state.qualities]
+      ..insertAll(at, _qualitiesFor(tracks.length));
+    state = state.copyWith(
+      queue: List.unmodifiable(q),
+      qualities: List.unmodifiable(quals),
+    );
     await _engine.insertAll(at, await _uris(tracks));
   }
 
@@ -223,7 +256,12 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   Future<void> removeAt(int index) async {
     final q = [...state.queue]..removeAt(index);
-    state = state.copyWith(queue: List.unmodifiable(q));
+    final quals = [...state.qualities];
+    if (index < quals.length) quals.removeAt(index);
+    state = state.copyWith(
+      queue: List.unmodifiable(q),
+      qualities: List.unmodifiable(quals),
+    );
     await _engine.removeAt(index);
   }
 
@@ -232,7 +270,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (oldIndex == newIndex) return;
     final q = [...state.queue];
     q.insert(newIndex, q.removeAt(oldIndex));
-    state = state.copyWith(queue: List.unmodifiable(q));
+    final quals = [...state.qualities];
+    if (oldIndex < quals.length && newIndex <= quals.length) {
+      quals.insert(newIndex, quals.removeAt(oldIndex));
+    }
+    state = state.copyWith(
+      queue: List.unmodifiable(q),
+      qualities: List.unmodifiable(quals),
+    );
     await _engine.move(oldIndex, newIndex);
   }
 
@@ -242,10 +287,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     final rest = state.queue.sublist(cur + 1);
     if (rest.length < 2) return;
     final shuffled = [...rest]..shuffle();
+    final q = ref.read(streamQualityProvider);
     state = state.copyWith(
       queue: List.unmodifiable([
         ...state.queue.sublist(0, cur + 1),
         ...shuffled,
+      ]),
+      qualities: List.unmodifiable([
+        ...state.qualities.take(cur + 1),
+        ...List.filled(shuffled.length, q),
       ]),
     );
     for (var i = cur + rest.length; i > cur; i--) {
@@ -262,6 +312,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (end <= cur) return;
     state = state.copyWith(
       queue: List.unmodifiable(state.queue.sublist(0, cur + 1)),
+      qualities: List.unmodifiable(state.qualities.take(cur + 1).toList()),
     );
     for (var i = end; i > cur; i--) {
       await _engine.removeAt(i);
