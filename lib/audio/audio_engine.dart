@@ -43,7 +43,12 @@ abstract class AudioEngine {
   Stream<Duration?> get durationStream;
   Duration get position;
 
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0});
+  /// Loads [uris] paused at [initialIndex], [initialPosition] into it.
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  });
   Future<void> addAll(List<Uri> uris);
   Future<void> insertAll(int index, List<Uri> uris);
   Future<void> removeAt(int index);
@@ -91,7 +96,12 @@ abstract class AudioDeck {
   /// quiet tracks.
   double get maxVolume;
 
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0});
+  /// Loads [uris] paused at [initialIndex], [initialPosition] into it.
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  });
   Future<void> addAll(List<Uri> uris);
   Future<void> insertAll(int index, List<Uri> uris);
   Future<void> removeAt(int index);
@@ -315,7 +325,11 @@ class MixingEngine implements AudioEngine {
   }
 
   @override
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0}) async {
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  }) async {
     await _finishFade();
     _changed();
     _uris
@@ -323,7 +337,11 @@ class MixingEngine implements AudioEngine {
       ..addAll(uris);
     _lastIndex = initialIndex;
     await _active.setVolume(_level(_active, initialIndex, 1));
-    await _active.setQueue(uris, initialIndex: initialIndex);
+    await _active.setQueue(
+      uris,
+      initialIndex: initialIndex,
+      initialPosition: initialPosition,
+    );
     await _spare?.clear();
   }
 

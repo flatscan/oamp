@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
+import 'package:oamp/core/play_queue.dart';
 import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/platform/system_controls.dart';
 import 'package:oamp/state/session.dart';
@@ -63,9 +64,56 @@ class FakeMusicSource implements MusicSource {
   String get displayName => 'tester @ fake';
   @override
   String get userName => 'tester';
+
+  /// Whether the fake keeps a play queue, like Navidrome.
+  bool queueSync = true;
+
   @override
   SourceCapabilities get capabilities =>
-      const SourceCapabilities(hasSimilar: true);
+      SourceCapabilities(hasSimilar: true, hasQueueSync: queueSync);
+
+  /// The play queue the server holds.
+  SavedQueue? playQueue;
+
+  /// Set to make the play queue calls fail, as if offline.
+  bool queueOffline = false;
+  int queueReads = 0;
+  final List<SavedQueue> queueSaves = [];
+
+  @override
+  Future<SavedQueue?> getPlayQueue() async {
+    queueReads++;
+    if (queueOffline) throw MusicSourceException('offline');
+    return playQueue;
+  }
+
+  @override
+  Future<void> savePlayQueue(
+    List<String> trackIds, {
+    int? currentIndex,
+    Duration position = Duration.zero,
+  }) async {
+    if (queueOffline) throw MusicSourceException('offline');
+    final known = [...tracks, ...extraTracks];
+    final saved = SavedQueue(
+      tracks: [
+        for (final id in trackIds)
+          known.firstWhere(
+            (t) => t.id == id,
+            orElse: () => Track(id: id, title: id),
+          ),
+      ],
+      currentIndex: currentIndex,
+      position: position,
+      changed: DateTime.now().toUtc(),
+      changedBy: 'OAmp',
+    );
+    queueSaves.add(saved);
+    playQueue = saved.isEmpty ? null : saved;
+  }
+
+  /// Tracks beyond the album that queue saves can name.
+  List<Track> extraTracks = const [];
   @override
   Future<void> ping() async {}
   @override
@@ -249,15 +297,27 @@ class FakeAudioEngine implements AudioEngine {
   Stream<Duration> get positionStream => _position.stream;
   @override
   Stream<Duration?> get durationStream => _duration.stream;
-  @override
-  Duration get position => Duration.zero;
+
+  /// What [position] reports.
+  Duration currentPosition = Duration.zero;
 
   @override
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0}) async {
+  Duration get position => currentPosition;
+
+  /// Where the last [setQueue] asked to start.
+  Duration startPosition = Duration.zero;
+
+  @override
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  }) async {
     queue
       ..clear()
       ..addAll(uris);
     index = initialIndex;
+    startPosition = initialPosition;
     _emit();
   }
 
