@@ -1,5 +1,6 @@
 import 'package:http/http.dart' as http;
 
+import '../../core/lyrics.dart';
 import '../../core/models.dart';
 import '../../core/music_source.dart';
 import '../../core/play_queue.dart';
@@ -366,6 +367,67 @@ class SubsonicSource implements MusicSource {
   });
 
   @override
+  Future<void> setRating(String id, int rating) =>
+      client.get('setRating', {'id': id, 'rating': '${rating.clamp(0, 5)}'});
+
+  /// Tries OpenSubsonic's `getLyricsBySongId` (which can return synced
+  /// lyrics) first, and falls back to the classic artist and title lookup
+  /// when the server does not have that endpoint or has nothing there.
+  @override
+  Future<Lyrics> getLyrics(Track track) async {
+    try {
+      final r = await client.get('getLyricsBySongId', {'id': track.id});
+      final found = structuredLyrics(r['lyricsList']);
+      if (!found.isEmpty) return found;
+    } on MusicSourceException {
+      // Not an OpenSubsonic server, or no lyrics for this id.
+    }
+    final artist = track.artist;
+    if (artist == null || artist.isEmpty) return Lyrics.none;
+    final r = await client.get('getLyrics', {
+      'artist': artist,
+      'title': track.title,
+    });
+    final value = (r['lyrics'] as Map?)?['value'];
+    return value is String ? Lyrics.parse(value) : Lyrics.none;
+  }
+
+  /// Picks from OpenSubsonic's `lyricsList`: synced lyrics over plain, and
+  /// within those the first the server lists.
+  static Lyrics structuredLyrics(Object? lyricsList) {
+    final all = lyricsList is Map ? lyricsList['structuredLyrics'] : null;
+    if (all is! List) return Lyrics.none;
+    Lyrics? plain;
+    for (final entry in all.whereType<Map>()) {
+      final lines = (entry['line'] as List? ?? const []).whereType<Map>();
+      if (lines.isEmpty) continue;
+      if (entry['synced'] == true) {
+        // A positive offset means the lyrics should show earlier.
+        final offset = _int(entry['offset']) ?? 0;
+        final synced = [
+          for (final l in lines)
+            LyricLine(
+              '${l['value'] ?? ''}',
+              start: Duration(
+                milliseconds: ((_int(l['start']) ?? 0) - offset).clamp(
+                  0,
+                  1 << 31,
+                ),
+              ),
+            ),
+        ]..sort((a, b) => a.start!.compareTo(b.start!));
+        final lyrics = Lyrics(synced, synced: true);
+        if (!lyrics.isEmpty) return lyrics;
+      } else {
+        plain ??= Lyrics([
+          for (final l in lines) LyricLine('${l['value'] ?? ''}'),
+        ]);
+      }
+    }
+    return plain != null && !plain.isEmpty ? plain : Lyrics.none;
+  }
+
+  @override
   Future<void> reportPlayback(String trackId, {required bool submission}) =>
       client.get('scrobble', {'id': trackId, 'submission': '$submission'});
 
@@ -536,6 +598,7 @@ class SubsonicSource implements MusicSource {
       genre: genre,
       duration: secs == null ? null : Duration(seconds: secs),
       liked: j['starred'] != null,
+      rating: _int(j['userRating']) ?? 0,
       // OpenSubsonic fields.
       releaseTypes: [
         for (final t in (j['releaseTypes'] as List? ?? const []))
@@ -560,6 +623,7 @@ class SubsonicSource implements MusicSource {
       duration: secs == null ? null : Duration(seconds: secs),
       coverArt: j['coverArt'] as String?,
       liked: j['starred'] != null,
+      rating: _int(j['userRating']) ?? 0,
       year: _int(j['year']),
       format: j['suffix'] as String?,
       bitRate: _int(j['bitRate']),

@@ -1,9 +1,12 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
 import '../../state/library.dart';
+import '../../state/lyrics.dart';
 import '../../state/player.dart';
 import '../../state/settings.dart';
 import '../cover_art.dart';
@@ -11,8 +14,10 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../app_frame.dart';
 import '../mode_switch.dart';
+import '../rating_stars.dart';
 import 'art_colors.dart';
 import 'controls.dart';
+import 'lyrics_view.dart';
 import 'queue_list.dart';
 
 /// Whether the single column is showing now playing over the browser.
@@ -226,6 +231,7 @@ class _Artwork extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.read(playerProvider.notifier);
+    final lyrics = ref.watch(showLyricsProvider);
     return LayoutBuilder(
       builder: (context, c) {
         final size = c.maxWidth.clamp(0.0, 560.0);
@@ -239,16 +245,47 @@ class _Artwork extends ConsumerWidget {
           child: Padding(
             padding: EdgeInsets.only(top: wide ? 16 : 0),
             child: Center(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: CoverArt(
-                  track?.coverArt,
-                  key: ValueKey(track?.id),
-                  size: size,
-                  radius: wide ? 10 : 0,
-                  placeholderIcon: track == null
-                      ? Icons.music_note_rounded
-                      : Icons.album_rounded,
+              child: SizedBox.square(
+                dimension: size,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(wide ? 10 : 0),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: ImageFiltered(
+                          key: ValueKey((track?.id, lyrics)),
+                          enabled: lyrics,
+                          imageFilter: ui.ImageFilter.blur(
+                            sigmaX: 24,
+                            sigmaY: 24,
+                            tileMode: TileMode.clamp,
+                          ),
+                          child: CoverArt(
+                            track?.coverArt,
+                            size: size,
+                            radius: 0,
+                            placeholderIcon: track == null
+                                ? Icons.music_note_rounded
+                                : Icons.album_rounded,
+                          ),
+                        ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        child: lyrics && track != null
+                            ? SizedBox.expand(
+                                key: const ValueKey('lyrics'),
+                                child: ColoredBox(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  child: LyricsView(track: track!),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -330,8 +367,16 @@ class _Controls extends ConsumerWidget {
                     ? null
                     : () => openAlbumById(tr.albumId!, tr.album!),
               ),
+            const SizedBox(height: 4),
+            RatingStars(
+              key: ValueKey('rating-${tr.id}'),
+              id: tr.id,
+              fetched: tr.rating,
+              size: 18,
+              color: accent,
+            ),
             if (quality != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               Text(
                 quality,
                 style: t.labelLarge?.copyWith(color: OAmpColors.textMuted),
@@ -384,12 +429,43 @@ class _Controls extends ConsumerWidget {
                     ? null
                     : () => toggleLike(context, ref, tr),
               ),
+              _LyricsButton(track: tr, accent: accent),
               const ShuffleButton(),
               const RepeatButton(),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Shows or hides lyrics over the artwork. Disabled when the track has
+/// none, unless lyrics are showing (so they can still be hidden).
+class _LyricsButton extends ConsumerWidget {
+  final Track? track;
+  final Color accent;
+  const _LyricsButton({required this.track, required this.accent});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showing = ref.watch(showLyricsProvider);
+    final tr = track;
+    final lyrics = tr == null
+        ? null
+        : ref.watch(lyricsProvider(lyricsRequestFor(tr))).value;
+    final has = lyrics != null && !lyrics.isEmpty;
+    return IconButton(
+      tooltip: showing
+          ? 'Hide lyrics'
+          : (has ? 'Show lyrics' : 'No lyrics for this track'),
+      color: showing ? accent : OAmpColors.textMuted,
+      isSelected: showing,
+      icon: const Icon(Icons.lyrics_outlined),
+      selectedIcon: const Icon(Icons.lyrics_rounded),
+      onPressed: showing || has
+          ? ref.read(showLyricsProvider.notifier).toggle
+          : null,
     );
   }
 }

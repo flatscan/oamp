@@ -14,8 +14,12 @@ void main() {
   late FakeAudioEngine engine;
   late FakeMusicSource source;
 
-  Future<void> pumpApp(WidgetTester tester, {FakeMusicSource? with_}) async {
-    tester.view.physicalSize = const Size(440, 880);
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    FakeMusicSource? with_,
+    double height = 880,
+  }) async {
+    tester.view.physicalSize = Size(440, height);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     engine = FakeAudioEngine();
@@ -35,7 +39,8 @@ void main() {
   testWidgets('browse Library > Artists > album, play, open now playing', (
     tester,
   ) async {
-    await pumpApp(tester);
+    // Tall enough to see the start of the queue under the controls.
+    await pumpApp(tester, height: 960);
 
     // Home shows the server's album rows; nothing is playing yet, so there
     // is no mini-player.

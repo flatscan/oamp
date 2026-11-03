@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:oamp/audio/audio_engine.dart';
+import 'package:oamp/core/lyrics.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
 import 'package:oamp/core/play_queue.dart';
@@ -259,6 +260,19 @@ class FakeMusicSource implements MusicSource {
     '${liked ? 'like' : 'unlike'}'
     '${target == LikeTarget.track ? '' : '-${target.name}'}:$id',
   );
+  @override
+  Future<void> setRating(String id, int rating) async =>
+      calls.add('rate:$id:$rating');
+
+  /// What [getLyrics] returns, by track id.
+  final Map<String, Lyrics> lyrics = {};
+
+  @override
+  Future<Lyrics> getLyrics(Track track) async {
+    calls.add('lyrics:${track.id}');
+    return lyrics[track.id] ?? Lyrics.none;
+  }
+
   @override
   Future<void> reportPlayback(
     String trackId, {
