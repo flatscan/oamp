@@ -51,6 +51,9 @@ class Album {
   /// Whether the user has liked (starred) the album on the server.
   final bool liked;
 
+  /// The user's rating from 1 to 5 stars, or 0 when unrated.
+  final int rating;
+
   /// Release types in lower case, such as `album`, `ep`, `single`, `live`
   /// or `compilation`. Empty when the server does not say.
   final List<String> releaseTypes;
@@ -70,6 +73,7 @@ class Album {
     this.genre,
     this.duration,
     this.liked = false,
+    this.rating = 0,
     this.releaseTypes = const [],
     this.isCompilation = false,
     this.sortName,
@@ -129,6 +133,9 @@ class Track {
   /// Whether the user has liked (starred) the track on the server.
   final bool liked;
 
+  /// The user's rating from 1 to 5 stars, or 0 when unrated.
+  final int rating;
+
   final int? year;
 
   /// File format as the server stores it, such as `flac` or `mp3`.
@@ -159,6 +166,7 @@ class Track {
     this.duration,
     this.coverArt,
     this.liked = false,
+    this.rating = 0,
     this.year,
     this.format,
     this.bitRate,

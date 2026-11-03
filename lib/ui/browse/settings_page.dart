@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/music_source.dart';
 import '../../core/playback_options.dart';
+import '../../core/track_cache.dart';
 import '../../state/precache.dart';
 import '../../state/session.dart';
 import '../../state/settings.dart';
@@ -183,6 +184,10 @@ class SettingsPage extends ConsumerWidget {
               ),
               const _CacheUsageTile(),
             ],
+            if (ref.watch(artworkCacheProvider) != null) ...[
+              if (!hasCache) const SettingsHeading('Cache'),
+              const _ArtworkCacheTile(),
+            ],
             const SettingsHeading('Server'),
             ListTile(
               leading: const Icon(Icons.dns_outlined),
@@ -270,6 +275,47 @@ class _CacheUsageTile extends ConsumerWidget {
       onTap: () async {
         await ref.read(trackCacheProvider)?.clear();
         if (context.mounted) toast(context, 'Cache cleared');
+      },
+    );
+  }
+}
+
+/// How much artwork is saved on disk, and a button to delete it.
+class _ArtworkCacheTile extends ConsumerStatefulWidget {
+  const _ArtworkCacheTile();
+
+  @override
+  ConsumerState<_ArtworkCacheTile> createState() => _ArtworkCacheTileState();
+}
+
+class _ArtworkCacheTileState extends ConsumerState<_ArtworkCacheTile> {
+  late Future<CacheUsage>? _usage = ref.read(artworkCacheProvider)?.usage();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<CacheUsage>(
+      future: _usage,
+      builder: (context, snap) {
+        final usage = snap.data;
+        final mb = (usage?.bytes ?? 0) / (1024 * 1024);
+        return ListTile(
+          leading: const Icon(Icons.image_outlined),
+          title: const Text('Clear artwork cache'),
+          subtitle: Text(
+            usage == null
+                ? 'Checking…'
+                : '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB in '
+                      '${usage.files} ${usage.files == 1 ? 'image' : 'images'}',
+          ),
+          enabled: (usage?.files ?? 0) > 0,
+          onTap: () async {
+            final cache = ref.read(artworkCacheProvider);
+            await cache?.clear();
+            if (!context.mounted) return;
+            setState(() => _usage = cache?.usage());
+            toast(context, 'Artwork cache cleared');
+          },
+        );
       },
     );
   }

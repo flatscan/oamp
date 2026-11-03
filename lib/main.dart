@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'audio/platform_audio.dart';
+import 'platform/disk_artwork_cache.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
@@ -53,6 +54,7 @@ Future<void> main() async {
   final systemControls = await createSystemControls();
   final preferences = await PlatformPreferences.load();
   final trackCache = await openTrackCache();
+  final artworkCache = await DiskArtworkCache.open();
 
   runApp(
     ProviderScope(
@@ -61,6 +63,7 @@ Future<void> main() async {
         preferencesProvider.overrideWithValue(preferences),
         audioDeckFactoryProvider.overrideWithValue(createDeck),
         trackCacheProvider.overrideWithValue(trackCache),
+        artworkCacheProvider.overrideWithValue(artworkCache),
       ],
       child: const OAmpApp(),
     ),
