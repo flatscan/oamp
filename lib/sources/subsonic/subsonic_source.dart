@@ -25,12 +25,72 @@ class SubsonicSource implements MusicSource {
   @override
   String get userName => credentials.username;
 
-  // TODO(M1): read getOpenSubsonicExtensions at login and set the rest.
-  // Every supported Navidrome has getSimilarSongs; it just returns nothing
-  // when no outside agent (such as Last.fm) is configured.
+  /// What every supported Navidrome can do before extensions are read.
+  /// getSimilarSongs always exists; it just returns nothing when no outside
+  /// agent (such as Last.fm) is configured, which radio handles with genres.
+  static const baseline = SourceCapabilities(hasSimilar: true, hasGenres: true);
+
+  SourceCapabilities _capabilities = baseline;
+  bool _detected = false;
+
   @override
-  SourceCapabilities get capabilities =>
-      const SourceCapabilities(hasSimilar: true);
+  SourceCapabilities get capabilities => _capabilities;
+
+  /// Reads the server type and version from `ping` and the OpenSubsonic
+  /// extensions from `getOpenSubsonicExtensions`. A plain Subsonic server
+  /// has no such endpoint and keeps the baseline.
+  @override
+  Future<SourceCapabilities> detectCapabilities() async {
+    Map<String, dynamic> pong = const {};
+    var openSubsonic = false;
+    try {
+      pong = await client.get('ping');
+      openSubsonic = pong['openSubsonic'] == true;
+    } on MusicSourceException {
+      // Offline or signed out: keep what we had rather than forget it.
+      return _capabilities;
+    }
+    var extensions = const <String, List<int>>{};
+    if (openSubsonic) {
+      try {
+        final r = await client.get('getOpenSubsonicExtensions');
+        extensions = parseExtensions(r['openSubsonicExtensions']);
+      } on MusicSourceException {
+        // Advertised but not answered; carry on without extensions.
+      }
+    }
+    _detected = true;
+    return _capabilities = capabilitiesFor(
+      extensions,
+      serverType: pong['type'] as String?,
+      serverVersion: pong['serverVersion'] as String?,
+    );
+  }
+
+  /// `[{name: songLyrics, versions: [1]}, ...]` as a map. Lenient about
+  /// missing or odd fields, since servers differ.
+  static Map<String, List<int>> parseExtensions(Object? raw) => {
+    if (raw is List)
+      for (final e in raw)
+        if (e is Map && e['name'] is String)
+          e['name'] as String: [
+            for (final v in (e['versions'] as List? ?? const [])) ?_int(v),
+          ],
+  };
+
+  /// The flags features check, from the server's extensions.
+  static SourceCapabilities capabilitiesFor(
+    Map<String, List<int>> extensions, {
+    String? serverType,
+    String? serverVersion,
+  }) => SourceCapabilities(
+    hasSimilar: baseline.hasSimilar,
+    hasGenres: baseline.hasGenres,
+    hasLyrics: extensions.containsKey('songLyrics'),
+    extensions: extensions,
+    serverType: serverType,
+    serverVersion: serverVersion,
+  );
 
   @override
   Future<void> ping() => client.get('ping');
@@ -194,14 +254,19 @@ class SubsonicSource implements MusicSource {
     ]);
   }
 
-  /// Id lists longer than this go in a form body rather than the URL.
+  /// Every supported Navidrome has `formPost`, so it is assumed until the
+  /// server has been asked and said otherwise.
+  bool get _formPost => !_detected || _capabilities.supports('formPost');
+
+  /// Id lists longer than this go in a form body rather than the URL, when
+  /// the server has the `formPost` extension.
   static const _maxIdsInUrl = 40;
 
   Future<Map<String, dynamic>> _write(
     String endpoint,
     Map<String, Object> params,
     int idCount,
-  ) => idCount > _maxIdsInUrl
+  ) => idCount > _maxIdsInUrl && _formPost
       ? client.post(endpoint, params)
       : client.get(endpoint, params);
 
@@ -259,8 +324,11 @@ class SubsonicSource implements MusicSource {
       client.get('deletePlaylist', {'id': id});
 
   @override
-  Future<List<Track>> getRandomTracks({int size = 100}) async {
-    final r = await client.get('getRandomSongs', {'size': '$size'});
+  Future<List<Track>> getRandomTracks({int size = 100, String? genre}) async {
+    final r = await client.get('getRandomSongs', {
+      'size': '$size',
+      'genre': ?genre,
+    });
     return [
       for (final t in (r['randomSongs']?['song'] as List? ?? const []))
         _track(t as Map<String, dynamic>),
@@ -366,9 +434,22 @@ class SubsonicSource implements MusicSource {
     liked: j['starred'] != null,
   );
 
+  /// OpenSubsonic's `genres` list, else the single `genre` field.
+  static List<String> _genres(Map<String, dynamic> j) {
+    final names = [
+      for (final g in (j['genres'] as List? ?? const []))
+        if (g is Map && '${g['name'] ?? ''}'.trim().isNotEmpty)
+          '${g['name']}'.trim(),
+    ];
+    if (names.isNotEmpty) return names;
+    final one = (j['genre'] as String?)?.trim();
+    return one == null || one.isEmpty ? const [] : [one];
+  }
+
   static Album _album(Map<String, dynamic> j) {
     final secs = _int(j['duration']);
-    final genre = j['genre'] as String?;
+    final genres = _genres(j);
+    final genre = genres.isEmpty ? null : genres.first;
     final name = (j['name'] ?? j['title'] ?? 'Unknown album') as String;
     return Album(
       id: '${j['id']}',
@@ -378,7 +459,7 @@ class SubsonicSource implements MusicSource {
       year: _int(j['year']),
       songCount: _int(j['songCount']) ?? 0,
       coverArt: j['coverArt'] as String?,
-      genre: genre == null || genre.isEmpty ? null : genre,
+      genre: genre,
       duration: secs == null ? null : Duration(seconds: secs),
       liked: j['starred'] != null,
       // OpenSubsonic fields.
@@ -412,6 +493,7 @@ class SubsonicSource implements MusicSource {
       sampleRate: _int(j['samplingRate']),
       bitDepth: _int(j['bitDepth']),
       replayGain: _replayGain(j['replayGain']),
+      genres: _genres(j),
     );
   }
 

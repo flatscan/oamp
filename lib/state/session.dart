@@ -35,6 +35,21 @@ final musicSourceProvider = Provider<MusicSource>((ref) {
   return session.source;
 });
 
+/// What the server told us it supports, asked once per sign-in. Until the
+/// answer arrives (or if the server cannot say) it is the source's baseline,
+/// so features never wait on it.
+final capabilitiesProvider = Provider<SourceCapabilities>((ref) {
+  final session = ref.watch(sessionProvider).value;
+  if (session == null) return const SourceCapabilities();
+  return ref.watch(_detectedCapabilitiesProvider(session.source)).value ??
+      session.source.capabilities;
+});
+
+final _detectedCapabilitiesProvider =
+    FutureProvider.family<SourceCapabilities, MusicSource>(
+      (ref, source) => source.detectCapabilities(),
+    );
+
 /// The playback cache. main.dart provides the on-disk one where the
 /// platform has a file system; without it tracks stream directly.
 final trackCacheProvider = Provider<TrackCache?>((_) => null);

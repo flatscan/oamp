@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/music_source.dart';
 import '../../core/playback_options.dart';
 import '../../state/precache.dart';
 import '../../state/session.dart';
@@ -186,6 +187,7 @@ class SettingsPage extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.dns_outlined),
               title: Text(source.displayName),
+              subtitle: _serverSummary(ref.watch(capabilitiesProvider)),
             ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
@@ -209,6 +211,18 @@ class SettingsPage extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// Server software and the extensions it advertised, which explains why a
+  /// feature is on or off for this server.
+  static Widget? _serverSummary(SourceCapabilities caps) {
+    final software = [?caps.serverType, ?caps.serverVersion].join(' ');
+    final names = caps.extensions.keys.toList()..sort();
+    final lines = [
+      if (software.isNotEmpty) software,
+      if (names.isNotEmpty) 'Extensions: ${names.join(', ')}',
+    ];
+    return lines.isEmpty ? null : Text(lines.join('\n'));
   }
 
   static String _db(double db) {
