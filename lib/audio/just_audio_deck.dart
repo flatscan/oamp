@@ -54,8 +54,15 @@ class JustAudioDeck implements AudioDeck {
   double get maxVolume => 1;
 
   @override
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0}) =>
-      _player.setAudioSources(_sources(uris), initialIndex: initialIndex);
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  }) => _player.setAudioSources(
+    _sources(uris),
+    initialIndex: initialIndex,
+    initialPosition: initialPosition,
+  );
   @override
   Future<void> addAll(List<Uri> uris) =>
       _player.addAudioSources(_sources(uris));

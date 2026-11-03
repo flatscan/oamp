@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audio/audio_engine.dart';
 import '../audio/just_audio_deck.dart';
 import '../core/models.dart';
+import '../core/play_queue.dart';
 import '../core/playback_options.dart';
 import '../core/track_resolver.dart';
 import 'session.dart';
@@ -108,6 +109,10 @@ final playerProvider = NotifierProvider<PlayerController, PlayerState>(
 /// [TrackResolver], which is where v2 offline downloads plug in.
 class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   late AudioEngine _engine;
+
+  /// Where [restore] left the current track, until playback moves on. The
+  /// engine may not report it until the track has loaded.
+  Duration? _restoredAt;
   PlaybackOptions _options = const PlaybackOptions();
 
   bool get _signedIn => ref.read(sessionProvider).value != null;
@@ -117,6 +122,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   PlayerState build() {
     _engine = ref.watch(audioEngineProvider);
     final sub = _engine.stateStream.listen((s) {
+      if (s.currentIndex != state.currentIndex || s.playing) _restoredAt = null;
       state = state.copyWith(
         currentIndex: () => s.currentIndex,
         playing: s.playing && !s.completed,
@@ -210,6 +216,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       tracks = [...tracks]..shuffle();
       startIndex = 0;
     }
+    _restoredAt = null;
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
@@ -219,6 +226,45 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
   }
+
+  /// Loads a saved queue paused at its current track and position, as it
+  /// was left on this or another device. Replaces whatever is queued.
+  Future<void> restore(SavedQueue saved) async {
+    if (!_signedIn || saved.isEmpty) return;
+    final tracks = saved.tracks;
+    final index = (saved.currentIndex ?? 0).clamp(0, tracks.length - 1);
+    var position = saved.position;
+    final length = tracks[index].duration;
+    // A position at (or past) the end would finish the track at once.
+    if (position < Duration.zero ||
+        (length != null && position >= length - const Duration(seconds: 1))) {
+      position = Duration.zero;
+    }
+    if (state.playing) await _engine.pause();
+    _restoredAt = position;
+    state = state.copyWith(
+      queue: List.unmodifiable(tracks),
+      qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
+      currentIndex: () => index,
+      from: () => saved.from,
+      playing: false,
+    );
+    await _engine.setQueue(
+      await _uris(tracks),
+      initialIndex: index,
+      initialPosition: position,
+    );
+  }
+
+  /// The queue as it stands now, for saving.
+  SavedQueue snapshot() => SavedQueue(
+    tracks: state.queue,
+    currentIndex: state.currentIndex,
+    position: state.queue.isEmpty
+        ? Duration.zero
+        : (_restoredAt ?? _engine.position),
+    from: state.from,
+  );
 
   /// Adds [tracks] to the end of the queue.
   Future<void> enqueue(List<Track> tracks) async {
@@ -334,6 +380,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   /// Empties the queue, keeping the listener's repeat and volume settings.
   Future<void> clear() async {
+    _restoredAt = null;
     state = PlayerState(repeat: state.repeat, volume: state.volume);
     await _engine.clear();
   }
@@ -356,5 +403,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     }
   }
 
-  Future<void> seek(Duration d) => _engine.seek(d);
+  Future<void> seek(Duration d) {
+    _restoredAt = null;
+    return _engine.seek(d);
+  }
 }

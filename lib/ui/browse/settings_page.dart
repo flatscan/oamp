@@ -187,6 +187,17 @@ class SettingsPage extends ConsumerWidget {
               leading: const Icon(Icons.dns_outlined),
               title: Text(source.displayName),
             ),
+            if (source.capabilities.hasQueueSync)
+              SwitchListTile(
+                secondary: const Icon(Icons.devices_rounded),
+                title: const Text('Sync play queue'),
+                subtitle: const Text(
+                  'Saves the queue to the server, so you can carry on '
+                  'listening from another device or app.',
+                ),
+                value: settings.syncQueue,
+                onChanged: notifier.setSyncQueue,
+              ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
               title: const Text('Sign out'),

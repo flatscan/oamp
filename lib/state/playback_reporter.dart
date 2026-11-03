@@ -30,15 +30,25 @@ class _Reporter {
   bool _submitted = false;
   Duration _last = Duration.zero;
 
+  /// Whether "now playing" has been sent for the current entry. It waits
+  /// for playback to start, so a queue restored paused at start-up is not
+  /// announced.
+  bool _announced = false;
+
   void onPlayer() {
     final s = ref.read(playerProvider);
     final t = s.current;
-    if (t?.id == _trackId && s.currentIndex == _index) return;
-    _trackId = t?.id;
-    _index = s.currentIndex;
-    _submitted = false;
-    _last = Duration.zero;
-    if (t != null) _send(t.id, submission: false);
+    if (t?.id != _trackId || s.currentIndex != _index) {
+      _trackId = t?.id;
+      _index = s.currentIndex;
+      _submitted = false;
+      _announced = false;
+      _last = Duration.zero;
+    }
+    if (t != null && s.playing && !_announced) {
+      _announced = true;
+      _send(t.id, submission: false);
+    }
   }
 
   void onPosition(Duration p) {
