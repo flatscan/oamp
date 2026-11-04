@@ -143,6 +143,78 @@ void main() {
       expect(requests.last.queryParameters['title'], 'Sexy Boy');
     });
 
+    test('a server without songLyrics is only asked the classic way', () async {
+      final s = source(
+        (u) => u.path.endsWith('/ping')
+            ? {'status': 'ok', 'openSubsonic': true}
+            : u.path.endsWith('getOpenSubsonicExtensions')
+            ? {
+                'status': 'ok',
+                'openSubsonicExtensions': [
+                  {
+                    'name': 'formPost',
+                    'versions': [1],
+                  },
+                ],
+              }
+            : {
+                'status': 'ok',
+                'lyrics': {'value': 'Only line'},
+              },
+      );
+      await s.detectCapabilities();
+      requests.clear();
+      final l = await s.getLyrics(track);
+      expect(l.lines.map((x) => x.text), ['Only line']);
+      expect(requests.map((u) => u.pathSegments.last), ['getLyrics']);
+    });
+
+    test(
+      'lyrics from an .lrc file next to the track, as Navidrome sends them',
+      () async {
+        // The reply Navidrome gives for a track with a sidecar .lrc file.
+        final s = source(
+          (u) => u.path.endsWith('/ping')
+              ? {'status': 'ok', 'openSubsonic': true}
+              : u.path.endsWith('getOpenSubsonicExtensions')
+              ? {
+                  'status': 'ok',
+                  'openSubsonicExtensions': [
+                    {
+                      'name': 'songLyrics',
+                      'versions': [1],
+                    },
+                  ],
+                }
+              : {
+                  'status': 'ok',
+                  'lyricsList': {
+                    'structuredLyrics': [
+                      {
+                        'displayArtist': 'Air',
+                        'displayTitle': 'Sexy Boy',
+                        'lang': 'xxx',
+                        'offset': 0,
+                        'synced': true,
+                        'line': [
+                          {'start': 1000, 'value': 'First line'},
+                          {'start': 5000, 'value': 'Second line'},
+                          {'start': 10000, 'value': 'Third line'},
+                        ],
+                      },
+                    ],
+                  },
+                },
+        );
+        await s.detectCapabilities();
+        requests.clear();
+        final l = await s.getLyrics(track);
+        expect(l.synced, isTrue);
+        expect(l.lines.map((x) => x.start?.inSeconds), [1, 5, 10]);
+        expect(requests.map((u) => u.pathSegments.last), ['getLyricsBySongId']);
+      },
+    );
+
     test('no lyrics anywhere is Lyrics.none', () async {
       final s = source(
         (u) => u.path.endsWith('getLyricsBySongId')
