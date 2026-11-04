@@ -118,7 +118,15 @@ class FakeMusicSource implements MusicSource {
   /// Tracks beyond the album that queue saves can name.
   List<Track> extraTracks = const [];
   @override
-  Future<void> ping() async {}
+  Future<void> ping() async {
+    pings++;
+    final e = pingError;
+    if (e != null) throw e;
+  }
+
+  /// Thrown by [ping] while set, to fake a server that is down or signed out.
+  MusicSourceException? pingError;
+  int pings = 0;
   @override
   Future<List<Artist>> getArtists() async => artists;
   @override

@@ -197,11 +197,25 @@ abstract class MusicSource {
   void close();
 }
 
+/// What went wrong talking to a server, so the UI can offer the right fix:
+/// retry for [unreachable], check the address for [notAServer], sign in
+/// again for [auth].
+enum MusicSourceErrorKind { unreachable, notAServer, auth, server, other }
+
 class MusicSourceException implements Exception {
+  /// A sentence to show the user as it is.
   final String message;
+
+  /// The backend's own error code, such as Subsonic's 40, when it sent one.
   final int? code;
-  MusicSourceException(this.message, {this.code});
+  final MusicSourceErrorKind kind;
+
+  MusicSourceException(
+    this.message, {
+    this.code,
+    this.kind = MusicSourceErrorKind.other,
+  });
 
   @override
-  String toString() => code == null ? message : '$message (code $code)';
+  String toString() => message;
 }

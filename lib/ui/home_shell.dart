@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'browser.dart';
 import 'player/mini_player.dart';
 import 'player/now_playing.dart';
+import 'server_banner.dart';
 import 'window_mode.dart';
 
 /// Main screen: one column, the same on desktop as on a phone. Browsing
@@ -79,59 +80,66 @@ class _HomeShellState extends ConsumerState<HomeShell>
     );
     final sheet = expanded ? kAlwaysCompleteAnimation : _sheet;
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) => Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: _columnWidth(expanded, constraints.maxWidth),
-              child: AnimatedBuilder(
-                animation: sheet,
-                builder: (context, _) => Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Covered (and paused) while now playing is fully up.
-                    Offstage(
-                      offstage: expanded || sheet.isCompleted,
-                      child: expanded ? const SizedBox.shrink() : browser,
-                    ),
-                    if (!sheet.isDismissed)
-                      SlideTransition(
-                        position:
-                            Tween(
-                              begin: const Offset(0, 1),
-                              end: Offset.zero,
-                            ).animate(
-                              CurvedAnimation(
-                                parent: sheet,
-                                curve: Curves.easeOutCubic,
-                                reverseCurve: Curves.easeInCubic,
+      body: Column(
+        children: [
+          const ServerStatusBanner(),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: _columnWidth(expanded, constraints.maxWidth),
+                    child: AnimatedBuilder(
+                      animation: sheet,
+                      builder: (context, _) => Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Covered (and paused) while now playing is fully up.
+                          Offstage(
+                            offstage: expanded || sheet.isCompleted,
+                            child: expanded ? const SizedBox.shrink() : browser,
+                          ),
+                          if (!sheet.isDismissed)
+                            SlideTransition(
+                              position:
+                                  Tween(
+                                    begin: const Offset(0, 1),
+                                    end: Offset.zero,
+                                  ).animate(
+                                    CurvedAnimation(
+                                      parent: sheet,
+                                      curve: Curves.easeOutCubic,
+                                      reverseCurve: Curves.easeInCubic,
+                                    ),
+                                  ),
+                              child: NowPlayingView(
+                                key: _nowPlayingKey,
+                                onClose: expanded ? null : _close,
                               ),
                             ),
-                        child: NowPlayingView(
-                          key: _nowPlayingKey,
-                          onClose: expanded ? null : _close,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: expanded
-                  ? FlyoutSlide(
-                      reveal: reveal,
-                      child: Row(
-                        children: [
-                          const VerticalDivider(width: 1),
-                          Expanded(child: browser),
                         ],
                       ),
-                    )
-                  : const SizedBox.shrink(),
+                    ),
+                  ),
+                  Expanded(
+                    child: expanded
+                        ? FlyoutSlide(
+                            reveal: reveal,
+                            child: Row(
+                              children: [
+                                const VerticalDivider(width: 1),
+                                Expanded(child: browser),
+                              ],
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

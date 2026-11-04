@@ -77,7 +77,8 @@ void main() {
       throwsA(
         isA<MusicSourceException>()
             .having((e) => e.code, 'code', 40)
-            .having((e) => e.message, 'message', 'Wrong username or password'),
+            .having((e) => e.message, 'message', 'Wrong username or password.')
+            .having((e) => e.kind, 'kind', MusicSourceErrorKind.auth),
       ),
     );
   });
