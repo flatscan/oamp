@@ -4,7 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/session.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  /// Filled in when the saved server asks to sign in again.
+  final String? initialServerUrl;
+  final String? initialUsername;
+
+  /// Called after a successful sign-in when the screen was pushed on top of
+  /// the app (signing in again) rather than shown in its place.
+  final VoidCallback? onSignedIn;
+
+  const LoginScreen({
+    super.key,
+    this.initialServerUrl,
+    this.initialUsername,
+    this.onSignedIn,
+  });
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -12,8 +25,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _form = GlobalKey<FormState>();
-  final _url = TextEditingController();
-  final _user = TextEditingController();
+  late final _url = TextEditingController(text: widget.initialServerUrl);
+  late final _user = TextEditingController(text: widget.initialUsername);
   final _pass = TextEditingController();
   bool _busy = false;
   bool _obscure = true;
@@ -41,6 +54,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             username: _user.text,
             password: _pass.text,
           );
+      widget.onSignedIn?.call();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -55,6 +69,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      appBar: widget.onSignedIn == null
+          ? null
+          : AppBar(title: const Text('Sign in again')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
