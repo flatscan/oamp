@@ -27,6 +27,10 @@ class PlayerState {
   /// now playing artwork.
   final String? from;
 
+  /// Whether up next is in a shuffled order that [PlayerController.unshuffle]
+  /// can undo.
+  final bool shuffled;
+
   /// How far into the current track its stream starts. Non-zero after a
   /// seek in a transcoded stream that had to be reopened part way in; the
   /// engine then counts from zero and [positionProvider] adds this back.
@@ -35,6 +39,7 @@ class PlayerState {
   const PlayerState({
     this.from,
     this.offset = Duration.zero,
+    this.shuffled = false,
     this.queue = const [],
     this.qualities = const [],
     this.currentIndex,
@@ -72,7 +77,9 @@ class PlayerState {
     double? volume,
     String? Function()? from,
     Duration? offset,
+    bool? shuffled,
   }) => PlayerState(
+    shuffled: shuffled ?? this.shuffled,
     from: from != null ? from() : this.from,
     offset: offset ?? this.offset,
     queue: queue ?? this.queue,
@@ -142,6 +149,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// The queue entry whose stream was reopened part way in, while
   /// [PlayerState.offset] is set.
   Track? _reopened;
+
+  /// The queue's order before it was shuffled, while [PlayerState.shuffled].
+  List<Track> _unshuffled = const [];
 
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
@@ -262,6 +272,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     String? from,
   }) async {
     if (!_signedIn || tracks.isEmpty) return;
+    _unshuffled = shuffle ? List.of(tracks) : const [];
     if (shuffle) {
       tracks = [...tracks]..shuffle();
       startIndex = 0;
@@ -274,6 +285,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       currentIndex: () => startIndex,
       from: () => from,
       offset: Duration.zero,
+      shuffled: shuffle,
     );
     await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
@@ -309,6 +321,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       from: () => saved.from,
       playing: false,
       offset: reopen == null ? Duration.zero : _whole(position),
+      shuffled: false,
     );
     await _engine.setQueue(
       uris,
@@ -397,22 +410,51 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     final cur = state.currentIndex ?? -1;
     final rest = state.queue.sublist(cur + 1);
     if (rest.length < 2) return;
-    final shuffled = [...rest]..shuffle();
+    if (!state.shuffled) _unshuffled = List.of(state.queue);
+    await _setUpcoming([...rest]..shuffle());
+    state = state.copyWith(shuffled: true);
+  }
+
+  /// Puts up next back in the order it had before [shuffleUpcoming] (or a
+  /// shuffled [playTracks]). Tracks added since keep their place at the
+  /// end, in the order they were added.
+  Future<void> unshuffle() async {
+    if (!state.shuffled) return;
+    final cur = state.currentIndex ?? -1;
+    final rest = state.queue.sublist(cur + 1);
+    final left = [...rest];
+    final ordered = <Track>[];
+    for (final t in _unshuffled) {
+      final i = left.indexWhere((x) => identical(x, t));
+      if (i >= 0) ordered.add(left.removeAt(i));
+    }
+    _unshuffled = const [];
+    await _setUpcoming([...ordered, ...left]);
+    state = state.copyWith(shuffled: false);
+  }
+
+  Future<void> toggleShuffle() =>
+      state.shuffled ? unshuffle() : shuffleUpcoming();
+
+  /// Replaces everything after the current track with [upcoming].
+  Future<void> _setUpcoming(List<Track> upcoming) async {
+    final cur = state.currentIndex ?? -1;
+    final count = state.queue.length - cur - 1;
     final q = ref.read(streamQualityProvider);
     state = state.copyWith(
       queue: List.unmodifiable([
         ...state.queue.sublist(0, cur + 1),
-        ...shuffled,
+        ...upcoming,
       ]),
       qualities: List.unmodifiable([
         ...state.qualities.take(cur + 1),
-        ...List.filled(shuffled.length, q),
+        ...List.filled(upcoming.length, q),
       ]),
     );
-    for (var i = cur + rest.length; i > cur; i--) {
+    for (var i = cur + count; i > cur; i--) {
       await _engine.removeAt(i);
     }
-    await _engine.addAll(await _uris(shuffled));
+    await _engine.addAll(await _uris(upcoming));
   }
 
   /// Removes everything after the current track.
@@ -424,6 +466,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     state = state.copyWith(
       queue: List.unmodifiable(state.queue.sublist(0, cur + 1)),
       qualities: List.unmodifiable(state.qualities.take(cur + 1).toList()),
+      shuffled: false,
     );
     for (var i = end; i > cur; i--) {
       await _engine.removeAt(i);
