@@ -586,4 +586,49 @@ void main() {
     await c.getRandomTracks();
     expect(seen.last.url.queryParameters.containsKey('genre'), isFalse);
   });
+
+  test(
+    'reportPlaybackState sends state and position without a scrobble',
+    () async {
+      final seen = <http.Request>[];
+      final c = SubsonicSource(
+        SubsonicCredentials.fromPassword(
+          baseUrl: Uri.parse('https://m.example.com'),
+          username: 'ed',
+          password: 'x',
+        ),
+        httpClient: MockClient((req) async {
+          seen.add(req);
+          return http.Response(
+            jsonEncode({
+              'subsonic-response': {'status': 'ok'},
+            }),
+            200,
+          );
+        }),
+      );
+      await c.reportPlaybackState(
+        't1',
+        PlaybackPhase.paused,
+        const Duration(seconds: 129),
+      );
+      final q = seen.single.url.queryParameters;
+      expect(seen.single.url.path, '/rest/reportPlayback');
+      expect(q['mediaId'], 't1');
+      expect(q['mediaType'], 'song');
+      expect(q['positionMs'], '129000');
+      expect(q['state'], 'paused');
+      expect(q['ignoreScrobble'], 'true');
+    },
+  );
+
+  test('the playbackReport extension turns on state reporting', () {
+    expect(
+      SubsonicSource.capabilitiesFor({
+        'playbackReport': [1],
+      }).hasPlaybackState,
+      isTrue,
+    );
+    expect(SubsonicSource.capabilitiesFor({}).hasPlaybackState, isFalse);
+  });
 }

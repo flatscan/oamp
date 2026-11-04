@@ -94,6 +94,7 @@ class SubsonicSource implements MusicSource {
     hasGenres: baseline.hasGenres,
     hasQueueSync: baseline.hasQueueSync,
     hasLyrics: extensions.containsKey('songLyrics'),
+    hasPlaybackState: extensions.containsKey('playbackReport'),
     extensions: extensions,
     serverType: serverType,
     serverVersion: serverVersion,
@@ -367,6 +368,20 @@ class SubsonicSource implements MusicSource {
   @override
   Future<void> reportPlayback(String trackId, {required bool submission}) =>
       client.get('scrobble', {'id': trackId, 'submission': '$submission'});
+
+  @override
+  Future<void> reportPlaybackState(
+    String trackId,
+    PlaybackPhase phase,
+    Duration position,
+  ) => client.get('reportPlayback', {
+    'mediaId': trackId,
+    'mediaType': 'song',
+    'positionMs': '${position.inMilliseconds}',
+    'state': phase.name,
+    // Plays are counted by scrobble, so the server must not count them again.
+    'ignoreScrobble': 'true',
+  });
 
   @override
   Future<SavedQueue?> getPlayQueue() async {
