@@ -97,7 +97,7 @@ class _ArtistsPageState extends ConsumerState<ArtistsPage> {
                     : _rowHeight,
                 itemBuilder: (context, i) {
                   final r = rows[i];
-                  if (r is Artist) return _ArtistTile(artist: r);
+                  if (r is Artist) return ArtistTile(artist: r);
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                     child: Text(
@@ -116,9 +116,10 @@ class _ArtistsPageState extends ConsumerState<ArtistsPage> {
   }
 }
 
-class _ArtistTile extends StatelessWidget {
+/// One artist in a list, with their photo and album count.
+class ArtistTile extends StatelessWidget {
   final Artist artist;
-  const _ArtistTile({required this.artist});
+  const ArtistTile({super.key, required this.artist});
 
   @override
   Widget build(BuildContext context) {

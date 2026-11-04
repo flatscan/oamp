@@ -144,6 +144,9 @@ abstract class MusicSource {
   /// Tracks the user has liked.
   Future<List<Track>> getLikedTracks();
 
+  /// Artists the user has liked (starred).
+  Future<List<Artist>> getLikedArtists();
+
   /// Likes or unlikes a track, album or artist.
   Future<void> setLiked(
     String id,

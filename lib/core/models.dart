@@ -15,6 +15,9 @@ class Artist {
   /// The name the server sorts by, such as `Beatles` for `The Beatles`.
   final String? sortName;
 
+  /// The user's 1 to 5 star rating, or 0 for none.
+  final int rating;
+
   const Artist({
     required this.id,
     required this.name,
@@ -22,6 +25,7 @@ class Artist {
     this.coverArt,
     this.liked = false,
     this.sortName,
+    this.rating = 0,
   });
 }
 
