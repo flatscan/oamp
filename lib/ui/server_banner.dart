@@ -79,6 +79,7 @@ class ServerStatusBanner extends ConsumerWidget {
         builder: (_) => LoginScreen(
           initialServerUrl: hint?.serverUrl,
           initialUsername: hint?.username,
+          initialApiKey: hint?.apiKey ?? false,
           onSignedIn: nav.pop,
         ),
       ),

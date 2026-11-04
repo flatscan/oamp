@@ -12,18 +12,38 @@ import '../../core/music_source.dart';
 /// Token auth (API 1.13.0+) sends `t = md5(password + salt)` and `s = salt`
 /// instead of the password. Only the token and salt are kept, so the plain
 /// password never needs to be stored.
+///
+/// Servers with the OpenSubsonic `apiKeyAuthentication` extension also take
+/// an API key ([apiKey]) in place of all three, which is the only way in for
+/// accounts that cannot use token auth, such as LDAP ones.
 class SubsonicCredentials {
   final Uri baseUrl;
   final String username;
   final String token;
   final String salt;
+  final String? apiKey;
 
   const SubsonicCredentials({
     required this.baseUrl,
     required this.username,
     required this.token,
     required this.salt,
+    this.apiKey,
   });
+
+  /// Signs in with an API key. [username] is optional and only for display;
+  /// the server knows the account from the key.
+  factory SubsonicCredentials.fromApiKey({
+    required Uri baseUrl,
+    required String apiKey,
+    String username = '',
+  }) => SubsonicCredentials(
+    baseUrl: baseUrl,
+    username: username,
+    token: '',
+    salt: '',
+    apiKey: apiKey,
+  );
 
   factory SubsonicCredentials.fromPassword({
     required Uri baseUrl,
@@ -42,8 +62,15 @@ class SubsonicCredentials {
 
   /// Stable id for this server account: the same URL and username always
   /// give the same id, whatever salt was used.
-  String get serverId =>
-      'subsonic:${sha1.convert(utf8.encode('$username@$baseUrl')).toString().substring(0, 16)}';
+  ///
+  /// With an API key and no username, the id comes from a hash of the key,
+  /// so it is stable without revealing the key.
+  String get serverId {
+    final who = apiKey != null && username.isEmpty
+        ? 'key:${sha1.convert(utf8.encode(apiKey!))}'
+        : username;
+    return 'subsonic:${sha1.convert(utf8.encode('$who@$baseUrl')).toString().substring(0, 16)}';
+  }
 
   static String _randomSalt([int length = 12]) {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -56,14 +83,16 @@ class SubsonicCredentials {
     'username': username,
     'token': token,
     'salt': salt,
+    'apiKey': ?apiKey,
   };
 
   factory SubsonicCredentials.fromJson(Map<String, dynamic> j) =>
       SubsonicCredentials(
         baseUrl: Uri.parse(j['baseUrl'] as String),
         username: j['username'] as String,
-        token: j['token'] as String,
-        salt: j['salt'] as String,
+        token: (j['token'] as String?) ?? '',
+        salt: (j['salt'] as String?) ?? '',
+        apiKey: j['apiKey'] as String?,
       );
 }
 
@@ -92,9 +121,13 @@ class SubsonicClient {
   }
 
   Map<String, String> get _authParams => {
-    'u': credentials.username,
-    't': credentials.token,
-    's': credentials.salt,
+    if (credentials.apiKey case final key?)
+      'apiKey': key
+    else ...{
+      'u': credentials.username,
+      't': credentials.token,
+      's': credentials.salt,
+    },
     'v': apiVersion,
     'c': clientName,
     'f': 'json',
