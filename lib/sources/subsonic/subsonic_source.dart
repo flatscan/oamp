@@ -354,6 +354,20 @@ class SubsonicSource implements MusicSource {
   }
 
   @override
+  Future<List<Artist>> getLikedArtists() async {
+    final r = await client.get('getStarred2');
+    final list = [
+      for (final a in (r['starred2']?['artist'] as List? ?? const []))
+        _artist(a as Map<String, dynamic>),
+    ];
+    return list..sort(
+      (a, b) => (a.sortName ?? a.name).toLowerCase().compareTo(
+        (b.sortName ?? b.name).toLowerCase(),
+      ),
+    );
+  }
+
+  @override
   Future<void> setLiked(
     String id,
     bool liked, {
@@ -576,6 +590,7 @@ class SubsonicSource implements MusicSource {
     albumCount: _int(j['albumCount']) ?? 0,
     coverArt: j['coverArt'] as String?,
     liked: j['starred'] != null,
+    rating: _int(j['userRating']) ?? 0,
   );
 
   /// OpenSubsonic's `genres` list, else the single `genre` field.

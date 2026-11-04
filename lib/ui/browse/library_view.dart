@@ -42,6 +42,11 @@ class LibraryView extends ConsumerWidget {
               label: 'Liked tracks',
               onTap: () => openPage(const LikedTracksPage()),
             ),
+            _Entry(
+              icon: Icons.person_rounded,
+              label: 'Liked artists',
+              onTap: () => openPage(const LikedArtistsPage()),
+            ),
             AlbumCarousel(
               title: 'Recently added',
               albums: ref.watch(homeAlbumsProvider(AlbumSort.newest)),

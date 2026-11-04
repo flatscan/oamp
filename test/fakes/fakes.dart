@@ -260,6 +260,11 @@ class FakeMusicSource implements MusicSource {
   @override
   Future<List<Track>> getLikedTracks() async => [];
   @override
+  Future<List<Artist>> getLikedArtists() async => [
+    for (final a in artists)
+      if (a.liked) a,
+  ];
+  @override
   Future<void> setLiked(
     String id,
     bool liked, {

@@ -83,6 +83,31 @@ void main() {
     );
   });
 
+  test('liked artists come sorted, with their ratings', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'starred2': {
+        'artist': [
+          {'id': '2', 'name': 'The Cure', 'starred': '2026-01-01'},
+          {
+            'id': '1',
+            'name': 'Björk',
+            'starred': '2026-01-01',
+            'userRating': 4,
+          },
+        ],
+        'song': [
+          {'id': 's', 'title': 'Song'},
+        ],
+      },
+    });
+    final artists = await c.getLikedArtists();
+    expect(artists.map((a) => a.name), ['Björk', 'The Cure']);
+    expect(artists.first.rating, 4);
+    expect(artists.last.rating, 0);
+    expect(artists.every((a) => a.liked), isTrue);
+  });
+
   test('getArtists flattens the index', () async {
     final c = sourceReturning({
       'status': 'ok',

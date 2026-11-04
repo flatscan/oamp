@@ -8,6 +8,7 @@ import '../../state/session.dart';
 import '../async_view.dart';
 import '../browser.dart';
 import '../cover_art.dart';
+import '../rating_stars.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'playlists_view.dart';
@@ -68,32 +69,44 @@ class ArtistPage extends ConsumerWidget {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-            child: PlayShuffleButtons(
-              onPlay: albums.isEmpty ? null : () => play(),
-              onShuffle: albums.isEmpty ? null : () => play(shuffle: true),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (radio)
-                    IconButton(
-                      tooltip: 'Artist radio',
-                      icon: const Icon(Icons.radio_rounded),
-                      onPressed: () => startRadio(
-                        context,
-                        ref,
-                        name: a.name,
-                        artistId: a.id,
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RatingStars(
+                  id: a.id,
+                  fetched: a.rating,
+                  size: 20,
+                  what: 'artist',
+                ),
+                const SizedBox(height: 12),
+                PlayShuffleButtons(
+                  onPlay: albums.isEmpty ? null : () => play(),
+                  onShuffle: albums.isEmpty ? null : () => play(shuffle: true),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (radio)
+                        IconButton(
+                          tooltip: 'Artist radio',
+                          icon: const Icon(Icons.radio_rounded),
+                          onPressed: () => startRadio(
+                            context,
+                            ref,
+                            name: a.name,
+                            artistId: a.id,
+                          ),
+                        ),
+                      LikeButton(
+                        target: LikeTarget.artist,
+                        id: a.id,
+                        fetched: a.liked,
+                        what: 'artist',
                       ),
-                    ),
-                  LikeButton(
-                    target: LikeTarget.artist,
-                    id: a.id,
-                    fetched: a.liked,
-                    what: 'artist',
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
