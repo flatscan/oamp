@@ -6,6 +6,7 @@ import '../../state/library.dart';
 import '../../state/player.dart';
 import '../async_view.dart';
 import '../cover_art.dart';
+import '../rating_stars.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -200,6 +201,13 @@ class _Header extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(meta, style: t.bodySmall),
               ],
+              const SizedBox(height: 6),
+              RatingStars(
+                id: album.id,
+                fetched: album.rating,
+                size: 20,
+                what: 'album',
+              ),
               const SizedBox(height: 20),
               PlayShuffleButtons(
                 onPlay: onPlay,
