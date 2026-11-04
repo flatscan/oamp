@@ -459,4 +459,131 @@ void main() {
     expect(seen.last.method, 'POST');
     expect(Uri(query: seen.last.body).queryParametersAll['id'], hasLength(100));
   });
+
+  group('server capabilities', () {
+    /// A server answering `ping` with [pong] and the extensions endpoint
+    /// with [extensions], or failing it when null.
+    (SubsonicSource, List<http.Request>) server(
+      Map<String, dynamic> pong, {
+      List<Map<String, dynamic>>? extensions,
+    }) {
+      final seen = <http.Request>[];
+      final c = SubsonicSource(
+        SubsonicCredentials.fromPassword(
+          baseUrl: Uri.parse('https://m.example.com'),
+          username: 'ed',
+          password: 'x',
+        ),
+        httpClient: MockClient((req) async {
+          seen.add(req);
+          final ext = req.url.path.endsWith('getOpenSubsonicExtensions');
+          if (ext && extensions == null) return http.Response('', 404);
+          final body = ext
+              ? {'status': 'ok', 'openSubsonicExtensions': extensions}
+              : {'status': 'ok', ...pong};
+          return http.Response.bytes(
+            utf8.encode(jsonEncode({'subsonic-response': body})),
+            200,
+          );
+        }),
+      );
+      return (c, seen);
+    }
+
+    test('Navidrome extensions and version are read', () async {
+      final (c, seen) = server(
+        {'openSubsonic': true, 'type': 'navidrome', 'serverVersion': '0.64.2'},
+        extensions: [
+          {
+            'name': 'songLyrics',
+            'versions': [1],
+          },
+          {
+            'name': 'formPost',
+            'versions': [1],
+          },
+          {
+            'name': 'transcodeOffset',
+            'versions': ['1'],
+          },
+          {'versions': []},
+        ],
+      );
+      expect(c.capabilities.extensions, isEmpty);
+      final caps = await c.detectCapabilities();
+      expect(seen.map((r) => r.url.path), [
+        '/rest/ping',
+        '/rest/getOpenSubsonicExtensions',
+      ]);
+      expect(caps.serverType, 'navidrome');
+      expect(caps.serverVersion, '0.64.2');
+      expect(caps.extensions.keys, [
+        'songLyrics',
+        'formPost',
+        'transcodeOffset',
+      ]);
+      expect(caps.supports('transcodeOffset', version: 1), isTrue);
+      expect(caps.supports('songLyrics', version: 2), isFalse);
+      expect(caps.supports('indexBasedQueue'), isFalse);
+      expect(caps.hasLyrics, isTrue);
+      expect(caps.hasSimilar, isTrue);
+      expect(caps.hasRadio, isTrue);
+      expect(c.capabilities, same(caps));
+    });
+
+    test('a plain Subsonic server is not asked for extensions', () async {
+      final (c, seen) = server({'version': '1.16.1'});
+      final caps = await c.detectCapabilities();
+      expect(seen.single.url.path, '/rest/ping');
+      expect(caps.extensions, isEmpty);
+      expect(caps.hasLyrics, isFalse);
+      expect(caps.hasGenres, isTrue);
+    });
+
+    test('a failing extensions endpoint leaves no extensions', () async {
+      final (c, _) = server({'openSubsonic': true, 'type': 'other'});
+      final caps = await c.detectCapabilities();
+      expect(caps.serverType, 'other');
+      expect(caps.extensions, isEmpty);
+    });
+
+    test('long id lists stay in the URL without formPost', () async {
+      final (c, seen) = server({'openSubsonic': true}, extensions: const []);
+      await c.detectCapabilities();
+      seen.clear();
+      await c.replacePlaylistTracks('p9', [for (var i = 0; i < 50; i++) 't$i']);
+      expect(seen.single.method, 'GET');
+      expect(seen.single.url.queryParametersAll['songId'], hasLength(50));
+    });
+  });
+
+  test('random songs can be limited to a genre, and genres are read', () async {
+    final (c, seen) = recording({
+      'randomSongs': {
+        'song': [
+          {
+            'id': 't1',
+            'title': 'One',
+            'genre': 'Rock',
+            'genres': [
+              {'name': 'Rock'},
+              {'name': 'Shoegaze'},
+            ],
+          },
+          {'id': 't2', 'title': 'Two', 'genre': 'Jazz'},
+          {'id': 't3', 'title': 'Three', 'genre': ''},
+        ],
+      },
+    });
+    final ts = await c.getRandomTracks(size: 20, genre: 'Rock');
+    expect(seen.single.url.queryParameters['genre'], 'Rock');
+    expect(ts.map((t) => t.genres), [
+      ['Rock', 'Shoegaze'],
+      ['Jazz'],
+      <String>[],
+    ]);
+    expect(ts.last.genre, isNull);
+    await c.getRandomTracks();
+    expect(seen.last.url.queryParameters.containsKey('genre'), isFalse);
+  });
 }

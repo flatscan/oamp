@@ -41,7 +41,7 @@ class ArtistPage extends ConsumerWidget {
         ref.watch(topTracksProvider((id: artist.id, name: a.name))).value ??
         const <Track>[];
     final info = ref.watch(artistInfoProvider(artist.id)).value;
-    final similar = ref.read(musicSourceProvider).capabilities.hasSimilar;
+    final radio = ref.watch(capabilitiesProvider).hasRadio;
     final player = ref.read(playerProvider.notifier);
 
     Future<void> play({bool shuffle = false}) async {
@@ -75,12 +75,16 @@ class ArtistPage extends ConsumerWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (similar)
+                  if (radio)
                     IconButton(
                       tooltip: 'Artist radio',
                       icon: const Icon(Icons.radio_rounded),
-                      onPressed: () =>
-                          startRadio(context, ref, id: a.id, name: a.name),
+                      onPressed: () => startRadio(
+                        context,
+                        ref,
+                        name: a.name,
+                        artistId: a.id,
+                      ),
                     ),
                   LikeButton(
                     target: LikeTarget.artist,
