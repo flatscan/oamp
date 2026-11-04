@@ -112,12 +112,27 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     required String serverUrl,
     required String username,
     required String password,
-  }) async {
-    final creds = SubsonicCredentials.fromPassword(
+  }) => _login(
+    SubsonicCredentials.fromPassword(
       baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
       username: username.trim(),
       password: password,
-    );
+    ),
+  );
+
+  /// Signs in with an API key instead of a username and password, on
+  /// servers with the `apiKeyAuthentication` extension.
+  Future<void> loginSubsonicWithApiKey({
+    required String serverUrl,
+    required String apiKey,
+  }) => _login(
+    SubsonicCredentials.fromApiKey(
+      baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
+      apiKey: apiKey.trim(),
+    ),
+  );
+
+  Future<void> _login(SubsonicCredentials creds) async {
     final source = SubsonicSource(creds);
     try {
       await source.ping();
@@ -136,7 +151,8 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
 
   /// The address and username saved for the active server, to fill in the
   /// login form when the server asks to sign in again.
-  Future<({String serverUrl, String username})?> savedLoginHint() async {
+  Future<({String serverUrl, String username, bool apiKey})?>
+  savedLoginHint() async {
     final id = state.value?.serverId;
     if (id == null) return null;
     try {
@@ -146,7 +162,8 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
       final c = j['credentials'] as Map<String, dynamic>;
       return (
         serverUrl: c['baseUrl'] as String,
-        username: c['username'] as String,
+        username: (c['username'] as String?) ?? '',
+        apiKey: c['apiKey'] != null,
       );
     } catch (_) {
       return null;

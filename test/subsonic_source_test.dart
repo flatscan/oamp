@@ -43,6 +43,36 @@ void main() {
     expect(uri.toString(), isNot(contains('sesame')));
   });
 
+  test('an API key replaces u, t and s and survives saving', () {
+    final c = SubsonicCredentials.fromApiKey(
+      baseUrl: Uri.parse('https://m.example.com'),
+      apiKey: 'k3y',
+    );
+    final q = SubsonicClient(c).endpointUri('ping').queryParameters;
+    expect(q['apiKey'], 'k3y');
+    expect(
+      q.containsKey('u') || q.containsKey('t') || q.containsKey('s'),
+      isFalse,
+    );
+    final back = SubsonicCredentials.fromJson(c.toJson());
+    expect(back.apiKey, 'k3y');
+    expect(back.serverId, c.serverId);
+    expect(c.serverId, isNot(contains('k3y')));
+    final other = SubsonicCredentials.fromApiKey(
+      baseUrl: Uri.parse('https://m.example.com'),
+      apiKey: 'other',
+    );
+    expect(other.serverId, isNot(c.serverId));
+    // Saved password logins from before API keys still load.
+    final old = SubsonicCredentials.fromJson({
+      'baseUrl': 'https://m.example.com',
+      'username': 'ed',
+      'token': 't',
+      'salt': 's',
+    });
+    expect(old.apiKey, isNull);
+  });
+
   test('serverId is stable across salts and differs per account', () {
     SubsonicCredentials creds(String user) => SubsonicCredentials.fromPassword(
       baseUrl: Uri.parse('https://m.example.com'),
