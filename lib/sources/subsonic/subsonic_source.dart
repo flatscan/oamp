@@ -502,8 +502,11 @@ class SubsonicSource implements MusicSource {
   Uri streamUrl(
     String trackId, {
     StreamQuality quality = StreamQuality.original,
+    Duration offset = Duration.zero,
   }) => client.endpointUri('stream', {
     'id': trackId,
+    if (!quality.isOriginal && offset.inSeconds > 0)
+      'timeOffset': '${offset.inSeconds}',
     // `raw` asks for the stored file even when the server has a default
     // transcoding set up for this client.
     if (quality.isOriginal)

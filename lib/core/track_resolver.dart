@@ -14,6 +14,11 @@ abstract class TrackResolver {
 
   /// The cache request for [track], or null when tracks are not cached.
   CacheRequest? cacheRequest(Track track) => null;
+
+  /// A URI that starts [offset] into [track], when the URI from [resolve]
+  /// cannot be seeked that far: a transcoded stream that is not cached yet.
+  /// Null when an ordinary seek works.
+  Uri? resolveFrom(Track track, Duration offset) => null;
 }
 
 class StreamingTrackResolver implements TrackResolver {
@@ -23,11 +28,23 @@ class StreamingTrackResolver implements TrackResolver {
   /// Optional playback cache. Without one the engine streams directly.
   final TrackCache? cache;
 
+  /// Whether the server can start a transcoded stream part way in.
+  final bool canStartAt;
+
   const StreamingTrackResolver(
     this.source, {
     this.quality = StreamQuality.original,
     this.cache,
+    this.canStartAt = false,
   });
+
+  @override
+  Uri? resolveFrom(Track track, Duration offset) {
+    if (quality.isOriginal || !canStartAt) return null;
+    final req = cacheRequest(track);
+    if (req != null && cache!.isCached(req.key)) return null;
+    return source.streamUrl(track.id, quality: quality, offset: offset);
+  }
 
   @override
   CacheRequest? cacheRequest(Track track) => cache == null

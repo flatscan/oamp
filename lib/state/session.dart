@@ -65,6 +65,7 @@ final trackResolverProvider = Provider<TrackResolver>(
     ref.watch(musicSourceProvider),
     quality: ref.watch(streamQualityProvider),
     cache: ref.watch(trackCacheProvider),
+    canStartAt: ref.watch(capabilitiesProvider).canStartTranscodeAt,
   ),
 );
 
