@@ -1,3 +1,5 @@
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,7 @@ import 'platform/preferences.dart';
 import 'state/playback_reporter.dart';
 import 'state/player.dart';
 import 'state/precache.dart';
+import 'state/queue_sync.dart';
 import 'state/session.dart';
 import 'state/settings.dart';
 import 'state/system_controls_bridge.dart';
@@ -85,16 +88,51 @@ class OAmpApp extends StatelessWidget {
   }
 }
 
-class _Root extends ConsumerWidget {
+class _Root extends ConsumerStatefulWidget {
   const _Root();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Mirror the player into the OS media controls, and report plays to the
-    // server, for the app's lifetime.
+  ConsumerState<_Root> createState() => _RootState();
+}
+
+class _RootState extends ConsumerState<_Root> {
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    QueueSync sync() => ref.read(queueSyncProvider);
+    _lifecycle = AppLifecycleListener(
+      // Back in front: pick up a queue saved meanwhile on another device.
+      onResume: () => sync().checkServer(),
+      onHide: () => sync().flush(),
+      onExitRequested: () async {
+        // Save where playback stands before the window closes, without
+        // holding it open for a slow server.
+        ref.read(playbackReporterProvider).stop();
+        await sync().flush().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {},
+        );
+        return AppExitResponse.exit;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Mirror the player into the OS media controls, report plays to the
+    // server, and save the queue, for the app's lifetime.
     ref.watch(systemControlsBridgeProvider);
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
+    ref.watch(queueSyncProvider);
     final session = ref.watch(sessionProvider);
     return switch (session) {
       AsyncData(value: final session?) => HomeShell(

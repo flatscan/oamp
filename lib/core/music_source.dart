@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'play_queue.dart';
 import 'playback_options.dart';
 
 /// Features a backend may or may not support. The UI switches features on
@@ -11,7 +12,16 @@ import 'playback_options.dart';
 class SourceCapabilities {
   final bool hasLyrics;
   final bool hasSimilar;
+
+  /// Whether the server keeps a play queue per user that [MusicSource.
+  /// getPlayQueue] and [MusicSource.savePlayQueue] read and write, so
+  /// listening can carry on from another device.
   final bool hasQueueSync;
+
+  /// Whether the server shows live playback state (playing or paused, and
+  /// the position) in its now-playing list, fed by
+  /// [MusicSource.reportPlaybackState].
+  final bool hasPlaybackState;
 
   /// Whether tracks can be picked by genre, which radio falls back to when
   /// the server finds nothing similar.
@@ -32,6 +42,7 @@ class SourceCapabilities {
     this.hasSimilar = false,
     this.hasQueueSync = false,
     this.hasGenres = false,
+    this.hasPlaybackState = false,
     this.extensions = const {},
     this.serverType,
     this.serverVersion,
@@ -139,6 +150,29 @@ abstract class MusicSource {
   /// listened to ([submission] true), which drives play counts and the
   /// "recently played" lists.
   Future<void> reportPlayback(String trackId, {required bool submission});
+
+  /// Tells the server whether the track is playing or paused and where in
+  /// it playback is, for its now-playing list. Only meaningful when
+  /// [SourceCapabilities.hasPlaybackState] is set. It does not count as a
+  /// play: [reportPlayback] still does that.
+  Future<void> reportPlaybackState(
+    String trackId,
+    PlaybackPhase phase,
+    Duration position,
+  );
+
+  /// The play queue the server holds for the signed-in user, as this or
+  /// another client last saved it, or null when there is none. Only
+  /// meaningful when [SourceCapabilities.hasQueueSync] is set.
+  Future<SavedQueue?> getPlayQueue();
+
+  /// Saves the play queue on the server, replacing what it held. An empty
+  /// [trackIds] clears it. [currentIndex] points into [trackIds].
+  Future<void> savePlayQueue(
+    List<String> trackIds, {
+    int? currentIndex,
+    Duration position = Duration.zero,
+  });
 
   /// A URL that plays the track with no extra headers, so the local player
   /// or (later) a cast device can fetch it directly. [quality] asks the

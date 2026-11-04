@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/models.dart';
 import '../../core/music_source.dart';
+import '../../core/play_queue.dart';
 import '../../core/playback_options.dart';
 import 'subsonic_client.dart';
 
@@ -28,7 +29,12 @@ class SubsonicSource implements MusicSource {
   /// What every supported Navidrome can do before extensions are read.
   /// getSimilarSongs always exists; it just returns nothing when no outside
   /// agent (such as Last.fm) is configured, which radio handles with genres.
-  static const baseline = SourceCapabilities(hasSimilar: true, hasGenres: true);
+  /// Navidrome also keeps a play queue per user.
+  static const baseline = SourceCapabilities(
+    hasSimilar: true,
+    hasGenres: true,
+    hasQueueSync: true,
+  );
 
   SourceCapabilities _capabilities = baseline;
   bool _detected = false;
@@ -86,7 +92,9 @@ class SubsonicSource implements MusicSource {
   }) => SourceCapabilities(
     hasSimilar: baseline.hasSimilar,
     hasGenres: baseline.hasGenres,
+    hasQueueSync: baseline.hasQueueSync,
     hasLyrics: extensions.containsKey('songLyrics'),
+    hasPlaybackState: extensions.containsKey('playbackReport'),
     extensions: extensions,
     serverType: serverType,
     serverVersion: serverVersion,
@@ -360,6 +368,72 @@ class SubsonicSource implements MusicSource {
   @override
   Future<void> reportPlayback(String trackId, {required bool submission}) =>
       client.get('scrobble', {'id': trackId, 'submission': '$submission'});
+
+  @override
+  Future<void> reportPlaybackState(
+    String trackId,
+    PlaybackPhase phase,
+    Duration position,
+  ) => client.get('reportPlayback', {
+    'mediaId': trackId,
+    'mediaType': 'song',
+    'positionMs': '${position.inMilliseconds}',
+    'state': phase.name,
+    // Plays are counted by scrobble, so the server must not count them again.
+    'ignoreScrobble': 'true',
+  });
+
+  @override
+  Future<SavedQueue?> getPlayQueue() async {
+    final Map<String, dynamic> r;
+    try {
+      r = await client.get('getPlayQueue');
+    } on MusicSourceException catch (e) {
+      // Some servers answer "not found" (70) when nothing has been saved.
+      if (e.code == 70) return null;
+      rethrow;
+    }
+    return parsePlayQueue(r['playQueue']);
+  }
+
+  /// The `playQueue` element of a getPlayQueue reply, or null when it holds
+  /// nothing. The server names the current entry by track id, so a track
+  /// listed twice resumes at its first entry.
+  static SavedQueue? parsePlayQueue(Object? raw) {
+    if (raw is! Map) return null;
+    final j = raw.cast<String, dynamic>();
+    final tracks = [
+      for (final t in (j['entry'] as List? ?? const []))
+        _track(t as Map<String, dynamic>),
+    ];
+    if (tracks.isEmpty) return null;
+    final current = j['current']?.toString();
+    final index = current == null
+        ? null
+        : tracks.indexWhere((t) => t.id == current);
+    return SavedQueue(
+      tracks: tracks,
+      currentIndex: index == null || index < 0 ? 0 : index,
+      position: Duration(milliseconds: _int(j['position']) ?? 0),
+      changed: DateTime.tryParse('${j['changed']}'),
+      changedBy: j['changedBy'] as String?,
+    );
+  }
+
+  @override
+  Future<void> savePlayQueue(
+    List<String> trackIds, {
+    int? currentIndex,
+    Duration position = Duration.zero,
+  }) => _write('savePlayQueue', {
+    'id': trackIds,
+    if (currentIndex != null &&
+        currentIndex >= 0 &&
+        currentIndex < trackIds.length) ...{
+      'current': trackIds[currentIndex],
+      'position': '${position.inMilliseconds}',
+    },
+  }, trackIds.length);
 
   /// Auth rides in the query string, which is how Subsonic clients stream.
   @override

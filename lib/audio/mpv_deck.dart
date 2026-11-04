@@ -116,14 +116,33 @@ class MpvDeck implements AudioDeck {
   double get maxVolume => _volumeMax / 100;
 
   @override
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0}) async {
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  }) async {
     await _ready;
     _pos = Duration.zero;
     _empty = uris.isEmpty;
+    // mpv cannot seek until the file is open, which is when it learns the
+    // duration, so listen for that before opening.
+    final opened = initialPosition > Duration.zero && uris.isNotEmpty
+        ? _player.stream.duration
+              .firstWhere((d) => d > Duration.zero)
+              .timeout(const Duration(seconds: 15))
+        : null;
     await _player.open(
       Playlist(_media(uris), index: initialIndex),
       play: false,
     );
+    if (opened == null) return;
+    try {
+      await opened;
+    } catch (_) {
+      return; // Not opened in time; start from the top instead.
+    }
+    _pos = initialPosition;
+    await _player.seek(initialPosition);
   }
 
   @override
