@@ -58,6 +58,10 @@ class SourceCapabilities {
 
   /// Whether radio can start at all: from similar tracks or from genres.
   bool get hasRadio => hasSimilar || hasGenres;
+
+  /// Whether a transcoded stream can start part way in (the OpenSubsonic
+  /// `transcodeOffset` extension).
+  bool get canStartTranscodeAt => supports('transcodeOffset');
 }
 
 /// A library on one server. Subsonic/Navidrome is the only v1
@@ -186,9 +190,15 @@ abstract class MusicSource {
   /// A URL that plays the track with no extra headers, so the local player
   /// or (later) a cast device can fetch it directly. [quality] asks the
   /// server to transcode; the default streams the original file.
+  ///
+  /// [offset] starts a transcoded stream that far into the track, for
+  /// servers with [SourceCapabilities.canStartTranscodeAt]. Transcoded
+  /// streams usually cannot be seeked by byte range, so this is how a seek
+  /// reaches a point that has not been downloaded yet. Whole seconds only.
   Uri streamUrl(
     String trackId, {
     StreamQuality quality = StreamQuality.original,
+    Duration offset = Duration.zero,
   });
 
   /// URL for cover art at roughly [size] pixels, or null if there is none.

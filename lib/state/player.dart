@@ -27,8 +27,14 @@ class PlayerState {
   /// now playing artwork.
   final String? from;
 
+  /// How far into the current track its stream starts. Non-zero after a
+  /// seek in a transcoded stream that had to be reopened part way in; the
+  /// engine then counts from zero and [positionProvider] adds this back.
+  final Duration offset;
+
   const PlayerState({
     this.from,
+    this.offset = Duration.zero,
     this.queue = const [],
     this.qualities = const [],
     this.currentIndex,
@@ -65,8 +71,10 @@ class PlayerState {
     PlaybackRepeat? repeat,
     double? volume,
     String? Function()? from,
+    Duration? offset,
   }) => PlayerState(
     from: from != null ? from() : this.from,
+    offset: offset ?? this.offset,
     queue: queue ?? this.queue,
     qualities: qualities ?? this.qualities,
     currentIndex: currentIndex != null ? currentIndex() : this.currentIndex,
@@ -89,12 +97,23 @@ final audioEngineProvider = Provider<AudioEngine>((ref) {
   return engine;
 });
 
-final positionProvider = StreamProvider<Duration>(
-  (ref) => ref.watch(audioEngineProvider).positionStream,
-);
-final durationProvider = StreamProvider<Duration?>(
-  (ref) => ref.watch(audioEngineProvider).durationStream,
-);
+/// Where the current track is, counted from its start even when its
+/// stream was reopened part way in (see [PlayerState.offset]).
+final positionProvider = StreamProvider<Duration>((ref) {
+  final offset = ref.watch(playerProvider.select((s) => s.offset));
+  final positions = ref.watch(audioEngineProvider).positionStream;
+  return offset == Duration.zero ? positions : positions.map((p) => p + offset);
+});
+
+/// The current track's length. A stream reopened part way in only knows
+/// the length of what is left, so the library's length is used instead.
+final durationProvider = StreamProvider<Duration?>((ref) {
+  final offset = ref.watch(playerProvider.select((s) => s.offset));
+  if (offset != Duration.zero) {
+    return Stream.value(ref.read(playerProvider).current?.duration);
+  }
+  return ref.watch(audioEngineProvider).durationStream;
+});
 
 final playerProvider = NotifierProvider<PlayerController, PlayerState>(
   PlayerController.new,
@@ -115,6 +134,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   Duration? _restoredAt;
   PlaybackOptions _options = const PlaybackOptions();
 
+  /// Set while the current entry is being swapped for one that starts part
+  /// way in. The engine's index moves for a moment while that happens, and
+  /// that is not a track change.
+  bool _swapping = false;
+
+  /// The queue entry whose stream was reopened part way in, while
+  /// [PlayerState.offset] is set.
+  Track? _reopened;
+
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
 
@@ -122,12 +150,34 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   PlayerState build() {
     _engine = ref.watch(audioEngineProvider);
     final sub = _engine.stateStream.listen((s) {
-      if (s.currentIndex != state.currentIndex || s.playing) _restoredAt = null;
+      if (_swapping) {
+        state = state.copyWith(buffering: s.buffering);
+        return;
+      }
+      final before = state.currentIndex;
+      if (s.currentIndex != before || s.playing) _restoredAt = null;
+      // Moving or removing other entries also changes the index, so compare
+      // the track itself.
+      final reopened = _reopened;
+      final at = s.currentIndex;
+      final left =
+          reopened != null &&
+          !identical(
+            at != null && at < state.queue.length ? state.queue[at] : null,
+            reopened,
+          );
       state = state.copyWith(
         currentIndex: () => s.currentIndex,
         playing: s.playing && !s.completed,
         buffering: s.buffering,
+        offset: left ? Duration.zero : null,
       );
+      // The track that was reopened part way in is behind us; put its
+      // ordinary stream back so it plays from the top next time.
+      if (left) {
+        _reopened = null;
+        unawaited(_restoreEntry(reopened));
+      }
     });
     ref.onDispose(sub.cancel);
     // Signing out (or, in v2, switching server) clears the queue, since its
@@ -217,11 +267,13 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       startIndex = 0;
     }
     _restoredAt = null;
+    _reopened = null;
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
       currentIndex: () => startIndex,
       from: () => from,
+      offset: Duration.zero,
     );
     await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
@@ -242,17 +294,26 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     }
     if (state.playing) await _engine.pause();
     _restoredAt = position;
+    final uris = await _uris(tracks);
+    // A transcoded stream that is not cached cannot be seeked to where the
+    // queue was left, so open it there instead.
+    final reopen = position > Duration.zero
+        ? _resolver.resolveFrom(tracks[index], _whole(position))
+        : null;
+    if (reopen != null) uris[index] = reopen;
+    _reopened = reopen == null ? null : tracks[index];
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
       currentIndex: () => index,
       from: () => saved.from,
       playing: false,
+      offset: reopen == null ? Duration.zero : _whole(position),
     );
     await _engine.setQueue(
-      await _uris(tracks),
+      uris,
       initialIndex: index,
-      initialPosition: position,
+      initialPosition: reopen == null ? position : Duration.zero,
     );
   }
 
@@ -262,7 +323,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     currentIndex: state.currentIndex,
     position: state.queue.isEmpty
         ? Duration.zero
-        : (_restoredAt ?? _engine.position),
+        : (_restoredAt ?? _engine.position + state.offset),
     from: state.from,
   );
 
@@ -301,12 +362,16 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   Future<void> removeAt(int index) async {
+    // The reopened entry is going, so there is nothing to put back.
+    final offset = index == state.currentIndex ? Duration.zero : null;
+    if (offset != null) _reopened = null;
     final q = [...state.queue]..removeAt(index);
     final quals = [...state.qualities];
     if (index < quals.length) quals.removeAt(index);
     state = state.copyWith(
       queue: List.unmodifiable(q),
       qualities: List.unmodifiable(quals),
+      offset: offset,
     );
     await _engine.removeAt(index);
   }
@@ -381,6 +446,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// Empties the queue, keeping the listener's repeat and volume settings.
   Future<void> clear() async {
     _restoredAt = null;
+    _reopened = null;
     state = PlayerState(repeat: state.repeat, volume: state.volume);
     await _engine.clear();
   }
@@ -396,15 +462,65 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// Restarts the track when more than three seconds in, like most players.
   Future<void> previous() async {
     final i = state.currentIndex ?? 0;
-    if (_engine.position > const Duration(seconds: 3) || i == 0) {
-      await _engine.seek(Duration.zero);
+    if (_engine.position + state.offset > const Duration(seconds: 3) ||
+        i == 0) {
+      await seek(Duration.zero);
     } else {
       await _engine.previous();
     }
   }
 
-  Future<void> seek(Duration d) {
+  /// Seeks in the current track. A transcoded stream that is not cached
+  /// cannot jump ahead by bytes, so where the server can start one part way
+  /// in, the current entry is reopened at [d] instead.
+  Future<void> seek(Duration d) async {
     _restoredAt = null;
-    return _engine.seek(d);
+    final i = state.currentIndex;
+    final track = state.current;
+    if (i == null || track == null) return _engine.seek(d);
+    final reopen =
+        state.currentQuality.isOriginal || d < const Duration(seconds: 1)
+        ? null
+        : _resolver.resolveFrom(track, _whole(d));
+    if (reopen == null && state.offset == Duration.zero) {
+      return _engine.seek(d);
+    }
+    // Back to the top, or now cached: the ordinary stream can do it.
+    final uri = reopen ?? await _resolver.resolve(track);
+    final offset = reopen == null ? Duration.zero : _whole(d);
+    await _replaceCurrent(i, uri);
+    _reopened = reopen == null ? null : track;
+    state = state.copyWith(offset: offset);
+    if (reopen == null && d > Duration.zero) await _engine.seek(d);
+  }
+
+  static Duration _whole(Duration d) => Duration(seconds: d.inSeconds);
+
+  /// Swaps the entry at [i], which is playing, for [uri], keeping playing
+  /// or paused as it was.
+  Future<void> _replaceCurrent(int i, Uri uri) async {
+    _swapping = true;
+    try {
+      await _engine.insertAll(i + 1, [uri]);
+      await _engine.seek(Duration.zero, index: i + 1);
+      await _engine.removeAt(i);
+    } finally {
+      _swapping = false;
+    }
+  }
+
+  /// Puts the ordinary stream back for [track] after leaving it, when it
+  /// was reopened part way in.
+  Future<void> _restoreEntry(Track track) async {
+    final uri = await _resolver.resolve(track);
+    final i = state.queue.indexWhere((t) => identical(t, track));
+    if (i < 0 || i == state.currentIndex) return;
+    _swapping = true;
+    try {
+      await _engine.removeAt(i);
+      await _engine.insertAll(i, [uri]);
+    } finally {
+      _swapping = false;
+    }
   }
 }
