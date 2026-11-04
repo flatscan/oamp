@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../state/library.dart';
 import '../state/player.dart';
+import '../state/radio.dart';
 import 'app_frame.dart';
 import 'browse/album_page.dart';
 import 'browse/artist_page.dart';
@@ -846,7 +847,7 @@ Future<void> showTrackMenu(
   final liked = ref
       .read(likesProvider(LikeTarget.track).notifier)
       .isLiked(track.id, fetched: track.liked);
-  final similar = ref.read(musicSourceProvider).capabilities.hasSimilar;
+  final radio = ref.read(capabilitiesProvider).hasRadio;
   final action = await showMenuAt<_TrackAction>(context, at: at, [
     menuItem(_TrackAction.playNext, Icons.playlist_play_rounded, 'Play next'),
     menuItem(_TrackAction.enqueue, Icons.queue_music_rounded, 'Add to queue'),
@@ -855,7 +856,7 @@ Future<void> showTrackMenu(
       Icons.playlist_add_rounded,
       'Add to playlist…',
     ),
-    if (similar)
+    if (radio)
       menuItem(_TrackAction.radio, Icons.radio_rounded, 'Start track radio'),
     menuItem(
       _TrackAction.like,
@@ -885,13 +886,7 @@ Future<void> showTrackMenu(
     case _TrackAction.addToPlaylist:
       await addToPlaylist(context, ref, [track]);
     case _TrackAction.radio:
-      await startRadio(
-        context,
-        ref,
-        id: track.id,
-        name: track.title,
-        seed: track,
-      );
+      await startRadio(context, ref, name: track.title, seed: track);
     case _TrackAction.like:
       await toggleLike(context, ref, track);
     case _TrackAction.album:
@@ -983,26 +978,40 @@ Future<void> showAlbumMenu(
   }
 }
 
-/// Plays tracks like [id] (a track or artist), led by [seed] when given.
+/// Plays a radio of tracks like [seed] or like the artist [artistId]: the
+/// server's similar tracks, filled up from the seed's genres when the server
+/// has few or none.
 Future<void> startRadio(
   BuildContext context,
   WidgetRef ref, {
-  required String id,
   required String name,
   Track? seed,
+  String? artistId,
 }) async {
+  assert((seed == null) != (artistId == null), 'Give a seed or an artist');
   try {
-    final similar = await ref.read(musicSourceProvider).getSimilarTracks(id);
-    final tracks = [?seed, ...similar.where((t) => t.id != seed?.id)];
-    if (similar.isEmpty) {
+    final builder = RadioMixer(
+      ref.read(musicSourceProvider),
+      capabilities: ref.read(capabilitiesProvider),
+    );
+    final mix = seed != null
+        ? await builder.forTrack(seed)
+        : await builder.forArtist(artistId!);
+    if (mix.isEmpty) {
       if (context.mounted) {
-        toast(context, 'The server found nothing similar to $name');
+        toast(context, 'Found nothing similar to $name, or in its genre');
       }
       return;
     }
     await ref
         .read(playerProvider.notifier)
-        .playTracks(tracks, from: '$name radio');
+        .playTracks(mix.tracks, from: '$name radio');
+    if (mix.basis == RadioBasis.genre && context.mounted) {
+      toast(
+        context,
+        'Nothing similar on the server, so playing ${mix.genres.join(', ')}',
+      );
+    }
   } catch (e) {
     if (context.mounted) toast(context, 'Could not start radio: $e');
   }

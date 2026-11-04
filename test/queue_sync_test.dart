@@ -2,6 +2,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart';
+import 'package:oamp/core/music_source.dart';
 import 'package:oamp/core/play_queue.dart';
 import 'package:oamp/platform/preferences.dart';
 import 'package:oamp/state/playback_reporter.dart';
@@ -67,7 +68,7 @@ void main() {
   }
 
   test('the queue comes back paused where it was after a restart', () async {
-    source.queueSync = false;
+    source.capabilities = const SourceCapabilities(hasSimilar: true);
     await launch();
     await playAndPause();
     container.dispose();

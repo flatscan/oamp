@@ -65,12 +65,14 @@ class FakeMusicSource implements MusicSource {
   @override
   String get userName => 'tester';
 
-  /// Whether the fake keeps a play queue, like Navidrome.
-  bool queueSync = true;
-
   @override
-  SourceCapabilities get capabilities =>
-      SourceCapabilities(hasSimilar: true, hasQueueSync: queueSync);
+  SourceCapabilities capabilities = const SourceCapabilities(
+    hasSimilar: true,
+    hasGenres: true,
+    hasQueueSync: true,
+  );
+  @override
+  Future<SourceCapabilities> detectCapabilities() async => capabilities;
 
   /// The play queue the server holds.
   SavedQueue? playQueue;
@@ -138,8 +140,14 @@ class FakeMusicSource implements MusicSource {
   @override
   Future<List<Track>> getSimilarTracks(String id, {int count = 50}) async {
     calls.add('similar:$id');
-    return tracks;
+    return similarTracks ?? tracks;
   }
+
+  /// What getSimilarTracks returns; null means [tracks].
+  List<Track>? similarTracks;
+
+  /// What getRandomTracks returns for each genre.
+  Map<String, List<Track>> tracksByGenre = {};
 
   @override
   Future<List<Album>> getAlbums({
@@ -234,7 +242,12 @@ class FakeMusicSource implements MusicSource {
   }
 
   @override
-  Future<List<Track>> getRandomTracks({int size = 100}) async => tracks;
+  Future<List<Track>> getRandomTracks({int size = 100, String? genre}) async {
+    if (genre == null) return tracks;
+    calls.add('random:$genre');
+    return (tracksByGenre[genre] ?? const []).take(size).toList();
+  }
+
   @override
   Future<List<Track>> getLikedTracks() async => [];
   @override
