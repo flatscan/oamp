@@ -46,7 +46,11 @@ class FakeDeck implements AudioDeck {
   double get maxVolume => 2;
 
   @override
-  Future<void> setQueue(List<Uri> uris, {int initialIndex = 0}) async {
+  Future<void> setQueue(
+    List<Uri> uris, {
+    int initialIndex = 0,
+    Duration initialPosition = Duration.zero,
+  }) async {
     log.add('setQueue@$initialIndex');
     queue = List.of(uris);
     index = initialIndex;

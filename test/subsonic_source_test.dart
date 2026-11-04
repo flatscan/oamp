@@ -391,6 +391,75 @@ void main() {
     expect(seen[2].url.path, '/rest/getSimilarSongs');
   });
 
+  test('getPlayQueue reads entries, current track and position', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'playQueue': {
+        'current': 't2',
+        'position': 61500,
+        'changed': '2026-11-03T09:00:00Z',
+        'changedBy': 'feishin',
+        'entry': [
+          {'id': 't1', 'title': 'One', 'duration': 200},
+          {'id': 't2', 'title': 'Two', 'duration': 180},
+        ],
+      },
+    });
+    final q = (await c.getPlayQueue())!;
+    expect(q.tracks.map((t) => t.id), ['t1', 't2']);
+    expect(q.currentIndex, 1);
+    expect(q.position, const Duration(milliseconds: 61500));
+    expect(q.changed, DateTime.utc(2026, 11, 3, 9));
+    expect(q.changedBy, 'feishin');
+  });
+
+  test('an empty or missing play queue is null', () async {
+    expect(await sourceReturning({'status': 'ok'}).getPlayQueue(), isNull);
+    expect(
+      await sourceReturning({
+        'status': 'failed',
+        'error': {'code': 70, 'message': 'Not found'},
+      }).getPlayQueue(),
+      isNull,
+    );
+  });
+
+  test('savePlayQueue names the current entry by id', () async {
+    final seen = <http.Request>[];
+    final c = SubsonicSource(
+      SubsonicCredentials.fromPassword(
+        baseUrl: Uri.parse('https://m.example.com'),
+        username: 'ed',
+        password: 'x',
+      ),
+      httpClient: MockClient((req) async {
+        seen.add(req);
+        return http.Response(
+          jsonEncode({
+            'subsonic-response': {'status': 'ok'},
+          }),
+          200,
+        );
+      }),
+    );
+    expect(c.capabilities.hasQueueSync, isTrue);
+    await c.savePlayQueue(
+      ['a', 'b', 'c'],
+      currentIndex: 1,
+      position: const Duration(seconds: 42),
+    );
+    final q = seen.single.url.queryParametersAll;
+    expect(seen.single.url.path, '/rest/savePlayQueue');
+    expect(q['id'], ['a', 'b', 'c']);
+    expect(q['current'], ['b']);
+    expect(q['position'], ['42000']);
+
+    // Long queues go in a form body instead of the URL.
+    await c.savePlayQueue([for (var i = 0; i < 100; i++) 'x$i']);
+    expect(seen.last.method, 'POST');
+    expect(Uri(query: seen.last.body).queryParametersAll['id'], hasLength(100));
+  });
+
   group('server capabilities', () {
     /// A server answering `ping` with [pong] and the extensions endpoint
     /// with [extensions], or failing it when null.
@@ -516,5 +585,50 @@ void main() {
     expect(ts.last.genre, isNull);
     await c.getRandomTracks();
     expect(seen.last.url.queryParameters.containsKey('genre'), isFalse);
+  });
+
+  test(
+    'reportPlaybackState sends state and position without a scrobble',
+    () async {
+      final seen = <http.Request>[];
+      final c = SubsonicSource(
+        SubsonicCredentials.fromPassword(
+          baseUrl: Uri.parse('https://m.example.com'),
+          username: 'ed',
+          password: 'x',
+        ),
+        httpClient: MockClient((req) async {
+          seen.add(req);
+          return http.Response(
+            jsonEncode({
+              'subsonic-response': {'status': 'ok'},
+            }),
+            200,
+          );
+        }),
+      );
+      await c.reportPlaybackState(
+        't1',
+        PlaybackPhase.paused,
+        const Duration(seconds: 129),
+      );
+      final q = seen.single.url.queryParameters;
+      expect(seen.single.url.path, '/rest/reportPlayback');
+      expect(q['mediaId'], 't1');
+      expect(q['mediaType'], 'song');
+      expect(q['positionMs'], '129000');
+      expect(q['state'], 'paused');
+      expect(q['ignoreScrobble'], 'true');
+    },
+  );
+
+  test('the playbackReport extension turns on state reporting', () {
+    expect(
+      SubsonicSource.capabilitiesFor({
+        'playbackReport': [1],
+      }).hasPlaybackState,
+      isTrue,
+    );
+    expect(SubsonicSource.capabilitiesFor({}).hasPlaybackState, isFalse);
   });
 }
