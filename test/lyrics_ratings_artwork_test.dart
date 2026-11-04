@@ -262,15 +262,19 @@ void main() {
       source.lyrics['t1'] = Lyrics.parse(
         '[00:00.50]Ouverture\n[00:04.00]Deuxième ligne\n[00:09.00]Fin',
       );
-      final container = ProviderContainer(
-        overrides: [
-          sessionProvider.overrideWith(() => FakeSessionNotifier(source)),
-          audioEngineProvider.overrideWithValue(engine),
-        ],
-      );
-      addTearDown(container.dispose);
       await tester.pumpWidget(
-        UncontrolledProviderScope(container: container, child: const OAmpApp()),
+        ProviderScope(
+          overrides: [
+            sessionProvider.overrideWith(() => FakeSessionNotifier(source)),
+            audioEngineProvider.overrideWithValue(engine),
+          ],
+          child: const OAmpApp(),
+        ),
+      );
+      // The scope is disposed with the widget tree, which also stops the
+      // timers the queue saver and play reporter start.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(OAmpApp)),
       );
       await tester.pumpAndSettle();
       await container
