@@ -114,6 +114,34 @@ flutter build windows --release
 The app ends up in `build\windows\x64\runner\Release\`. Copy that whole folder
 to share it; `oamp.exe` needs the DLLs and `data` folder next to it.
 
+### Windows installer
+
+The installer is built with [Inno Setup](https://jrsoftware.org/isdl.php) 6.3
+or later. After the release build above, run:
+
+```powershell
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\oamp.iss
+```
+
+This writes `build\installer\oamp-<version>-setup.exe`. CI builds the same
+file as the `oamp-windows-installer` artifact. The installer:
+
+- installs for the current user without admin rights (it offers an
+  all-users install, which asks for admin);
+- adds a Start menu shortcut, and optionally a desktop one. The shortcut is
+  what lets the Windows media overlay show "OAmp" and its icon instead of
+  "Unknown app";
+- upgrades an existing install in place, asking to close OAmp first if it is
+  running;
+- adds OAmp to *Settings → Apps*, where it can be uninstalled. Uninstalling
+  keeps your settings and sign-in, so a reinstall picks up where you left off.
+
+The Visual C++ runtime DLLs are copied next to `oamp.exe` during the build, so
+neither the installer nor the copied folder needs the Visual C++
+Redistributable installed separately. The installer isn't code-signed yet, so
+Windows SmartScreen shows a warning on first run: choose *More info → Run
+anyway*.
+
 ## Other platforms
 
 | Platform | Needs | Run |
