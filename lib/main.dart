@@ -10,6 +10,7 @@ import 'platform/disk_artwork_cache.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
+import 'platform/window_geometry.dart';
 import 'state/playback_reporter.dart';
 import 'state/player.dart';
 import 'state/precache.dart';
@@ -27,15 +28,22 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final createDeck = createDeckFactory();
+  final preferences = await PlatformPreferences.load();
 
   if (isDesktop) {
+    // Open where the window was last time, if that is still on a screen.
+    final saved = WindowGeometry.read(preferences)?.fitTo(
+      await WindowGeometry.screens(),
+      width: FlyoutController.columnWidth,
+      minHeight: FlyoutController.minHeight,
+    );
     // Open as a tall, phone-shaped column. On Windows the system title bar
     // is replaced by the app's own dark one (see WindowBar).
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
       WindowOptions(
-        size: const Size(FlyoutController.columnWidth, 880),
-        center: true,
+        size: Size(FlyoutController.columnWidth, saved?.height ?? 880),
+        center: saved == null,
         title: 'OAmp',
         backgroundColor: oampBackground,
         titleBarStyle: defaultTargetPlatform == TargetPlatform.windows
@@ -43,8 +51,10 @@ Future<void> main() async {
             : TitleBarStyle.normal,
       ),
       () async {
+        if (saved != null) await windowManager.setPosition(saved.position);
         await FlyoutController.lockToColumn();
         await windowManager.show();
+        WindowGeometrySaver(preferences).start();
         await windowManager.focus();
       },
     );
@@ -52,7 +62,6 @@ Future<void> main() async {
 
   // The OS media session: the Windows media overlay and keyboard media keys.
   final systemControls = await createSystemControls();
-  final preferences = await PlatformPreferences.load();
   final trackCache = await openTrackCache();
   final artworkCache = await DiskArtworkCache.open();
 

@@ -43,6 +43,36 @@ void main() {
     expect(uri.toString(), isNot(contains('sesame')));
   });
 
+  test('an API key replaces u, t and s and survives saving', () {
+    final c = SubsonicCredentials.fromApiKey(
+      baseUrl: Uri.parse('https://m.example.com'),
+      apiKey: 'k3y',
+    );
+    final q = SubsonicClient(c).endpointUri('ping').queryParameters;
+    expect(q['apiKey'], 'k3y');
+    expect(
+      q.containsKey('u') || q.containsKey('t') || q.containsKey('s'),
+      isFalse,
+    );
+    final back = SubsonicCredentials.fromJson(c.toJson());
+    expect(back.apiKey, 'k3y');
+    expect(back.serverId, c.serverId);
+    expect(c.serverId, isNot(contains('k3y')));
+    final other = SubsonicCredentials.fromApiKey(
+      baseUrl: Uri.parse('https://m.example.com'),
+      apiKey: 'other',
+    );
+    expect(other.serverId, isNot(c.serverId));
+    // Saved password logins from before API keys still load.
+    final old = SubsonicCredentials.fromJson({
+      'baseUrl': 'https://m.example.com',
+      'username': 'ed',
+      'token': 't',
+      'salt': 's',
+    });
+    expect(old.apiKey, isNull);
+  });
+
   test('serverId is stable across salts and differs per account', () {
     SubsonicCredentials creds(String user) => SubsonicCredentials.fromPassword(
       baseUrl: Uri.parse('https://m.example.com'),
@@ -77,9 +107,35 @@ void main() {
       throwsA(
         isA<MusicSourceException>()
             .having((e) => e.code, 'code', 40)
-            .having((e) => e.message, 'message', 'Wrong username or password'),
+            .having((e) => e.message, 'message', 'Wrong username or password.')
+            .having((e) => e.kind, 'kind', MusicSourceErrorKind.auth),
       ),
     );
+  });
+
+  test('liked artists come sorted, with their ratings', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'starred2': {
+        'artist': [
+          {'id': '2', 'name': 'The Cure', 'starred': '2026-01-01'},
+          {
+            'id': '1',
+            'name': 'Björk',
+            'starred': '2026-01-01',
+            'userRating': 4,
+          },
+        ],
+        'song': [
+          {'id': 's', 'title': 'Song'},
+        ],
+      },
+    });
+    final artists = await c.getLikedArtists();
+    expect(artists.map((a) => a.name), ['Björk', 'The Cure']);
+    expect(artists.first.rating, 4);
+    expect(artists.last.rating, 0);
+    expect(artists.every((a) => a.liked), isTrue);
   });
 
   test('getArtists flattens the index', () async {

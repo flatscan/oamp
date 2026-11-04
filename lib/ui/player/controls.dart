@@ -190,10 +190,12 @@ class ShuffleButton extends ConsumerWidget {
     final canShuffle = ref.watch(
       playerProvider.select((s) => s.upcoming.length > 1),
     );
+    final shuffled = ref.watch(playerProvider.select((s) => s.shuffled));
     return IconButton(
-      tooltip: 'Shuffle up next',
-      onPressed: canShuffle
-          ? ref.read(playerProvider.notifier).shuffleUpcoming
+      tooltip: shuffled ? 'Back to the original order' : 'Shuffle up next',
+      isSelected: shuffled,
+      onPressed: canShuffle || shuffled
+          ? ref.read(playerProvider.notifier).toggleShuffle
           : null,
       style: _toggleStyle,
       icon: const Icon(Icons.shuffle_rounded),

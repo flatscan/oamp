@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -11,18 +12,38 @@ import '../../core/music_source.dart';
 /// Token auth (API 1.13.0+) sends `t = md5(password + salt)` and `s = salt`
 /// instead of the password. Only the token and salt are kept, so the plain
 /// password never needs to be stored.
+///
+/// Servers with the OpenSubsonic `apiKeyAuthentication` extension also take
+/// an API key ([apiKey]) in place of all three, which is the only way in for
+/// accounts that cannot use token auth, such as LDAP ones.
 class SubsonicCredentials {
   final Uri baseUrl;
   final String username;
   final String token;
   final String salt;
+  final String? apiKey;
 
   const SubsonicCredentials({
     required this.baseUrl,
     required this.username,
     required this.token,
     required this.salt,
+    this.apiKey,
   });
+
+  /// Signs in with an API key. [username] is optional and only for display;
+  /// the server knows the account from the key.
+  factory SubsonicCredentials.fromApiKey({
+    required Uri baseUrl,
+    required String apiKey,
+    String username = '',
+  }) => SubsonicCredentials(
+    baseUrl: baseUrl,
+    username: username,
+    token: '',
+    salt: '',
+    apiKey: apiKey,
+  );
 
   factory SubsonicCredentials.fromPassword({
     required Uri baseUrl,
@@ -41,8 +62,15 @@ class SubsonicCredentials {
 
   /// Stable id for this server account: the same URL and username always
   /// give the same id, whatever salt was used.
-  String get serverId =>
-      'subsonic:${sha1.convert(utf8.encode('$username@$baseUrl')).toString().substring(0, 16)}';
+  ///
+  /// With an API key and no username, the id comes from a hash of the key,
+  /// so it is stable without revealing the key.
+  String get serverId {
+    final who = apiKey != null && username.isEmpty
+        ? 'key:${sha1.convert(utf8.encode(apiKey!))}'
+        : username;
+    return 'subsonic:${sha1.convert(utf8.encode('$who@$baseUrl')).toString().substring(0, 16)}';
+  }
 
   static String _randomSalt([int length = 12]) {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -55,14 +83,16 @@ class SubsonicCredentials {
     'username': username,
     'token': token,
     'salt': salt,
+    'apiKey': ?apiKey,
   };
 
   factory SubsonicCredentials.fromJson(Map<String, dynamic> j) =>
       SubsonicCredentials(
         baseUrl: Uri.parse(j['baseUrl'] as String),
         username: j['username'] as String,
-        token: j['token'] as String,
-        salt: j['salt'] as String,
+        token: (j['token'] as String?) ?? '',
+        salt: (j['salt'] as String?) ?? '',
+        apiKey: j['apiKey'] as String?,
       );
 }
 
@@ -91,9 +121,13 @@ class SubsonicClient {
   }
 
   Map<String, String> get _authParams => {
-    'u': credentials.username,
-    't': credentials.token,
-    's': credentials.salt,
+    if (credentials.apiKey case final key?)
+      'apiKey': key
+    else ...{
+      'u': credentials.username,
+      't': credentials.token,
+      's': credentials.salt,
+    },
     'v': apiVersion,
     'c': clientName,
     'f': 'json',
@@ -150,32 +184,118 @@ class SubsonicClient {
       }
       res = await request.timeout(const Duration(seconds: 20));
     } catch (e) {
-      throw MusicSourceException('Could not reach the server: $e');
+      throw transportError(e, credentials.baseUrl);
+    }
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw MusicSourceException(
+        'The server turned the login down. Check your username and password.',
+        kind: MusicSourceErrorKind.auth,
+      );
+    }
+    if (res.statusCode >= 500) {
+      throw MusicSourceException(
+        '${credentials.baseUrl.host} had a problem (HTTP ${res.statusCode}). '
+        'Try again in a moment.',
+        kind: MusicSourceErrorKind.server,
+      );
     }
     if (res.statusCode != 200) {
-      throw MusicSourceException('Server returned HTTP ${res.statusCode}');
-    }
-    final Map<String, dynamic> body;
-    try {
-      body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    } catch (_) {
       throw MusicSourceException(
-        'The server did not return Subsonic JSON. Check the URL.',
+        'No music server answered at ${credentials.baseUrl} '
+        '(HTTP ${res.statusCode}). Check the address.',
+        kind: MusicSourceErrorKind.notAServer,
       );
     }
-    final resp = body['subsonic-response'] as Map<String, dynamic>?;
-    if (resp == null) {
-      throw MusicSourceException('Missing subsonic-response in reply.');
+    final Map<String, dynamic>? resp;
+    try {
+      final body = jsonDecode(utf8.decode(res.bodyBytes));
+      resp =
+          (body as Map<String, dynamic>)['subsonic-response']
+              as Map<String, dynamic>?;
+    } catch (_) {
+      throw _notSubsonic();
     }
+    if (resp == null) throw _notSubsonic();
     if (resp['status'] != 'ok') {
       final err = resp['error'] as Map<String, dynamic>?;
-      throw MusicSourceException(
-        (err?['message'] as String?) ?? 'Request failed',
-        code: err?['code'] as int?,
-      );
+      throw serverError(err?['code'] as int?, err?['message'] as String?);
     }
     return resp;
   }
 
   void close() => _http.close();
+
+  MusicSourceException _notSubsonic() => MusicSourceException(
+    'The server at ${credentials.baseUrl} is not a Subsonic or Navidrome '
+    'server. Check the address: it is the one you open Navidrome with in a '
+    'browser.',
+    kind: MusicSourceErrorKind.notAServer,
+  );
+
+  /// A failure to get any reply, in words. Matches on the error's text
+  /// because the types (`SocketException`, `HandshakeException`) live in
+  /// dart:io, which this layer keeps out of so a web build stays possible.
+  static MusicSourceException transportError(Object e, Uri baseUrl) {
+    final host = baseUrl.host;
+    final text = e.toString();
+    final String message;
+    if (e is TimeoutException) {
+      message =
+          '$host did not answer within 20 seconds. Check that the '
+          'server is running and reachable from this computer.';
+    } else if (text.contains('Handshake') ||
+        text.contains('CERTIFICATE') ||
+        text.contains('WRONG_VERSION_NUMBER')) {
+      message = baseUrl.scheme == 'https'
+          ? 'Could not make a secure connection to $host. If the server '
+                'has no HTTPS, start the address with http://.'
+          : 'Could not make a secure connection to $host.';
+    } else if (text.contains('Failed host lookup') ||
+        text.contains('No address associated') ||
+        text.contains('nodename nor servname')) {
+      message = 'Could not find $host. Check the address.';
+    } else {
+      message =
+          'Could not reach $host. Check the address and that the '
+          'server is running.';
+    }
+    return MusicSourceException(
+      message,
+      kind: MusicSourceErrorKind.unreachable,
+    );
+  }
+
+  /// A Subsonic error code in words. See the error codes in the Subsonic
+  /// API's `subsonic-response` docs.
+  static MusicSourceException serverError(int? code, String? serverMessage) {
+    final (kind, message) = switch (code) {
+      40 => (MusicSourceErrorKind.auth, 'Wrong username or password.'),
+      41 => (
+        MusicSourceErrorKind.auth,
+        'This server does not accept token logins for this account, which '
+            'OAmp needs. If it uses LDAP, sign in with an API key instead.',
+      ),
+      42 || 43 => (
+        MusicSourceErrorKind.auth,
+        'This server does not accept that way of signing in. Try the other '
+            'one (password or API key).',
+      ),
+      44 => (MusicSourceErrorKind.auth, 'That API key is not valid.'),
+      50 => (
+        MusicSourceErrorKind.auth,
+        'This account is not allowed to do that on the server.',
+      ),
+      20 || 30 => (
+        MusicSourceErrorKind.server,
+        'The server\'s API version does not work with OAmp. Update the server.',
+      ),
+      _ => (
+        MusicSourceErrorKind.server,
+        (serverMessage == null || serverMessage.isEmpty)
+            ? 'The server could not do that.'
+            : serverMessage,
+      ),
+    };
+    return MusicSourceException(message, code: code, kind: kind);
+  }
 }

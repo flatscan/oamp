@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -64,6 +65,7 @@ final trackResolverProvider = Provider<TrackResolver>(
     ref.watch(musicSourceProvider),
     quality: ref.watch(streamQualityProvider),
     cache: ref.watch(trackCacheProvider),
+    canStartAt: ref.watch(capabilitiesProvider).canStartTranscodeAt,
   ),
 );
 
@@ -110,12 +112,27 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     required String serverUrl,
     required String username,
     required String password,
-  }) async {
-    final creds = SubsonicCredentials.fromPassword(
+  }) => _login(
+    SubsonicCredentials.fromPassword(
       baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
       username: username.trim(),
       password: password,
-    );
+    ),
+  );
+
+  /// Signs in with an API key instead of a username and password, on
+  /// servers with the `apiKeyAuthentication` extension.
+  Future<void> loginSubsonicWithApiKey({
+    required String serverUrl,
+    required String apiKey,
+  }) => _login(
+    SubsonicCredentials.fromApiKey(
+      baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
+      apiKey: apiKey.trim(),
+    ),
+  );
+
+  Future<void> _login(SubsonicCredentials creds) async {
     final source = SubsonicSource(creds);
     try {
       await source.ping();
@@ -132,6 +149,27 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     state = AsyncData(ServerSession(source));
   }
 
+  /// The address and username saved for the active server, to fill in the
+  /// login form when the server asks to sign in again.
+  Future<({String serverUrl, String username, bool apiKey})?>
+  savedLoginHint() async {
+    final id = state.value?.serverId;
+    if (id == null) return null;
+    try {
+      final raw = await _store.read(_serverKey(id));
+      if (raw == null) return null;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      final c = j['credentials'] as Map<String, dynamic>;
+      return (
+        serverUrl: c['baseUrl'] as String,
+        username: (c['username'] as String?) ?? '',
+        apiKey: c['apiKey'] != null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Signs out of the active server and forgets its credentials.
   Future<void> logout() async {
     final current = state.value;
@@ -141,5 +179,85 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     }
     await _store.delete(_activeKey);
     state = const AsyncData(null);
+  }
+}
+
+/// Whether the signed-in server is answering, checked on launch so a server
+/// that is down, or a password that changed, says so up front instead of as
+/// a row of failed pages.
+enum ServerHealth { checking, ok, unreachable, signedOut }
+
+class ServerStatus {
+  final ServerHealth health;
+
+  /// What went wrong, in words, when [health] is not ok.
+  final String? message;
+  const ServerStatus(this.health, [this.message]);
+
+  static const ok = ServerStatus(ServerHealth.ok);
+}
+
+final serverStatusProvider =
+    NotifierProvider<ServerStatusNotifier, ServerStatus>(
+      ServerStatusNotifier.new,
+    );
+
+class ServerStatusNotifier extends Notifier<ServerStatus> {
+  /// How often to try again while the server cannot be reached.
+  static const retryEvery = Duration(seconds: 30);
+
+  Timer? _retry;
+  int _generation = 0;
+
+  @override
+  ServerStatus build() {
+    final session = ref.watch(sessionProvider).value;
+    _retry?.cancel();
+    ref.onDispose(() => _retry?.cancel());
+    final generation = ++_generation;
+    if (session == null) return ServerStatus.ok;
+    Future.microtask(() => _check(session.source, generation));
+    return const ServerStatus(ServerHealth.checking);
+  }
+
+  /// Pings the server now, as the banner's Retry does.
+  Future<void> check() async {
+    final session = ref.read(sessionProvider).value;
+    if (session == null) return;
+    _retry?.cancel();
+    if (state.health != ServerHealth.ok) {
+      state = ServerStatus(ServerHealth.checking, state.message);
+    }
+    await _check(session.source, _generation);
+  }
+
+  Future<void> _check(MusicSource source, int generation) async {
+    final wasDown =
+        state.health == ServerHealth.unreachable ||
+        state.health == ServerHealth.signedOut;
+    ServerStatus next;
+    try {
+      await source.ping();
+      next = ServerStatus.ok;
+    } on MusicSourceException catch (e) {
+      next = ServerStatus(
+        e.kind == MusicSourceErrorKind.auth
+            ? ServerHealth.signedOut
+            : ServerHealth.unreachable,
+        e.message,
+      );
+    } catch (e) {
+      next = ServerStatus(ServerHealth.unreachable, '$e');
+    }
+    // Signed out or switched server while the ping was out.
+    if (generation != _generation) return;
+    state = next;
+    if (next.health == ServerHealth.ok) {
+      // Extensions are detected once per sign-in; if that ran while the
+      // server was down it fell back to the baseline, so ask again.
+      if (wasDown) ref.invalidate(_detectedCapabilitiesProvider(source));
+    } else if (next.health == ServerHealth.unreachable) {
+      _retry = Timer(retryEvery, () => _check(source, generation));
+    }
   }
 }

@@ -58,6 +58,10 @@ class SourceCapabilities {
 
   /// Whether radio can start at all: from similar tracks or from genres.
   bool get hasRadio => hasSimilar || hasGenres;
+
+  /// Whether a transcoded stream can start part way in (the OpenSubsonic
+  /// `transcodeOffset` extension).
+  bool get canStartTranscodeAt => supports('transcodeOffset');
 }
 
 /// A library on one server. Subsonic/Navidrome is the only v1
@@ -140,6 +144,9 @@ abstract class MusicSource {
   /// Tracks the user has liked.
   Future<List<Track>> getLikedTracks();
 
+  /// Artists the user has liked (starred).
+  Future<List<Artist>> getLikedArtists();
+
   /// Likes or unlikes a track, album or artist.
   Future<void> setLiked(
     String id,
@@ -186,9 +193,15 @@ abstract class MusicSource {
   /// A URL that plays the track with no extra headers, so the local player
   /// or (later) a cast device can fetch it directly. [quality] asks the
   /// server to transcode; the default streams the original file.
+  ///
+  /// [offset] starts a transcoded stream that far into the track, for
+  /// servers with [SourceCapabilities.canStartTranscodeAt]. Transcoded
+  /// streams usually cannot be seeked by byte range, so this is how a seek
+  /// reaches a point that has not been downloaded yet. Whole seconds only.
   Uri streamUrl(
     String trackId, {
     StreamQuality quality = StreamQuality.original,
+    Duration offset = Duration.zero,
   });
 
   /// URL for cover art at roughly [size] pixels, or null if there is none.
@@ -197,11 +210,25 @@ abstract class MusicSource {
   void close();
 }
 
+/// What went wrong talking to a server, so the UI can offer the right fix:
+/// retry for [unreachable], check the address for [notAServer], sign in
+/// again for [auth].
+enum MusicSourceErrorKind { unreachable, notAServer, auth, server, other }
+
 class MusicSourceException implements Exception {
+  /// A sentence to show the user as it is.
   final String message;
+
+  /// The backend's own error code, such as Subsonic's 40, when it sent one.
   final int? code;
-  MusicSourceException(this.message, {this.code});
+  final MusicSourceErrorKind kind;
+
+  MusicSourceException(
+    this.message, {
+    this.code,
+    this.kind = MusicSourceErrorKind.other,
+  });
 
   @override
-  String toString() => code == null ? message : '$message (code $code)';
+  String toString() => message;
 }
