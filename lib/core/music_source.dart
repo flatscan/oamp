@@ -1,3 +1,4 @@
+import 'lyrics.dart';
 import 'models.dart';
 import 'play_queue.dart';
 import 'playback_options.dart';
@@ -145,6 +146,14 @@ abstract class MusicSource {
     bool liked, {
     LikeTarget target = LikeTarget.track,
   });
+
+  /// Sets the user's rating of a track, album or artist, from 1 to 5 stars;
+  /// 0 removes the rating.
+  Future<void> setRating(String id, int rating);
+
+  /// The track's lyrics, synced to the music when the server has them that
+  /// way. [Lyrics.none] when the server has none.
+  Future<Lyrics> getLyrics(Track track);
 
   /// Tells the server a track is playing ([submission] false) or has been
   /// listened to ([submission] true), which drives play counts and the

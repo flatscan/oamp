@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/artwork_cache.dart';
 import '../core/music_source.dart';
 import '../core/track_cache.dart';
 import '../core/track_resolver.dart';
@@ -53,6 +54,10 @@ final _detectedCapabilitiesProvider =
 /// The playback cache. main.dart provides the on-disk one where the
 /// platform has a file system; without it tracks stream directly.
 final trackCacheProvider = Provider<TrackCache?>((_) => null);
+
+/// The on-disk artwork cache. main.dart provides it where the platform has
+/// a file system; without it images are fetched from the server each run.
+final artworkCacheProvider = Provider<ArtworkCache?>((_) => null);
 
 final trackResolverProvider = Provider<TrackResolver>(
   (ref) => StreamingTrackResolver(

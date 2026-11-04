@@ -12,6 +12,8 @@ import 'browse/album_page.dart';
 import 'browse/artist_page.dart';
 import 'browser.dart';
 import 'cover_art.dart';
+import 'glyphs.dart';
+import 'rating_stars.dart';
 import '../state/session.dart';
 import 'mode_switch.dart';
 import 'playlist_dialogs.dart';
@@ -798,6 +800,7 @@ enum _TrackAction {
   addToPlaylist,
   radio,
   like,
+  rate,
   album,
   artist,
   remove,
@@ -863,6 +866,22 @@ Future<void> showTrackMenu(
       liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
       liked ? 'Unlike' : 'Like',
     ),
+    PopupMenuItem(
+      value: _TrackAction.rate,
+      child: ListTile(
+        leading: SizedBox.square(
+          dimension: 24,
+          child: Center(
+            child: StarGlyph(
+              size: 22,
+              filled: false,
+              color: OAmpColors.textMuted,
+            ),
+          ),
+        ),
+        title: const Text('Rate…'),
+      ),
+    ),
     if (showAlbumLinks && track.albumId != null)
       menuItem(_TrackAction.album, Icons.album_rounded, 'Go to album'),
     if (showAlbumLinks && track.artistId != null)
@@ -889,6 +908,13 @@ Future<void> showTrackMenu(
       await startRadio(context, ref, name: track.title, seed: track);
     case _TrackAction.like:
       await toggleLike(context, ref, track);
+    case _TrackAction.rate:
+      await showRatingDialog(
+        context,
+        id: track.id,
+        fetched: track.rating,
+        title: 'Rate "${track.title}"',
+      );
     case _TrackAction.album:
       openAlbumById(track.albumId!, track.album ?? '');
     case _TrackAction.artist:

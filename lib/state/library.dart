@@ -310,3 +310,33 @@ class LikesNotifier extends Notifier<Map<String, bool>> {
     }
   }
 }
+
+/// Ratings changed in this session, by id. An item's own `rating` is what
+/// the server said when it was fetched; changes made since are kept here
+/// so every screen agrees without refetching.
+final ratingsProvider = NotifierProvider<RatingsNotifier, Map<String, int>>(
+  RatingsNotifier.new,
+);
+
+class RatingsNotifier extends Notifier<Map<String, int>> {
+  @override
+  Map<String, int> build() {
+    ref.watch(musicSourceProvider);
+    return const {};
+  }
+
+  int ratingOf(String id, {required int fetched}) => state[id] ?? fetched;
+
+  /// Sets [id]'s rating (0 clears it), putting it back if the server
+  /// refuses.
+  Future<void> rate(String id, int rating, {required int fetched}) async {
+    final before = ratingOf(id, fetched: fetched);
+    state = {...state, id: rating};
+    try {
+      await ref.read(musicSourceProvider).setRating(id, rating);
+    } catch (_) {
+      if (ref.mounted) state = {...state, id: before};
+      rethrow;
+    }
+  }
+}

@@ -1,6 +1,10 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/artwork_cache.dart';
 import '../state/session.dart';
 import 'theme.dart';
 
@@ -12,6 +16,73 @@ int coverArtBucket(double logicalSize, double dpr) {
   if (px <= 300) return 300;
   if (px <= 600) return 600;
   return 1000;
+}
+
+/// An image from the [ArtworkCache]: from disk when it has been seen
+/// before, otherwise fetched once and saved. Two providers with the same
+/// [cacheKey] are equal, so Flutter's in-memory image cache shares them too.
+class CachedArtworkImage extends ImageProvider<CachedArtworkImage> {
+  final String cacheKey;
+  final Uri url;
+  final ArtworkCache cache;
+
+  const CachedArtworkImage(this.cacheKey, this.url, this.cache);
+
+  @override
+  Future<CachedArtworkImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    CachedArtworkImage key,
+    ImageDecoderCallback decode,
+  ) => MultiFrameImageStreamCompleter(
+    codec: _load(decode),
+    scale: 1,
+    debugLabel: cacheKey,
+  );
+
+  Future<ui.Codec> _load(ImageDecoderCallback decode) async {
+    final bytes = await cache.load(cacheKey, url);
+    return decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CachedArtworkImage && other.cacheKey == cacheKey;
+
+  @override
+  int get hashCode => cacheKey.hashCode;
+
+  @override
+  String toString() => 'CachedArtworkImage($cacheKey)';
+}
+
+/// The image for [coverArtId] at [size] pixels from the active server,
+/// through the artwork cache when there is one. Null when there is no
+/// image or nobody is signed in.
+ImageProvider? coverArtImage(WidgetRef ref, String? coverArtId, int size) =>
+    coverArtImageFrom(
+      ref.watch(sessionProvider).value,
+      ref.watch(artworkCacheProvider),
+      coverArtId,
+      size,
+    );
+
+ImageProvider? coverArtImageFrom(
+  ServerSession? session,
+  ArtworkCache? cache,
+  String? coverArtId,
+  int size,
+) {
+  final url = session?.source.coverArtUrl(coverArtId, size: size);
+  if (url == null) return null;
+  if (cache == null) return NetworkImage(url.toString());
+  return CachedArtworkImage(
+    '${session!.serverId}/$coverArtId/$size',
+    url,
+    cache,
+  );
 }
 
 /// Square cover art from the active source, with a placeholder when there is
@@ -34,9 +105,8 @@ class CoverArt extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final source = ref.watch(sessionProvider).value?.source;
     final px = coverArtBucket(size, MediaQuery.devicePixelRatioOf(context));
-    final url = source?.coverArtUrl(coverArtId, size: px);
+    final image = coverArtImage(ref, coverArtId, px);
     final placeholder = DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -53,12 +123,12 @@ class CoverArt extends ConsumerWidget {
         ),
       ),
     );
-    final image = SizedBox.square(
+    final box = SizedBox.square(
       dimension: size,
-      child: url == null
+      child: image == null
           ? placeholder
-          : Image.network(
-              url.toString(),
+          : Image(
+              image: image,
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, _, _) => placeholder,
@@ -72,8 +142,8 @@ class CoverArt extends ConsumerWidget {
             ),
     );
     return circle
-        ? ClipOval(child: image)
-        : ClipRRect(borderRadius: BorderRadius.circular(radius), child: image);
+        ? ClipOval(child: box)
+        : ClipRRect(borderRadius: BorderRadius.circular(radius), child: box);
   }
 }
 
