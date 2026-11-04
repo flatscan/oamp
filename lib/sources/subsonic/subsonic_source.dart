@@ -373,14 +373,19 @@ class SubsonicSource implements MusicSource {
   /// Tries OpenSubsonic's `getLyricsBySongId` (which can return synced
   /// lyrics) first, and falls back to the classic artist and title lookup
   /// when the server does not have that endpoint or has nothing there.
+  ///
+  /// Once the server's extensions are known, the OpenSubsonic call is only
+  /// made when it lists `songLyrics`.
   @override
   Future<Lyrics> getLyrics(Track track) async {
-    try {
-      final r = await client.get('getLyricsBySongId', {'id': track.id});
-      final found = structuredLyrics(r['lyricsList']);
-      if (!found.isEmpty) return found;
-    } on MusicSourceException {
-      // Not an OpenSubsonic server, or no lyrics for this id.
+    if (!_detected || _capabilities.hasLyrics) {
+      try {
+        final r = await client.get('getLyricsBySongId', {'id': track.id});
+        final found = structuredLyrics(r['lyricsList']);
+        if (!found.isEmpty) return found;
+      } on MusicSourceException {
+        // Not an OpenSubsonic server, or no lyrics for this id.
+      }
     }
     final artist = track.artist;
     if (artist == null || artist.isEmpty) return Lyrics.none;
