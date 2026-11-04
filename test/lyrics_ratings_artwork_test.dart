@@ -12,6 +12,7 @@ import 'package:oamp/core/models.dart';
 import 'package:oamp/main.dart';
 import 'package:oamp/platform/disk_artwork_cache.dart';
 import 'package:oamp/sources/subsonic/subsonic_client.dart';
+import 'package:oamp/ui/glyphs.dart';
 import 'package:oamp/sources/subsonic/subsonic_source.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
@@ -326,7 +327,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(source.calls, contains('lyrics:t2'));
       final button = tester.widget<IconButton>(
-        find.widgetWithIcon(IconButton, Icons.lyrics_outlined),
+        find.ancestor(
+          of: find.byType(LyricsGlyph),
+          matching: find.byType(IconButton),
+        ),
       );
       expect(button.onPressed, isNull);
       expect(find.byTooltip('No lyrics for this track'), findsOneWidget);
@@ -338,6 +342,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(source.calls, contains('rate:t1:4'));
       expect(find.bySemanticsLabel('Rated 4 stars'), findsOneWidget);
+      expect(find.byType(StarGlyph), findsNWidgets(5));
 
       // Clicking the same star again clears it.
       await tester.tap(find.byKey(const ValueKey('star4')).first);

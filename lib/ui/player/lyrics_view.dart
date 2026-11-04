@@ -26,7 +26,17 @@ class LyricsView extends ConsumerWidget {
         key: ValueKey(track.id),
         lyrics: value,
       ),
-      AsyncData() || AsyncError() => Center(
+      AsyncError(:final error) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Text(
+            'Could not load lyrics: $error',
+            textAlign: TextAlign.center,
+            style: t.bodyMedium?.copyWith(color: OAmpColors.textMuted),
+          ),
+        ),
+      ),
+      AsyncData() => Center(
         child: Text(
           'No lyrics for this track',
           style: t.titleMedium?.copyWith(color: OAmpColors.textMuted),

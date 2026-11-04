@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/library.dart';
+import 'glyphs.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -81,12 +82,10 @@ class _RatingStarsState extends ConsumerState<RatingStars> {
                         horizontal: widget.size * 0.08,
                         vertical: widget.size * 0.15,
                       ),
-                      child: Icon(
-                        i <= shown
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
+                      child: StarGlyph(
                         key: ValueKey('star$i'),
                         size: widget.size,
+                        filled: i <= shown,
                         color: i <= shown
                             ? (_hover != null ? on.withValues(alpha: 0.7) : on)
                             : OAmpColors.textFaint,
