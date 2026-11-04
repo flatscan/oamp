@@ -13,6 +13,7 @@ import '../cover_art.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../app_frame.dart';
+import '../glyphs.dart';
 import '../mode_switch.dart';
 import '../rating_stars.dart';
 import 'art_colors.dart';
@@ -455,15 +456,24 @@ class _LyricsButton extends ConsumerWidget {
         ? null
         : ref.watch(lyricsProvider(lyricsRequestFor(tr))).value;
     final has = lyrics != null && !lyrics.isEmpty;
+    final failed =
+        tr != null && ref.watch(lyricsProvider(lyricsRequestFor(tr))).hasError;
+    final color = showing ? accent : OAmpColors.textMuted;
     return IconButton(
       tooltip: showing
           ? 'Hide lyrics'
-          : (has ? 'Show lyrics' : 'No lyrics for this track'),
-      color: showing ? accent : OAmpColors.textMuted,
-      isSelected: showing,
-      icon: const Icon(Icons.lyrics_outlined),
-      selectedIcon: const Icon(Icons.lyrics_rounded),
-      onPressed: showing || has
+          : (has
+                ? 'Show lyrics'
+                : failed
+                ? 'Lyrics could not be loaded'
+                : 'No lyrics for this track'),
+      icon: LyricsGlyph(
+        color: tr == null || !(showing || has || failed)
+            ? OAmpColors.textFaint.withValues(alpha: 0.35)
+            : color,
+        filled: showing,
+      ),
+      onPressed: showing || has || failed
           ? ref.read(showLyricsProvider.notifier).toggle
           : null,
     );
