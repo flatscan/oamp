@@ -67,6 +67,42 @@ void main() {
     expect(engine.queue.map((u) => u.pathSegments.last), ids);
   });
 
+  test('shuffle can be undone, keeping tracks added since', () async {
+    await player().playTracks(many, startIndex: 1);
+    await settle();
+    await player().toggleShuffle();
+    expect(state().shuffled, isTrue);
+    const extra = Track(id: 'x', title: 'Extra');
+    await player().enqueue([extra]);
+    await player().toggleShuffle();
+    expect(state().shuffled, isFalse);
+    final ids = state().queue.map((t) => t.id).toList();
+    expect(ids, ['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'x']);
+    expect(engine.queue.map((u) => u.pathSegments.last), ids);
+  });
+
+  test('a shuffled play can be put back in album order', () async {
+    await player().playTracks(many, shuffle: true);
+    await settle();
+    expect(state().shuffled, isTrue);
+    final first = state().current!;
+    await player().unshuffle();
+    // The playing track stays; the rest follow in their original order.
+    final rest = [
+      for (final t in many)
+        if (!identical(t, first)) t.id,
+    ];
+    expect(state().queue.skip(1).map((t) => t.id), rest);
+    expect(state().current, same(first));
+  });
+
+  test('playing something new clears the shuffled state', () async {
+    await player().playTracks(many, shuffle: true);
+    await settle();
+    await player().playTracks(many);
+    expect(state().shuffled, isFalse);
+  });
+
   test('clear up next leaves the current track playing', () async {
     await player().playTracks(many, startIndex: 1);
     await settle();
