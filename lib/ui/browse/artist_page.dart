@@ -157,6 +157,18 @@ class ArtistPage extends ConsumerWidget {
   }
 }
 
+/// Where to place a square photo [side] pixels high in a header [height]
+/// pixels high so the band that shows is centred on [focus] (a fraction of
+/// the photo's height). Artist photos are mostly portraits with the face a
+/// little above the middle, so pinning the top showed only foreheads once
+/// the header was much wider than it is tall.
+@visibleForTesting
+Alignment heroAlignment(double side, double height, {double focus = 0.4}) {
+  if (side <= height) return Alignment.center;
+  final top = (focus * side - height / 2).clamp(0.0, side - height);
+  return Alignment(0, 2 * top / (side - height) - 1);
+}
+
 /// The artist's photo filling the top of the page, fading into the
 /// background, with their name over the bottom of it.
 class _Hero extends StatelessWidget {
@@ -176,7 +188,7 @@ class _Hero extends StatelessWidget {
             OverflowBox(
               maxWidth: side,
               maxHeight: side,
-              alignment: Alignment.topCenter,
+              alignment: heroAlignment(side, c.maxHeight),
               child: CoverArt(
                 artist.coverArt,
                 size: side,
