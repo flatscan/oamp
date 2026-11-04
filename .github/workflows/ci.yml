@@ -34,10 +34,25 @@ jobs:
         run: |
           $dir = 'build/windows/x64/runner/Release'
           Get-ChildItem $dir | Format-Table Name, Length
-          foreach ($dll in 'smtc_windows.dll', 'libmpv-2.dll') {
+          foreach ($dll in 'smtc_windows.dll', 'libmpv-2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
             if (-not (Test-Path "$dir/$dll")) { throw "$dll missing from the Windows build" }
           }
       - uses: actions/upload-artifact@v4
         with:
           name: oamp-windows
           path: build/windows/x64/runner/Release/
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc windows\installer\oamp.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Get-ChildItem build/installer | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oamp-windows-installer
+          path: build/installer/*.exe
+          if-no-files-found: error
