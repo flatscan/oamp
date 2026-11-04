@@ -65,6 +65,10 @@ final likedTracksProvider = FutureProvider<List<Track>>(
   (ref) => ref.watch(musicSourceProvider).getLikedTracks(),
 );
 
+final likedArtistsProvider = FutureProvider<List<Artist>>(
+  (ref) => ref.watch(musicSourceProvider).getLikedArtists(),
+);
+
 /// Search results for a query, with up to [limit] of each kind. The
 /// search page asks for a few of everything, and more of one kind when a
 /// filter is chosen.
@@ -302,7 +306,7 @@ class LikesNotifier extends Notifier<Map<String, bool>> {
           ref.invalidate(homeAlbumsProvider(AlbumSort.starred));
           ref.invalidate(albumPagesProvider(AlbumSort.starred));
         case LikeTarget.artist:
-          break;
+          ref.invalidate(likedArtistsProvider);
       }
     } catch (_) {
       if (ref.mounted) state = {...state, id: !liked};

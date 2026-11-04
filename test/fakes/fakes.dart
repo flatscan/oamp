@@ -118,7 +118,15 @@ class FakeMusicSource implements MusicSource {
   /// Tracks beyond the album that queue saves can name.
   List<Track> extraTracks = const [];
   @override
-  Future<void> ping() async {}
+  Future<void> ping() async {
+    pings++;
+    final e = pingError;
+    if (e != null) throw e;
+  }
+
+  /// Thrown by [ping] while set, to fake a server that is down or signed out.
+  MusicSourceException? pingError;
+  int pings = 0;
   @override
   Future<List<Artist>> getArtists() async => artists;
   @override
@@ -252,6 +260,11 @@ class FakeMusicSource implements MusicSource {
   @override
   Future<List<Track>> getLikedTracks() async => [];
   @override
+  Future<List<Artist>> getLikedArtists() async => [
+    for (final a in artists)
+      if (a.liked) a,
+  ];
+  @override
   Future<void> setLiked(
     String id,
     bool liked, {
@@ -290,8 +303,10 @@ class FakeMusicSource implements MusicSource {
   Uri streamUrl(
     String trackId, {
     StreamQuality quality = StreamQuality.original,
+    Duration offset = Duration.zero,
   }) => Uri.parse(
-    'fake://stream/$trackId${quality.isOriginal ? '' : '?q=${quality.tag}'}',
+    'fake://stream/$trackId${quality.isOriginal ? '' : '?q=${quality.tag}'}'
+    '${offset > Duration.zero ? '&t=${offset.inSeconds}' : ''}',
   );
   @override
   Uri? coverArtUrl(String? coverArtId, {int size = 300}) => null;
@@ -357,11 +372,29 @@ class FakeAudioEngine implements AudioEngine {
 
   @override
   Future<void> addAll(List<Uri> uris) async => queue.addAll(uris);
+
+  /// Inserting or removing before the current entry moves the index, as
+  /// real players do.
   @override
-  Future<void> insertAll(int i, List<Uri> uris) async =>
-      queue.insertAll(i, uris);
+  Future<void> insertAll(int i, List<Uri> uris) async {
+    queue.insertAll(i, uris);
+    final at = index;
+    if (at != null && i <= at && at < queue.length - uris.length) {
+      index = at + uris.length;
+      _emit();
+    }
+  }
+
   @override
-  Future<void> removeAt(int i) async => queue.removeAt(i);
+  Future<void> removeAt(int i) async {
+    queue.removeAt(i);
+    final at = index;
+    if (at != null && i < at) {
+      index = at - 1;
+      _emit();
+    }
+  }
+
   @override
   Future<void> move(int from, int to) async =>
       queue.insert(to, queue.removeAt(from));
