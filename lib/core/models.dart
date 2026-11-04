@@ -144,6 +144,9 @@ class Track {
   /// Loudness data for volume levelling, or null when the server has none.
   final ReplayGain? replayGain;
 
+  /// The track's genres, main one first. Empty when untagged.
+  final List<String> genres;
+
   const Track({
     required this.id,
     required this.title,
@@ -162,7 +165,10 @@ class Track {
     this.sampleRate,
     this.bitDepth,
     this.replayGain,
+    this.genres = const [],
   });
+
+  String? get genre => genres.isEmpty ? null : genres.first;
 }
 
 /// ReplayGain values for a track, as the server read them from the file's
