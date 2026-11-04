@@ -109,6 +109,7 @@ class _RootState extends ConsumerState<_Root> {
       onExitRequested: () async {
         // Save where playback stands before the window closes, without
         // holding it open for a slow server.
+        ref.read(playbackReporterProvider).stop();
         await sync().flush().timeout(
           const Duration(seconds: 3),
           onTimeout: () {},

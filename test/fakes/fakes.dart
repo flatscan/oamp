@@ -266,6 +266,13 @@ class FakeMusicSource implements MusicSource {
   }) async => calls.add('${submission ? 'played' : 'playing'}:$trackId');
 
   @override
+  Future<void> reportPlaybackState(
+    String trackId,
+    PlaybackPhase phase,
+    Duration position,
+  ) async => calls.add('state:${phase.name}:$trackId:${position.inSeconds}');
+
+  @override
   Uri streamUrl(
     String trackId, {
     StreamQuality quality = StreamQuality.original,

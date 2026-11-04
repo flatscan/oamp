@@ -256,3 +256,6 @@ enum LikeTarget { track, album, artist }
 
 /// What happens when the queue reaches its end, or a track ends.
 enum PlaybackRepeat { off, all, one }
+
+/// Where playback stands, as reported to a server's now-playing display.
+enum PlaybackPhase { starting, playing, paused, stopped }
