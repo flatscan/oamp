@@ -142,12 +142,38 @@ Redistributable installed separately. The installer isn't code-signed yet, so
 Windows SmartScreen shows a warning on first run: choose *More info → Run
 anyway*.
 
+## Android
+
+CI builds a side-loadable APK on every push as the `oamp-android` artifact
+(`oamp-<build>.apk`). To install it:
+
+1. Download the artifact from the CI run and unzip it.
+2. Copy the `.apk` to the phone (or open the download on the phone) and tap
+   it. Android asks once to allow installs from that app (*Files*, *Chrome*
+   and so on); allow it.
+3. Open **OAmp** from the app drawer and sign in to your server.
+
+Android 7.0 or later is needed. Each CI build has a higher version code and the
+same signing key, so a newer APK installs over the old one and keeps the login
+and settings. That key is in the repo (`android/app/sideload.keystore`) and is
+not a secret; distributed builds get a private key before the alpha.
+
+To build it yourself you need Android Studio (for the Android SDK) and a JDK
+17, then:
+
+```
+flutter build apk --release
+```
+
+The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. With a
+phone connected over USB (developer options and USB debugging on), `flutter run
+-d android` runs a debug build on it.
+
 ## Other platforms
 
 | Platform | Needs | Run |
 | --- | --- | --- |
 | macOS | Xcode and CocoaPods | `flutter run -d macos` |
-| Android | Android Studio (for the SDK) and a device or emulator | `flutter run -d android` |
 | iOS | A Mac with Xcode, CocoaPods and a device or simulator | `flutter run -d ios` |
 
 Plain `http://` servers on your LAN are allowed on every platform. Background
