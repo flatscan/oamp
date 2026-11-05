@@ -72,7 +72,7 @@ class _ArtistsPageState extends ConsumerState<ArtistsPage> {
             final heading = Theme.of(context).textTheme.titleMedium
                 ?.copyWith(color: oampAccent);
             return SliverPadding(
-              padding: const EdgeInsets.only(right: JumpBar.width),
+              padding: EdgeInsets.only(right: JumpBar.reserved(context)),
               sliver: SliverMainAxisGroup(
                 slivers: [
                   for (final g in index.groups) ...[

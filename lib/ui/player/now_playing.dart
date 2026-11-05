@@ -1,10 +1,12 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
+import '../../platform/platform_info.dart';
 import '../../state/library.dart';
 import '../../state/lyrics.dart';
 import '../../state/player.dart';
@@ -63,11 +65,18 @@ void hideNowPlaying(BuildContext context) => ProviderScope.containerOf(
 /// bar, track details and controls, then the queue directly below. The
 /// whole screen is tinted from the cover.
 ///
-/// [onClose] adds a close button (and Esc); the desktop fly-out layout embeds
-/// this view permanently and leaves it null.
+/// [onClose] adds a close button on desktop (and Esc); the desktop fly-out
+/// layout embeds this view permanently and leaves it null.
+///
+/// On a phone, pulling down from the top of the screen drags the view down:
+/// [onPull] gets each move in pixels and [onPullEnd] the speed at release,
+/// for the shell to slide the sheet with the finger and then close it or
+/// settle it back. A phone on its side shows the cover beside the controls.
 class NowPlayingView extends ConsumerStatefulWidget {
   final VoidCallback? onClose;
-  const NowPlayingView({super.key, this.onClose});
+  final ValueChanged<double>? onPull;
+  final ValueChanged<double>? onPullEnd;
+  const NowPlayingView({super.key, this.onClose, this.onPull, this.onPullEnd});
 
   @override
   ConsumerState<NowPlayingView> createState() => _NowPlayingViewState();
@@ -83,6 +92,59 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
   )..addListener(() => _savedOffset = _scroll.offset);
 
   final _focus = FocusNode(debugLabel: 'now playing');
+
+  // A finger pulling the sheet down: which pointer, where it went down,
+  // whether it has started pulling, and how fast it moves.
+  int? _pointer;
+  Offset _downAt = Offset.zero;
+  bool _pulling = false;
+  VelocityTracker? _velocity;
+
+  bool get _atTop => !_scroll.hasClients || _scroll.offset <= 0;
+
+  void _pointerDown(PointerDownEvent e) {
+    if (widget.onPull == null || _pointer != null) return;
+    // Touch only: a mouse drag on desktop keeps doing nothing.
+    if (e.kind != PointerDeviceKind.touch &&
+        e.kind != PointerDeviceKind.stylus) {
+      return;
+    }
+    _pointer = e.pointer;
+    _downAt = e.position;
+    _pulling = false;
+    _velocity = VelocityTracker.withKind(e.kind)
+      ..addPosition(e.timeStamp, e.position);
+  }
+
+  void _pointerMove(PointerMoveEvent e) {
+    if (e.pointer != _pointer) return;
+    _velocity?.addPosition(e.timeStamp, e.position);
+    if (!_pulling) {
+      final d = e.position - _downAt;
+      // Downwards, mostly vertical, and only with the list at its top, so
+      // scrolling the queue and swiping the cover sideways still work.
+      if (d.dy < kTouchSlop || d.dy.abs() < d.dx.abs() * 1.5 || !_atTop) {
+        return;
+      }
+      _pulling = true;
+    }
+    // The finger now moves the sheet, not the list.
+    if (_scroll.hasClients && _scroll.offset != 0) _scroll.jumpTo(0);
+    widget.onPull?.call(e.delta.dy);
+  }
+
+  void _pointerEnd(PointerEvent e, {required bool cancelled}) {
+    if (e.pointer != _pointer) return;
+    if (_pulling) {
+      final v = cancelled
+          ? 0.0
+          : _velocity?.getVelocity().pixelsPerSecond.dy ?? 0.0;
+      widget.onPullEnd?.call(v);
+    }
+    _pointer = null;
+    _pulling = false;
+    _velocity = null;
+  }
 
   @override
   void initState() {
@@ -119,6 +181,71 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
         ? null
         : ref.watch(artColorProvider(track.coverArt)).value;
     final base = tint ?? const Color(0xFF4A4A52);
+    // Room for the status and navigation bars when drawn edge to edge.
+    final insets = MediaQuery.paddingOf(context);
+    final topInset = insets.top;
+    final bottomInset = insets.bottom;
+    // A phone on its side: the cover on the left, the rest beside it.
+    final screen = MediaQuery.sizeOf(context);
+    final sideBySide = !isDesktop && screen.width > screen.height;
+
+    // The cover with the bar over its top.
+    Widget cover() => Stack(
+      children: [
+        _Artwork(track: track),
+        // On a phone the cover runs up under the status bar; a shade there
+        // keeps the bar's icons readable.
+        if (topInset > 0)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topInset + 24,
+            child: const IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x73000000), Color(0x00000000)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (isDesktop)
+          Positioned(
+            top: 8 + topInset,
+            left: 8,
+            right: 8,
+            child: _ArtOverlayBar(onClose: onClose),
+          ),
+      ],
+    );
+
+    Widget controls(Color accent) => SliverToBoxAdapter(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: _Controls(track: track, accent: accent),
+        ),
+      ),
+    );
+
+    // The scrolling part, ending with the queue. With pull-to-close, the
+    // list does not stretch at its top, so the pull moves the whole sheet.
+    Widget list(List<Widget> top) => ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context)
+          .copyWith(overscroll: widget.onPull == null),
+      child: CustomScrollView(
+        controller: _scroll,
+        slivers: [
+          ...top,
+          const QueueSlivers(),
+          SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
+        ],
+      ),
+    );
 
     final view = TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: base),
@@ -142,34 +269,22 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
               ],
             ),
           ),
-          child: CustomScrollView(
-            controller: _scroll,
-            slivers: [
-              SliverToBoxAdapter(
-                child: Stack(
-                  children: [
-                    _Artwork(track: track),
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      right: 8,
-                      child: _ArtOverlayBar(onClose: onClose),
-                    ),
-                  ],
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: _Controls(track: track, accent: accent),
+          child: sideBySide
+              ? LayoutBuilder(
+                  builder: (context, c) => Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox.square(dimension: c.maxHeight, child: cover()),
+                      Expanded(
+                        child: list([
+                          SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                          controls(accent),
+                        ]),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-              const QueueSlivers(),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
-          ),
+                )
+              : list([SliverToBoxAdapter(child: cover()), controls(accent)]),
         );
       },
     );
@@ -178,7 +293,13 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): ?onClose},
       child: Focus(
         focusNode: _focus,
-        child: Material(color: oampBackground, child: view),
+        child: Listener(
+          onPointerDown: _pointerDown,
+          onPointerMove: _pointerMove,
+          onPointerUp: (e) => _pointerEnd(e, cancelled: false),
+          onPointerCancel: (e) => _pointerEnd(e, cancelled: true),
+          child: Material(color: oampBackground, child: view),
+        ),
       ),
     );
   }
@@ -244,7 +365,10 @@ class _Artwork extends ConsumerWidget {
             if (v > 300) p.previous();
           },
           child: Padding(
-            padding: EdgeInsets.only(top: wide ? 16 : 0),
+            // A framed cover clears the status bar too.
+            padding: EdgeInsets.only(
+              top: wide ? 16 + MediaQuery.paddingOf(context).top : 0,
+            ),
             child: Center(
               child: SizedBox.square(
                 dimension: size,
@@ -395,8 +519,11 @@ class _Controls extends ConsumerWidget {
           const SizedBox(height: 14),
           TransportControls(playColor: accent),
           const SizedBox(height: 8),
-          VolumeControl(accent: accent),
-          const SizedBox(height: 4),
+          // Phones set the volume with their own buttons.
+          if (isDesktop) ...[
+            VolumeControl(accent: accent),
+            const SizedBox(height: 4),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

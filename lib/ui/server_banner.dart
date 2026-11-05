@@ -7,17 +7,25 @@ import 'theme.dart';
 
 /// A strip across the top of the app while the server is down or wants the
 /// user to sign in again. Hidden while all is well.
+///
+/// On a phone it sits under the status bar, and while it shows, the pages
+/// below it no longer pad for the status bar themselves.
 class ServerStatusBanner extends ConsumerWidget {
   const ServerStatusBanner({super.key});
+
+  /// Whether the banner is showing.
+  static bool visibleFor(ServerStatus status) {
+    final health = status.health;
+    return health == ServerHealth.unreachable ||
+        health == ServerHealth.signedOut ||
+        (health == ServerHealth.checking && status.message != null);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(serverStatusProvider);
     final health = status.health;
-    final visible =
-        health == ServerHealth.unreachable ||
-        health == ServerHealth.signedOut ||
-        (health == ServerHealth.checking && status.message != null);
+    final visible = visibleFor(status);
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),
       alignment: Alignment.topCenter,
@@ -26,7 +34,12 @@ class ServerStatusBanner extends ConsumerWidget {
           : Material(
               color: OAmpColors.surfaceHigh,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8 + MediaQuery.paddingOf(context).top,
+                  8,
+                  8,
+                ),
                 child: Row(
                   children: [
                     Icon(
