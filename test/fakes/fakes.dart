@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:oamp/audio/audio_engine.dart';
+import 'package:oamp/audio/audio_focus.dart';
 import 'package:oamp/core/lyrics.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
@@ -454,6 +455,10 @@ class FakeAudioEngine implements AudioEngine {
   @override
   Future<void> setCrossfade(Duration d) async => crossfade = d;
 
+  bool ducked = false;
+  @override
+  Future<void> setDucked(bool d) async => ducked = d;
+
   @override
   Future<void> dispose() async {
     await _state.close();
@@ -482,4 +487,16 @@ class FakeSystemControls implements SystemControls {
   Future<void> clear() async => shown.add(null);
   @override
   Future<void> dispose() => _commands.close();
+}
+
+/// An OS audio session the test drives by hand.
+class FakeAudioFocus implements AudioFocus {
+  final _changes = StreamController<FocusChange>.broadcast(sync: true);
+
+  void send(FocusChange change) => _changes.add(change);
+
+  @override
+  Stream<FocusChange> get changes => _changes.stream;
+  @override
+  Future<void> dispose() => _changes.close();
 }
