@@ -10,7 +10,8 @@ class NowPlayingInfo {
   final String? album;
 
   /// Cover art the OS fetches itself. Stream and cover URLs are absolute and
-  /// self-authenticating, so they work outside the app's HTTP client.
+  /// self-authenticating, so they work outside the app's HTTP client. For
+  /// controls with [SystemControls.needsLocalArt] it is a local file.
   final Uri? artUri;
   final bool playing;
   final Duration position;
@@ -29,6 +30,18 @@ class NowPlayingInfo {
     this.canGoNext = false,
     this.canGoPrevious = false,
   });
+
+  NowPlayingInfo withArt(Uri? artUri) => NowPlayingInfo(
+    title: title,
+    artist: artist,
+    album: album,
+    artUri: artUri,
+    playing: playing,
+    position: position,
+    duration: duration,
+    canGoNext: canGoNext,
+    canGoPrevious: canGoPrevious,
+  );
 
   /// Same track and metadata, ignoring transport state.
   bool sameMetadata(NowPlayingInfo o) =>
@@ -89,6 +102,11 @@ abstract class SystemControls {
   /// Buttons pressed in the OS media UI or on the keyboard.
   Stream<MediaCommand> get commands;
 
+  /// Whether cover art must be a local file rather than the server URL.
+  /// The URL carries the sign-in token, and some media sessions (Android's)
+  /// share it with every app and device that reads them.
+  bool get needsLocalArt;
+
   /// Shows [info] in the OS media UI.
   Future<void> update(NowPlayingInfo info);
 
@@ -108,6 +126,8 @@ class NoSystemControls implements SystemControls {
   ValueListenable<String?> get problem => ValueNotifier(unavailableReason);
   @override
   Stream<MediaCommand> get commands => const Stream.empty();
+  @override
+  bool get needsLocalArt => false;
   @override
   Future<void> update(NowPlayingInfo info) async {}
   @override

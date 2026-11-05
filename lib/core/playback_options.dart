@@ -91,6 +91,19 @@ class PlaybackOptions {
     this.preventClipping = true,
   });
 
+  /// How far above normal volume ReplayGain is allowed to raise a track
+  /// on a player that cannot boost, on top of any positive preamp. Most
+  /// tags turn tracks down; +6 dB covers nearly all that turn them up.
+  static const boostAllowanceDb = 6.0;
+
+  /// The most [gainFor] is expected to raise a track, as a linear factor;
+  /// 1 when ReplayGain is off. See [boostAllowanceDb].
+  double get boostHeadroom => replayGain == ReplayGainMode.off
+      ? 1
+      : math
+            .pow(10, (boostAllowanceDb + math.max(0, preampDb)) / 20)
+            .toDouble();
+
   /// Crossfade lengths offered in settings, in seconds.
   static const crossfadeSeconds = [0, 2, 4, 6, 8, 10, 12];
 
@@ -156,15 +169,28 @@ class CacheOptions {
 
   final int limitMb;
 
-  const CacheOptions({this.precacheTracks = 3, this.limitMb = 1024});
+  /// Whether pre-caching also runs on mobile data. On by default, so
+  /// nothing changes until the listener turns it off.
+  final bool precacheOnMobile;
+
+  const CacheOptions({
+    this.precacheTracks = 3,
+    this.limitMb = 1024,
+    this.precacheOnMobile = true,
+  });
 
   static const precacheChoices = [0, 1, 3, 5, 10, 25];
   static const limitChoicesMb = [256, 512, 1024, 2048, 5120, 10240];
 
   int get limitBytes => limitMb * 1024 * 1024;
 
-  CacheOptions copyWith({int? precacheTracks, int? limitMb}) => CacheOptions(
+  CacheOptions copyWith({
+    int? precacheTracks,
+    int? limitMb,
+    bool? precacheOnMobile,
+  }) => CacheOptions(
     precacheTracks: precacheTracks ?? this.precacheTracks,
     limitMb: limitMb ?? this.limitMb,
+    precacheOnMobile: precacheOnMobile ?? this.precacheOnMobile,
   );
 }

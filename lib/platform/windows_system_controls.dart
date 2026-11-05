@@ -131,6 +131,11 @@ class WindowsSystemControls implements SystemControls {
   @override
   Stream<MediaCommand> get commands => _commands.stream;
 
+  /// The media overlay fetches the cover from the server URL itself and
+  /// doesn't share it with other apps.
+  @override
+  bool get needsLocalArt => false;
+
   @override
   Future<void> update(NowPlayingInfo info) async {
     // Each step is tried on its own, so one failing (say, the cover art URL)
