@@ -21,7 +21,8 @@ class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
   late AlbumSort _sort = widget.initialSort;
   final _scroll = ScrollController();
 
-  static const _gridPadding = EdgeInsets.fromLTRB(16, 8, 16 + JumpBar.width, 0);
+  EdgeInsets get _gridPadding =>
+      EdgeInsets.fromLTRB(16, 8, 16 + JumpBar.reserved(context), 0);
 
   @override
   void dispose() {

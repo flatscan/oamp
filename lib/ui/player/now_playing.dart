@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
+import '../../platform/platform_info.dart';
 import '../../state/library.dart';
 import '../../state/lyrics.dart';
 import '../../state/player.dart';
@@ -119,6 +121,10 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
         ? null
         : ref.watch(artColorProvider(track.coverArt)).value;
     final base = tint ?? const Color(0xFF4A4A52);
+    // Room for the status and navigation bars when drawn edge to edge.
+    final insets = MediaQuery.paddingOf(context);
+    final topInset = insets.top;
+    final bottomInset = insets.bottom;
 
     final view = TweenAnimationBuilder<Color?>(
       tween: ColorTween(end: base),
@@ -149,8 +155,28 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                 child: Stack(
                   children: [
                     _Artwork(track: track),
+                    // On a phone the cover runs up under the status bar;
+                    // a shade there keeps the bar's icons readable.
+                    if (topInset > 0)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: topInset + 24,
+                        child: const IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Color(0x73000000), Color(0x00000000)],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     Positioned(
-                      top: 8,
+                      top: 8 + topInset,
                       left: 8,
                       right: 8,
                       child: _ArtOverlayBar(onClose: onClose),
@@ -167,7 +193,7 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                 ),
               ),
               const QueueSlivers(),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
             ],
           ),
         );
@@ -235,7 +261,13 @@ class _Artwork extends ConsumerWidget {
     final lyrics = ref.watch(showLyricsProvider);
     return LayoutBuilder(
       builder: (context, c) {
-        final size = c.maxWidth.clamp(0.0, 560.0);
+        var size = c.maxWidth.clamp(0.0, 560.0);
+        // A phone on its side: keep the cover short enough that the
+        // controls start on screen.
+        if (!isDesktop) {
+          final room = MediaQuery.sizeOf(context).height - 140;
+          size = size.clamp(0.0, math.max(240.0, room));
+        }
         final wide = c.maxWidth > size;
         return GestureDetector(
           onHorizontalDragEnd: (d) {
@@ -244,7 +276,10 @@ class _Artwork extends ConsumerWidget {
             if (v > 300) p.previous();
           },
           child: Padding(
-            padding: EdgeInsets.only(top: wide ? 16 : 0),
+            // A framed cover clears the status bar too.
+            padding: EdgeInsets.only(
+              top: wide ? 16 + MediaQuery.paddingOf(context).top : 0,
+            ),
             child: Center(
               child: SizedBox.square(
                 dimension: size,
@@ -395,8 +430,11 @@ class _Controls extends ConsumerWidget {
           const SizedBox(height: 14),
           TransportControls(playColor: accent),
           const SizedBox(height: 8),
-          VolumeControl(accent: accent),
-          const SizedBox(height: 4),
+          // Phones set the volume with their own buttons.
+          if (isDesktop) ...[
+            VolumeControl(accent: accent),
+            const SizedBox(height: 4),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

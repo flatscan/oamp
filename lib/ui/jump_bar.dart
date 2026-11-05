@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
@@ -16,6 +18,15 @@ class JumpBar extends StatefulWidget {
   const JumpBar({super.key, this.available, required this.onJump});
 
   static const width = 24.0;
+
+  /// How far the bar sits in from the right edge: clear of the system back
+  /// gesture on a phone, so dragging along the letters never goes back.
+  static double edgeInset(BuildContext context) =>
+      math.max(2.0, MediaQuery.systemGestureInsetsOf(context).right);
+
+  /// The room a list should leave free on its right for the bar.
+  static double reserved(BuildContext context) =>
+      width + edgeInset(context) - 2;
 
   @override
   State<JumpBar> createState() => _JumpBarState();

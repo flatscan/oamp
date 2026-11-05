@@ -86,6 +86,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: CustomScrollView(
+        // Scrolling the results puts the keyboard away.
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
           SliverAppBar(
             pinned: true,
@@ -99,6 +101,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
               onChanged: _changed,
               onSubmitted: _run,
               textInputAction: TextInputAction.search,
+              // Band and album names are not dictionary words.
+              autocorrect: false,
               decoration: InputDecoration(
                 hintText: 'Artists, albums or tracks',
                 prefixIcon: const Icon(Icons.search_rounded),
@@ -437,6 +441,11 @@ class _TopResultCard extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: () => switch (item) {
+          Album a => showAlbumMenu(context, ref, a),
+          Track tr => showTrackMenu(context, ref, tr),
+          _ => null,
+        },
         onSecondaryTapUp: (d) => switch (item) {
           Album a => showAlbumMenu(context, ref, a, at: d.globalPosition),
           Track tr => showTrackMenu(context, ref, tr, at: d.globalPosition),
