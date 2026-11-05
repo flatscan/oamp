@@ -12,6 +12,67 @@ final artistsProvider = FutureProvider<List<Artist>>(
   (ref) => ref.watch(musicSourceProvider).getArtists(),
 );
 
+/// The artist list split by index letter, worked out once per fetch rather
+/// than on every rebuild, so a list of tens of thousands stays cheap.
+final artistIndexProvider = FutureProvider<LetterGroups<Artist>>((ref) async {
+  final artists = await ref.watch(artistsProvider.future);
+  return LetterGroups.of(artists, (a) => a.sortName ?? a.name);
+});
+
+/// Items in display order, cut into runs that share an index letter. Each
+/// run is drawn as a heading and then fixed-height rows, so the distance to
+/// any letter is a sum over at most 27 runs and never needs the rows above
+/// it to be built or measured.
+class LetterGroups<T> {
+  final List<({String letter, List<T> items})> groups;
+  final int length;
+
+  const LetterGroups._(this.groups, this.length);
+
+  factory LetterGroups.of(List<T> items, String Function(T) sortName) {
+    final groups = <({String letter, List<T> items})>[];
+    List<T>? run;
+    String? last;
+    for (final item in items) {
+      final l = indexLetter(sortName(item));
+      if (l != last || run == null) {
+        run = <T>[];
+        groups.add((letter: l, items: run));
+        last = l;
+      }
+      run.add(item);
+    }
+    return LetterGroups._(List.unmodifiable(groups), items.length);
+  }
+
+  bool get isEmpty => length == 0;
+
+  /// Letters that have at least one item.
+  Set<String> get letters => {for (final g in groups) g.letter};
+
+  /// Scroll offset of [letter]'s heading, given the height of a heading
+  /// and of a row. A letter with no items gives the offset of the next
+  /// group, or the end of the list.
+  double offsetOf(
+    String letter, {
+    required double headerHeight,
+    required double rowHeight,
+  }) {
+    final target = indexLetters.indexOf(letter);
+    var offset = 0.0;
+    for (final g in groups) {
+      if (g.letter == letter) return offset;
+      // A server that sorts '#' names after Z puts that run last, so only
+      // stop at a later letter when the run is a real letter.
+      if (g.letter != '#' && indexLetters.indexOf(g.letter) > target) {
+        return offset;
+      }
+      offset += headerHeight + rowHeight * g.items.length;
+    }
+    return offset;
+  }
+}
+
 final artistDetailProvider = FutureProvider.family<ArtistDetail, String>(
   (ref, id) => ref.watch(musicSourceProvider).getArtist(id),
 );
@@ -248,22 +309,33 @@ class AlbumPagesNotifier extends Notifier<AlbumPages> {
   /// Loads pages until one reaches albums filed under [letter] (or later),
   /// and returns the index of the first such album, or the end of the list.
   /// Only meaningful in A to Z order.
+  ///
+  /// A jump can be thousands of albums past what is loaded, so rather than
+  /// the scrolling page size this fetches [jumpPageSize] albums a page,
+  /// [jumpBatch] pages at a time: a library of 10,000 albums reaches Z in a
+  /// handful of round trips instead of eighty.
   Future<int> loadThrough(String letter) async {
     final target = indexLetters.indexOf(letter);
+    var scanned = 0;
     int firstAt() {
       final albums = state.albums;
-      for (var i = 0; i < albums.length; i++) {
-        final l = indexLetter(albums[i].sortName ?? albums[i].name);
-        if (indexLetters.indexOf(l) >= target) return i;
+      for (; scanned < albums.length; scanned++) {
+        final a = albums[scanned];
+        final l = indexLetter(a.sortName ?? a.name);
+        // A '#' album sorted after Z (a non-Latin title, say) is not a
+        // sign the letter has been passed.
+        if (l == '#' && target > 0) continue;
+        if (indexLetters.indexOf(l) >= target) return scanned;
       }
       return -1;
     }
 
-    while (firstAt() < 0 && !state.done && state.error == null) {
-      await loadMore();
-      if (!ref.mounted) break;
+    var i = firstAt();
+    while (i < 0 && !state.done && state.error == null) {
+      await _fastForward();
+      if (!ref.mounted) return 0;
+      i = firstAt();
     }
-    final i = firstAt();
     if (i < 0) return state.albums.length;
     // Load a screenful past it too, so it can be scrolled to the top.
     while (state.albums.length < i + 60 && !state.done && state.error == null) {
@@ -271,6 +343,45 @@ class AlbumPagesNotifier extends Notifier<AlbumPages> {
       if (!ref.mounted) break;
     }
     return i;
+  }
+
+  static const jumpPageSize = 500;
+  static const jumpBatch = 4;
+
+  /// Fetches the next [jumpBatch] pages of [jumpPageSize] together.
+  Future<void> _fastForward() {
+    if (state.done) return Future.value();
+    return _inflight ??= _fetchBatch().whenComplete(() => _inflight = null);
+  }
+
+  Future<void> _fetchBatch() async {
+    final s = state;
+    state = AlbumPages(albums: s.albums, loading: true);
+    final source = ref.read(musicSourceProvider);
+    try {
+      final pages = await Future.wait([
+        for (var k = 0; k < jumpBatch; k++)
+          source.getAlbums(
+            sort: sort,
+            size: jumpPageSize,
+            offset: s.albums.length + k * jumpPageSize,
+          ),
+      ]);
+      if (!ref.mounted) return;
+      final albums = [...s.albums];
+      var done = false;
+      for (final page in pages) {
+        albums.addAll(page);
+        if (page.length < jumpPageSize) {
+          done = true;
+          break;
+        }
+      }
+      state = AlbumPages(albums: List.unmodifiable(albums), done: done);
+    } catch (e) {
+      if (!ref.mounted) return;
+      state = AlbumPages(albums: s.albums, error: e);
+    }
   }
 }
 
