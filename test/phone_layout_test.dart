@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -146,6 +147,13 @@ void main() {
     expect(
       tester.getBottomLeft(find.text('Search').last).dy,
       lessThan(851 - navBar),
+    );
+    // The status bar's inset doesn't push the tab icons down: the tab bar
+    // is only the icons, labels and the gesture bar.
+    expect(
+      tester.getTopLeft(find.byIcon(Icons.search_rounded).last).dy -
+          tester.getTopLeft(find.byType(NavigationBar)).dy,
+      lessThan(16),
     );
 
     // A library page's top bar also starts below the status bar.
@@ -377,6 +385,38 @@ void main() {
     final seek = tester.getRect(find.byType(SeekBar));
     expect(seek.left, greaterThanOrEqualTo(cover.right));
     expect(find.byType(TransportControls).hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('album buttons stay on one line on a narrow phone', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.15;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpPhone(tester, size: const Size(384, 832));
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Artists'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Air'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Moon Safari').first);
+    await tester.pumpAndSettle();
+
+    for (final label in ['Play', 'Shuffle']) {
+      final text = find.descendant(
+        of: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+        matching: find.text(label),
+      );
+      final lines = tester
+          .renderObject<RenderParagraph>(text.first)
+          .getBoxesForSelection(
+            TextSelection(baseOffset: 0, extentOffset: label.length),
+          )
+          .map((b) => b.top)
+          .toSet();
+      expect(lines, hasLength(1), reason: '$label wraps');
+    }
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('settings leave out the desktop window options', (tester) async {

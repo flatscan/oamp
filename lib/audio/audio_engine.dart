@@ -32,6 +32,11 @@ abstract class QueueInfo {
   /// The length the library gives for the entry at [index], used when the
   /// stream itself does not say (some transcoded streams).
   Duration? durationAt(int index);
+
+  /// The most [gainAt] may raise a track, as a linear factor (1 when gain
+  /// never raises). A deck that cannot play louder than normal turns every
+  /// track down by this much instead, so quiet tracks still match loud ones.
+  double get boostHeadroom;
 }
 
 /// The only interface the rest of the app uses to make sound.
@@ -380,8 +385,14 @@ class MixingEngine implements AudioEngine {
     return _info?.gainAt(index) ?? 1;
   }
 
-  double _level(AudioDeck deck, int? index, double fade) =>
-      math.min(_volume * _duck * _gain(index) * fade, deck.maxVolume);
+  double _level(AudioDeck deck, int? index, double fade) {
+    var level = _volume * _duck * _gain(index) * fade;
+    // A deck that can't boost (Android's player) would cut every positive
+    // gain off at normal volume; lower everything instead so tracks keep
+    // their levels relative to each other.
+    if (deck.maxVolume <= 1) level /= math.max(1, _info?.boostHeadroom ?? 1);
+    return math.min(level, deck.maxVolume);
+  }
 
   Future<void> _applyGain() =>
       _active.setVolume(_level(_active, _active.currentIndex, 1));

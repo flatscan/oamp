@@ -300,8 +300,13 @@ String? qualityLabel(
 }
 
 /// Debug summary of the server's ReplayGain tags on [t] and the volume
-/// adjustment [options] applies.
-String replayGainDebugLabel(Track t, PlaybackOptions options) {
+/// adjustment [options] applies. Without [canBoost] (Android's player)
+/// every track is also lowered by the boost headroom, which is shown too.
+String replayGainDebugLabel(
+  Track t,
+  PlaybackOptions options, {
+  bool canBoost = true,
+}) {
   final rg = t.replayGain;
   final String tags;
   if (rg == null) {
@@ -317,10 +322,14 @@ String replayGainDebugLabel(Track t, PlaybackOptions options) {
   if (options.replayGain == ReplayGainMode.off) {
     return '$tags  ·  applied: off';
   }
-  final factor = options.gainFor(t);
+  final headroom = canBoost ? 1.0 : options.boostHeadroom;
+  final factor = options.gainFor(t) / headroom;
   final appliedDb = factor > 0 ? 20 * math.log(factor) / math.ln10 : 0.0;
   final source = rg == null ? 'fallback' : options.replayGain.name;
-  return '$tags  ·  applied ${_fmtDb(appliedDb)} ($source)';
+  final room = headroom > 1
+      ? ', incl. ${_fmtDb(-20 * math.log(headroom) / math.ln10)} headroom'
+      : '';
+  return '$tags  ·  applied ${_fmtDb(appliedDb)} ($source$room)';
 }
 
 String _fmtDb(double db) {

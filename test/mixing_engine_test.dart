@@ -58,7 +58,7 @@ class FakeDeck implements AudioDeck {
   @override
   int? get currentIndex => index;
   @override
-  double get maxVolume => 2;
+  double maxVolume = 2;
 
   @override
   Future<void> setQueue(
@@ -148,21 +148,27 @@ class Info implements QueueInfo {
   bool crossfadeBetween(int from, int to) => fade(from, to);
   @override
   Duration? durationAt(int index) => const Duration(seconds: 60);
+  double headroom = 1;
+  @override
+  double get boostHeadroom => headroom;
 }
 
 void main() {
   late List<FakeDeck> decks;
   late MixingEngine engine;
   late Info info;
+  // What new decks can output; Android's player can't go above 1.
+  var deckMax = 2.0;
   final uris = [for (var i = 0; i < 4; i++) Uri.parse('t://$i')];
 
   // Called again inside fakeAsync by tests that need the engine's own
   // timers and listeners to run on fake time.
   void build() {
     decks = [];
+    deckMax = 2;
     info = Info();
     engine = MixingEngine(() {
-      final d = FakeDeck('deck${decks.length}');
+      final d = FakeDeck('deck${decks.length}')..maxVolume = deckMax;
       decks.add(d);
       return d;
     })..queueInfo = info;
@@ -199,6 +205,28 @@ void main() {
     info.gains = {0: 4};
     await engine.setQueue(uris);
     expect(decks[0].volume, 2);
+  });
+
+  test('a deck that cannot boost lowers every track by the headroom', () async {
+    deckMax = 1;
+    for (final d in decks) {
+      d.maxVolume = 1;
+    }
+    info.headroom = 2;
+    info.gains = {0: 2, 1: 0.5};
+    await engine.setQueue(uris);
+    // The loudest boost lands at full volume, the rest keep their ratio.
+    expect(decks[0].volume, closeTo(1, 1e-9));
+    await decks[0].next();
+    await settle();
+    expect(decks[0].volume, closeTo(0.25, 1e-9));
+  });
+
+  test('a deck that can boost ignores the headroom', () async {
+    info.headroom = 2;
+    info.gains = {0: 1.5};
+    await engine.setQueue(uris);
+    expect(decks[0].volume, closeTo(1.5, 1e-9));
   });
 
   test('crossfade loads the next track on the spare deck and swaps', () async {

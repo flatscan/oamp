@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/playback_options.dart';
+import '../platform/network_monitor.dart';
 import '../platform/preferences.dart';
 
 /// The settings store. main.dart overrides this with the platform store;
@@ -23,7 +24,12 @@ class AppSettings {
   final bool syncQueue;
 
   final PlaybackOptions playback;
+
+  /// The quality on Wi-Fi, and everywhere [mobileQuality] doesn't apply.
   final StreamQuality quality;
+
+  /// The quality on mobile data, or null for the same as [quality].
+  final StreamQuality? mobileQuality;
   final CacheOptions cache;
 
   const AppSettings({
@@ -32,8 +38,13 @@ class AppSettings {
     this.syncQueue = true,
     this.playback = const PlaybackOptions(),
     this.quality = StreamQuality.original,
+    this.mobileQuality,
     this.cache = const CacheOptions(),
   });
+
+  /// The quality to stream at on [network].
+  StreamQuality qualityOn(NetworkKind network) =>
+      network == NetworkKind.mobile ? (mobileQuality ?? quality) : quality;
 
   AppSettings copyWith({
     bool? showTitleBar,
@@ -41,6 +52,7 @@ class AppSettings {
     bool? syncQueue,
     PlaybackOptions? playback,
     StreamQuality? quality,
+    StreamQuality? Function()? mobileQuality,
     CacheOptions? cache,
   }) => AppSettings(
     showTitleBar: showTitleBar ?? this.showTitleBar,
@@ -48,6 +60,7 @@ class AppSettings {
     syncQueue: syncQueue ?? this.syncQueue,
     playback: playback ?? this.playback,
     quality: quality ?? this.quality,
+    mobileQuality: mobileQuality == null ? this.mobileQuality : mobileQuality(),
     cache: cache ?? this.cache,
   );
 }
@@ -56,19 +69,51 @@ final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(
   SettingsNotifier.new,
 );
 
+/// Watches whether the device is on Wi-Fi or mobile data. main.dart
+/// provides the platform's; elsewhere it is always Wi-Fi.
+final networkMonitorProvider = Provider<NetworkMonitor>(
+  (_) => const FixedNetworkMonitor(),
+);
+
+/// The network the device is on now.
+final networkKindProvider = NotifierProvider<_NetworkKindNotifier, NetworkKind>(
+  _NetworkKindNotifier.new,
+);
+
+class _NetworkKindNotifier extends Notifier<NetworkKind> {
+  @override
+  NetworkKind build() {
+    final monitor = ref.watch(networkMonitorProvider);
+    final sub = monitor.changes.listen((k) => state = k);
+    ref.onDispose(sub.cancel);
+    return monitor.current;
+  }
+}
+
 /// Narrow views, so the player only rebuilds for the settings it uses.
 final playbackOptionsProvider = Provider<PlaybackOptions>(
   (ref) => ref.watch(settingsProvider.select((s) => s.playback)),
 );
-final streamQualityProvider = Provider<StreamQuality>(
-  (ref) => ref.watch(settingsProvider.select((s) => s.quality)),
-);
+
+/// The quality to stream at now: the mobile data quality while on mobile
+/// data, otherwise the Wi-Fi one.
+final streamQualityProvider = Provider<StreamQuality>((ref) {
+  final network = ref.watch(networkKindProvider);
+  return ref.watch(settingsProvider.select((s) => s.qualityOn(network)));
+});
 final syncQueueProvider = Provider<bool>(
   (ref) => ref.watch(settingsProvider.select((s) => s.syncQueue)),
 );
-final cacheOptionsProvider = Provider<CacheOptions>(
-  (ref) => ref.watch(settingsProvider.select((s) => s.cache)),
-);
+
+/// The cache settings as they apply now: pre-caching is off on mobile data
+/// when the listener turned it off there.
+final cacheOptionsProvider = Provider<CacheOptions>((ref) {
+  final cache = ref.watch(settingsProvider.select((s) => s.cache));
+  final mobile = ref.watch(networkKindProvider) == NetworkKind.mobile;
+  return mobile && !cache.precacheOnMobile
+      ? cache.copyWith(precacheTracks: 0)
+      : cache;
+});
 
 class SettingsNotifier extends Notifier<AppSettings> {
   static const _titleBarKey = 'oamp.window.showTitleBar';
@@ -83,6 +128,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _rgClip = 'oamp.playback.replayGainPreventClipping';
   static const _format = 'oamp.stream.format';
   static const _bitRate = 'oamp.stream.maxBitRate';
+  static const _mobileFormat = 'oamp.stream.mobile.format';
+  static const _mobileBitRate = 'oamp.stream.mobile.maxBitRate';
+  static const _precacheMobile = 'oamp.cache.precacheOnMobile';
+
+  /// Stored as the mobile format when mobile data follows Wi-Fi.
+  static const _sameAsWifi = 'sameAsWifi';
   static const _precache = 'oamp.cache.precacheTracks';
   static const _cacheLimit = 'oamp.cache.limitMb';
 
@@ -124,9 +175,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
         ),
         bitRate: p.getInt(_bitRate) ?? d.quality.bitRate,
       ),
+      mobileQuality: switch (p.getString(_mobileFormat)) {
+        null || _sameAsWifi => null,
+        final name => StreamQuality(
+          format: _enum(StreamFormat.values, name, StreamFormat.original),
+          bitRate: p.getInt(_mobileBitRate) ?? d.quality.bitRate,
+        ),
+      },
       cache: CacheOptions(
         precacheTracks: p.getInt(_precache) ?? d.cache.precacheTracks,
         limitMb: p.getInt(_cacheLimit) ?? d.cache.limitMb,
+        precacheOnMobile:
+            p.getBool(_precacheMobile) ?? d.cache.precacheOnMobile,
       ),
     );
   }
@@ -165,9 +225,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _prefs.setInt(_bitRate, q.bitRate);
   }
 
+  /// Sets the mobile data quality; null follows the Wi-Fi quality.
+  Future<void> setMobileQuality(StreamQuality? q) async {
+    state = state.copyWith(mobileQuality: () => q);
+    await _prefs.setString(_mobileFormat, q?.format.name ?? _sameAsWifi);
+    if (q != null) await _prefs.setInt(_mobileBitRate, q.bitRate);
+  }
+
   Future<void> setCache(CacheOptions c) async {
     state = state.copyWith(cache: c);
     await _prefs.setInt(_precache, c.precacheTracks);
     await _prefs.setInt(_cacheLimit, c.limitMb);
+    await _prefs.setBool(_precacheMobile, c.precacheOnMobile);
   }
 }

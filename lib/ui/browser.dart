@@ -171,26 +171,33 @@ class BrowserState extends ConsumerState<Browser> {
         ),
         if (!typing) ...[
           ?widget.footer,
-          NavigationBar(
-            selectedIndex: _tab.index,
-            onDestinationSelected: (i) => select(BrowserTab.values[i]),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded),
-                label: 'Home',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.library_music_outlined),
-                selectedIcon: Icon(Icons.library_music_rounded),
-                label: 'Library',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.search_rounded),
-                selectedIcon: Icon(Icons.manage_search_rounded),
-                label: 'Search',
-              ),
-            ],
+          // NavigationBar keeps clear of every system inset, the status bar
+          // included, which put a status bar's height of empty space above
+          // the tabs on phones. It only needs the bottom one.
+          MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: NavigationBar(
+              selectedIndex: _tab.index,
+              onDestinationSelected: (i) => select(BrowserTab.values[i]),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.library_music_outlined),
+                  selectedIcon: Icon(Icons.library_music_rounded),
+                  label: 'Library',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.search_rounded),
+                  selectedIcon: Icon(Icons.manage_search_rounded),
+                  label: 'Search',
+                ),
+              ],
+            ),
           ),
         ],
       ],

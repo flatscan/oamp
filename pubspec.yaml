@@ -55,6 +55,9 @@ dependencies:
   flutter_rust_bridge: 2.11.1
   shared_preferences: ^2.5.6
   audio_service: ^0.18.19
+  # Wi-Fi or mobile data, for the mobile data streaming quality
+  # (lib/platform/network_monitor.dart).
+  connectivity_plus: ^7.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

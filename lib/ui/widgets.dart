@@ -503,23 +503,31 @@ class PlayShuffleButtons extends StatelessWidget {
     final pill = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(28),
     );
+    // Narrow phones with larger text leave each pill little room beside the
+    // like and more buttons: tighter padding, and a label that shrinks to
+    // fit rather than wrapping onto a second line.
+    const padding = EdgeInsets.symmetric(horizontal: 12);
+    Widget label(String text) => FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(text, maxLines: 1, softWrap: false),
+    );
     return Row(
       children: [
         Expanded(
           child: FilledButton.icon(
-            style: FilledButton.styleFrom(shape: pill),
+            style: FilledButton.styleFrom(shape: pill, padding: padding),
             onPressed: onPlay,
             icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('Play'),
+            label: label('Play'),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(shape: pill),
+            style: OutlinedButton.styleFrom(shape: pill, padding: padding),
             onPressed: onShuffle,
             icon: const Icon(Icons.shuffle_rounded),
-            label: const Text('Shuffle'),
+            label: label('Shuffle'),
           ),
         ),
         if (trailing != null) ...[const SizedBox(width: 4), trailing!],
