@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// OAmp's accent: a warm coral, like the glow of a valve amp.
 const oampAccent = Color(0xFFFF6B4A);
@@ -13,6 +14,19 @@ abstract final class OAmpColors {
   static const textMuted = Color(0xB3FFFFFF);
   static const textFaint = Color(0x80FFFFFF);
 }
+
+/// Clear status and navigation bars with light icons, so on Android the
+/// app draws edge to edge under them and they read on the dark canvas.
+const oampSystemBars = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarDividerColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+  systemNavigationBarContrastEnforced: false,
+);
 
 /// OAmp is dark only: a black canvas, white type and one accent.
 ThemeData buildTheme() {
@@ -61,6 +75,7 @@ ThemeData buildTheme() {
       bodySmall: text.bodySmall?.copyWith(color: OAmpColors.textMuted),
     ),
     appBarTheme: const AppBarTheme(
+      systemOverlayStyle: oampSystemBars,
       backgroundColor: oampBackground,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
@@ -130,14 +145,14 @@ ThemeData buildTheme() {
         borderSide: BorderSide.none,
       ),
     ),
-    sliderTheme: const SliderThemeData(
+    sliderTheme: SliderThemeData(
       trackHeight: 3,
       activeTrackColor: Colors.white,
-      inactiveTrackColor: Color(0x33FFFFFF),
+      inactiveTrackColor: const Color(0x33FFFFFF),
       thumbColor: Colors.white,
-      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
-      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-      trackShape: RoundedRectSliderTrackShape(),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+      trackShape: const RoundedRectSliderTrackShape(),
     ),
     scrollbarTheme: const ScrollbarThemeData(
       thickness: WidgetStatePropertyAll(6),

@@ -78,49 +78,53 @@ class _HomeHeader extends ConsumerWidget {
     // artwork; see ModeSwitchButton.
     return WindowDragArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          16,
-          ModeSwitchButton.inset,
-          ModeSwitchButton.inset,
-          4,
-        ),
-        child: SizedBox(
-          height: ModeSwitchButton.size,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Home',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-              ),
-              if (mediaProblem != null)
-                IconButton(
-                  tooltip: 'Media keys and overlay are not working',
-                  icon: const Icon(Icons.warning_amber_rounded),
-                  color: Theme.of(context).colorScheme.error,
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Media controls unavailable'),
-                      content: SelectableText(mediaProblem),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
+        // Below the status bar on a phone (none on desktop).
+        padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            ModeSwitchButton.inset,
+            ModeSwitchButton.inset,
+            4,
+          ),
+          child: SizedBox(
+            height: ModeSwitchButton.size,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Home',
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
                 ),
-              IconButton(
-                tooltip: 'Settings',
-                color: OAmpColors.textMuted,
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => openPage(const SettingsPage()),
-              ),
-              const ModeSwitchButton(),
-            ],
+                if (mediaProblem != null)
+                  IconButton(
+                    tooltip: 'Media keys and overlay are not working',
+                    icon: const Icon(Icons.warning_amber_rounded),
+                    color: Theme.of(context).colorScheme.error,
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Media controls unavailable'),
+                        content: SelectableText(mediaProblem),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Settings',
+                  color: OAmpColors.textMuted,
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () => openPage(const SettingsPage()),
+                ),
+                const ModeSwitchButton(),
+              ],
+            ),
           ),
         ),
       ),

@@ -1,10 +1,12 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'browse/home_view.dart';
 import 'browse/library_view.dart';
 import 'browse/search_view.dart';
 import 'player/now_playing.dart';
+import 'window_mode.dart';
 
 enum BrowserTab { home, library, search }
 
@@ -15,21 +17,38 @@ enum BrowserTab { home, library, search }
 /// the single column and the desktop fly-out keeps every tab's history.
 /// [footer] sits between the pages and the tab bar; the single column puts
 /// the mini-player there.
-class Browser extends StatefulWidget {
+///
+/// The system back button (and back gesture) steps back through the app
+/// before leaving it: it closes now playing, then goes back a page in the
+/// current tab, then returns to Home from another tab.
+///
+/// On a phone the mini-player and tab bar step aside while the keyboard is
+/// up, so the page being typed into keeps the room above the keyboard.
+class Browser extends ConsumerStatefulWidget {
   final Widget? footer;
-  const Browser({required GlobalKey<BrowserState> super.key, this.footer});
+
+  /// Whether the on-screen keyboard is up, which hides [footer] and the tab
+  /// bar. The shell passes it in, since its Scaffold takes the keyboard out
+  /// of the MediaQuery the browser sees.
+  final bool keyboardUp;
+
+  const Browser({
+    required GlobalKey<BrowserState> super.key,
+    this.footer,
+    this.keyboardUp = false,
+  });
 
   static final globalKey = GlobalKey<BrowserState>();
 
   @override
-  State<Browser> createState() => BrowserState();
+  ConsumerState<Browser> createState() => BrowserState();
 }
 
 /// Opens [page] in the current browser tab, closing the now playing screen
 /// first if it is covering the browser.
 void openPage(Widget page) => Browser.globalKey.currentState?.push(page);
 
-class BrowserState extends State<Browser> {
+class BrowserState extends ConsumerState<Browser> {
   BrowserTab _tab = BrowserTab.home;
   final _navKeys = {
     for (final t in BrowserTab.values) t: GlobalKey<NavigatorState>(),
@@ -78,54 +97,102 @@ class BrowserState extends State<Browser> {
     ),
   );
 
+  /// Whether now playing is covering the browser in the single column.
+  bool get _sheetOpen =>
+      ref.read(nowPlayingSheetProvider).open && !ref.read(flyoutOpenProvider);
+
+  /// Whether a back press has something to do inside the app.
+  bool get _canGoBack =>
+      _sheetOpen || (_nav?.canPop() ?? false) || _tab != BrowserTab.home;
+
+  /// One step back: see [Browser].
+  void _goBack() {
+    if (_sheetOpen) {
+      hideNowPlaying(context);
+    } else if (_nav?.canPop() ?? false) {
+      _nav!.maybePop();
+    } else if (_tab != BrowserTab.home) {
+      select(BrowserTab.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Rebuild so the back handling below sees the sheet open or close.
+    ref.watch(nowPlayingSheetProvider.select((s) => s.open));
+    ref.watch(flyoutOpenProvider);
+    final typing = widget.keyboardUp;
+    final pages = Stack(
+      fit: StackFit.expand,
+      children: [
+        _tabNavigator(BrowserTab.home, const HomeView()),
+        _tabNavigator(BrowserTab.library, const LibraryView()),
+        _tabNavigator(BrowserTab.search, SearchView(focusNode: searchFocus)),
+      ],
+    );
     return Column(
       children: [
         Expanded(
-          child: NavigatorPopHandler(
-            onPopWithResult: (_) => _nav?.maybePop(),
-            // The mouse's back button goes back, as in a browser.
-            child: Listener(
-              onPointerDown: (e) {
-                if (e.buttons & kBackMouseButton != 0) _nav?.maybePop();
+          child: PopScope(
+            canPop: !_canGoBack,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _goBack();
+            },
+            // A page pushed or popped in a tab changes what back does.
+            child: NotificationListener<NavigationNotification>(
+              onNotification: (_) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() {});
+                });
+                return false;
               },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _tabNavigator(BrowserTab.home, const HomeView()),
-                  _tabNavigator(BrowserTab.library, const LibraryView()),
-                  _tabNavigator(
-                    BrowserTab.search,
-                    SearchView(focusNode: searchFocus),
-                  ),
-                ],
+              // The mouse's back button goes back, as in a browser.
+              child: Listener(
+                onPointerDown: (e) {
+                  if (e.buttons & kBackMouseButton != 0) _nav?.maybePop();
+                },
+                // The shell's Scaffold has already shrunk the column for
+                // the keyboard, so pages must not shrink again; and the tab
+                // bar below pads for the navigation bar.
+                child: MediaQuery.removeViewInsets(
+                  context: context,
+                  removeBottom: true,
+                  child: typing
+                      ? pages
+                      : MediaQuery.removePadding(
+                          context: context,
+                          removeBottom: true,
+                          child: pages,
+                        ),
+                ),
               ),
             ),
           ),
         ),
-        ?widget.footer,
-        NavigationBar(
-          selectedIndex: _tab.index,
-          onDestinationSelected: (i) => select(BrowserTab.values[i]),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.library_music_outlined),
-              selectedIcon: Icon(Icons.library_music_rounded),
-              label: 'Library',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.search_rounded),
-              selectedIcon: Icon(Icons.manage_search_rounded),
-              label: 'Search',
-            ),
-          ],
-        ),
+        if (!typing) ...[
+          ?widget.footer,
+          NavigationBar(
+            selectedIndex: _tab.index,
+            onDestinationSelected: (i) => select(BrowserTab.values[i]),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.library_music_outlined),
+                selectedIcon: Icon(Icons.library_music_rounded),
+                label: 'Library',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.search_rounded),
+                selectedIcon: Icon(Icons.manage_search_rounded),
+                label: 'Search',
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
