@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import '../../core/music_source.dart';
@@ -208,7 +210,13 @@ class SubsonicClient {
     }
     final Map<String, dynamic>? resp;
     try {
-      final body = jsonDecode(utf8.decode(res.bodyBytes));
+      final bytes = res.bodyBytes;
+      // A big library's artist list can run to megabytes. Decoding that on
+      // the UI thread stalls scrolling and animations, so large replies are
+      // decoded on a background isolate (inline on the web, which has none).
+      final body = bytes.length > backgroundDecodeBytes
+          ? await compute(_decodeJson, bytes)
+          : _decodeJson(bytes);
       resp =
           (body as Map<String, dynamic>)['subsonic-response']
               as Map<String, dynamic>?;
@@ -224,6 +232,11 @@ class SubsonicClient {
   }
 
   void close() => _http.close();
+
+  /// Replies bigger than this are decoded off the UI thread.
+  static const backgroundDecodeBytes = 256 * 1024;
+
+  static Object? _decodeJson(Uint8List bytes) => jsonDecode(utf8.decode(bytes));
 
   MusicSourceException _notSubsonic() => MusicSourceException(
     'The server at ${credentials.baseUrl} is not a Subsonic or Navidrome '

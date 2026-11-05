@@ -11,6 +11,10 @@ import '../widgets.dart';
 
 /// All artists A to Z, with a letter heading where the initial changes and
 /// a jump bar down the right.
+///
+/// Each letter is a heading and a fixed-height run of rows, so scrolling
+/// and jumping cost the same with fifty artists or fifty thousand: nothing
+/// ever has to measure every row above the one on screen.
 class ArtistsPage extends ConsumerStatefulWidget {
   const ArtistsPage({super.key});
 
@@ -21,8 +25,6 @@ class ArtistsPage extends ConsumerStatefulWidget {
 class _ArtistsPageState extends ConsumerState<ArtistsPage> {
   final _scroll = ScrollController();
 
-  // Fixed heights, so the offset of any letter can be worked out without
-  // building the rows above it.
   static const _headerHeight = 40.0;
   static const _rowHeight = 72.0;
 
@@ -32,53 +34,34 @@ class _ArtistsPageState extends ConsumerState<ArtistsPage> {
     super.dispose();
   }
 
-  static String _letter(Artist a) => indexLetter(a.sortName ?? a.name);
-
-  /// Headings (letters) and artists, in display order.
-  static List<Object> _rows(List<Artist> artists) {
-    final rows = <Object>[];
-    String? last;
-    for (final a in artists) {
-      final l = _letter(a);
-      if (l != last) rows.add(l);
-      rows.add(a);
-      last = l;
-    }
-    return rows;
-  }
-
-  void _jump(List<Object> rows, String letter) {
-    var offset = 0.0;
-    for (final r in rows) {
-      if (r == letter) break;
-      offset += r is String ? _headerHeight : _rowHeight;
-    }
+  void _jump(LetterGroups<Artist> index, String letter) {
     if (!_scroll.hasClients) return;
+    final offset = index.offsetOf(
+      letter,
+      headerHeight: _headerHeight,
+      rowHeight: _rowHeight,
+    );
     final p = _scroll.position;
     _scroll.jumpTo(offset.clamp(p.minScrollExtent, p.maxScrollExtent));
   }
 
   @override
   Widget build(BuildContext context) {
-    final artists = ref.watch(artistsProvider);
-    final rows = _rows(artists.value ?? const []);
-    final available = {
-      for (final r in rows)
-        if (r is String) r,
-    };
+    final index = ref.watch(artistIndexProvider);
+    final loaded = index.value;
     return ListScaffold(
       title: 'Artists',
       controller: _scroll,
       onRefresh: () => ref.refresh(artistsProvider.future),
-      jumpBar: rows.length > 30
-          ? JumpBar(available: available, onJump: (l) => _jump(rows, l))
+      jumpBar: loaded != null && loaded.length > 30
+          ? JumpBar(available: loaded.letters, onJump: (l) => _jump(loaded, l))
           : null,
       slivers: [
         AsyncSliver(
-          value: artists,
+          value: index,
           onRetry: () => ref.invalidate(artistsProvider),
-          builder: (list) {
-            if (list.isEmpty) {
+          builder: (index) {
+            if (index.isEmpty) {
               return const SliverToBoxAdapter(
                 child: EmptyMessage(
                   icon: Icons.person_outline,
@@ -86,27 +69,30 @@ class _ArtistsPageState extends ConsumerState<ArtistsPage> {
                 ),
               );
             }
+            final heading = Theme.of(context).textTheme.titleMedium
+                ?.copyWith(color: oampAccent);
             return SliverPadding(
               padding: const EdgeInsets.only(right: JumpBar.width),
-              sliver: SliverVariedExtentList.builder(
-                itemCount: rows.length,
-                itemExtentBuilder: (i, _) => i >= rows.length
-                    ? null
-                    : rows[i] is String
-                    ? _headerHeight
-                    : _rowHeight,
-                itemBuilder: (context, i) {
-                  final r = rows[i];
-                  if (r is Artist) return ArtistTile(artist: r);
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                    child: Text(
-                      r as String,
-                      style: Theme.of(context).textTheme.titleMedium
-                          ?.copyWith(color: oampAccent),
+              sliver: SliverMainAxisGroup(
+                slivers: [
+                  for (final g in index.groups) ...[
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: _headerHeight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                          child: Text(g.letter, style: heading),
+                        ),
+                      ),
                     ),
-                  );
-                },
+                    SliverFixedExtentList.builder(
+                      itemExtent: _rowHeight,
+                      itemCount: g.items.length,
+                      itemBuilder: (context, i) =>
+                          ArtistTile(artist: g.items[i]),
+                    ),
+                  ],
+                ],
               ),
             );
           },
