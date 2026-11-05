@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Streams from the Navidrome server. -->
+    <!-- Streams from the Navidrome server. Plain http:// is allowed
+         (usesCleartextTraffic) for servers on the home network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Background playback: the media service runs in the foreground while
          music plays, and holds a wake lock so it keeps going with the screen
@@ -12,6 +13,9 @@
     <application
         android:label="OAmp"
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
