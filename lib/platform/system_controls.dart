@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// What the OS media UI should show: the Windows media overlay today, and
-/// later the Android notification, iOS/macOS Now Playing and Linux MPRIS.
+/// What the OS media UI should show: the Windows media overlay, the Android
+/// notification and lock screen, and later iOS/macOS Now Playing and MPRIS.
 class NowPlayingInfo {
   final String title;
   final String? artist;
@@ -77,9 +77,9 @@ class SeekCommand extends MediaCommand {
 /// The OS media session. One implementation per platform family; the player
 /// only ever talks to this interface (see state/system_controls_bridge.dart).
 ///
-/// Windows uses SMTC (`WindowsSystemControls`). Android, iOS and macOS will
-/// get an `audio_service` implementation and Linux an MPRIS one, without the
-/// player or the UI changing.
+/// Windows uses SMTC (`WindowsSystemControls`) and Android `audio_service`
+/// (`AndroidSystemControls`). iOS, macOS and Linux (MPRIS) can be added the
+/// same way, without the player or the UI changing.
 abstract class SystemControls {
   /// Why the OS media controls are not working, or `null` when they are (or
   /// when the platform has none yet). Shown in the app so a failure is not
