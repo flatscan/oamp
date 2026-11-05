@@ -13,6 +13,7 @@ import 'browse/artist_page.dart';
 import 'browser.dart';
 import 'cover_art.dart';
 import 'glyphs.dart';
+import 'jump_bar.dart';
 import 'rating_stars.dart';
 import '../state/session.dart';
 import 'mode_switch.dart';
@@ -618,7 +619,7 @@ class ListScaffold extends StatelessWidget {
   final ScrollController? controller;
 
   /// Shown down the right edge, below the top bar, such as a [JumpBar].
-  /// The list should leave [JumpBar.width] free on its right.
+  /// The list should leave [JumpBar.reserved] free on its right.
   final Widget? jumpBar;
 
   const ListScaffold({
@@ -656,9 +657,12 @@ class ListScaffold extends StatelessWidget {
         children: [
           Positioned.fill(child: body),
           Positioned(
-            top: ModeSwitchButton.toolbarHeight + 4,
+            top:
+                MediaQuery.paddingOf(context).top +
+                ModeSwitchButton.toolbarHeight +
+                4,
             bottom: 8,
-            right: 2,
+            right: JumpBar.edgeInset(context),
             child: jumpBar!,
           ),
         ],

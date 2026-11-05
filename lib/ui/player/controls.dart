@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
 import '../../core/playback_options.dart';
+import '../../platform/platform_info.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
 import '../theme.dart';
@@ -50,7 +51,8 @@ class _SeekBarState extends ConsumerState<SeekBar> {
               trackHeight: 4,
               activeTrackColor: widget.accent,
               thumbColor: widget.accent,
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              // A taller grab area for fingers on phones.
+              padding: EdgeInsets.symmetric(vertical: isDesktop ? 8 : 18),
             ),
             child: Slider(
               value: max > 0 ? value : 0,

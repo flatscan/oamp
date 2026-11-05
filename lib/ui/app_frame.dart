@@ -70,18 +70,25 @@ class AppFrame extends ConsumerWidget {
         },
         child: Focus(
           autofocus: true,
-          child: Column(
-            children: [
-              if (isDesktop && ref.watch(settingsProvider).showTitleBar)
-                const WindowBar(),
-              Expanded(child: child),
-            ],
+          child: _bars(
+            Column(
+              children: [
+                if (isDesktop && ref.watch(settingsProvider).showTitleBar)
+                  const WindowBar(),
+                Expanded(child: child),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+/// Keeps the status and navigation bar icons light on every screen,
+/// including ones without a top bar of their own (Home, now playing).
+Widget _bars(Widget child) =>
+    AnnotatedRegion<SystemUiOverlayStyle>(value: oampSystemBars, child: child);
 
 class _TogglePlay extends Intent {
   const _TogglePlay();

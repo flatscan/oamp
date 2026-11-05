@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../platform/platform_info.dart';
 import '../state/library.dart';
 import 'glyphs.dart';
 import 'theme.dart';
@@ -55,6 +58,9 @@ class _RatingStarsState extends ConsumerState<RatingStars> {
       ratingsProvider.select((m) => m[widget.id] ?? widget.fetched),
     );
     final shown = _hover ?? rating;
+    // On a phone each star is at least 40 square, so a finger hits the
+    // star it means.
+    final touchPad = isDesktop ? 0.0 : (40 - widget.size) / 2;
     final on = widget.color ?? oampAccent;
     return Semantics(
       label: rating == 0
@@ -79,8 +85,8 @@ class _RatingStarsState extends ConsumerState<RatingStars> {
                     onTap: () => _rate(i),
                     child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: widget.size * 0.08,
-                        vertical: widget.size * 0.15,
+                        horizontal: math.max(widget.size * 0.08, touchPad),
+                        vertical: math.max(widget.size * 0.15, touchPad),
                       ),
                       child: StarGlyph(
                         key: ValueKey('star$i'),

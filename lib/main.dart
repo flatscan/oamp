@@ -2,6 +2,7 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -26,6 +27,13 @@ import 'ui/window_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // Draw under clear status and navigation bars; pages pad themselves
+    // for the bars and any display cutout.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(oampSystemBars);
+  }
 
   final createDeck = createDeckFactory();
   final preferences = await PlatformPreferences.load();
