@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+
 import '../core/models.dart';
 
 /// Snapshot of what the engine is doing, independent of the backend.
@@ -73,6 +75,10 @@ abstract class AudioEngine {
 
   Future<void> setGapless(bool enabled);
 
+  /// Turns playback down while another app briefly speaks over it (a
+  /// navigation prompt, a notification), or back up again.
+  Future<void> setDucked(bool ducked);
+
   /// How long tracks overlap at a natural track change. Zero turns
   /// crossfading off. Skipping by hand always cuts straight over.
   Future<void> setCrossfade(Duration duration);
@@ -85,6 +91,10 @@ abstract class AudioEngine {
 /// platform players) and `MpvDeck` (libmpv, used on Windows).
 abstract class AudioDeck {
   Stream<EngineState> get stateStream;
+
+  /// Playback failures, such as a stream cut off when the network dropped.
+  /// The deck stops when one arrives; [MixingEngine] reopens the stream.
+  Stream<Object> get errors;
   Stream<Duration> get positionStream;
   Stream<Duration?> get durationStream;
   Duration get position;
@@ -131,6 +141,12 @@ abstract class AudioDeck {
 /// then becomes the active deck. Anything the listener does mid-fade
 /// (pause, skip, seek, editing the queue around the current track) cuts
 /// straight to the incoming track.
+///
+/// When the active deck reports a failure, such as a stream cut off by a
+/// Wi-Fi or mobile data drop, the engine keeps the queue and reports
+/// buffering while it reopens the track where it stopped, waiting longer
+/// between each attempt ([retryDelays]). If the network is still gone after
+/// that it pauses there, and play tries again.
 class MixingEngine implements AudioEngine {
   MixingEngine(this._createDeck) : _active = _createDeck() {
     _follow(_active);
@@ -156,6 +172,41 @@ class MixingEngine implements AudioEngine {
   _Fade? _fade;
   int? _lastIndex;
 
+  /// How far [setDucked] turns playback down.
+  static const duckLevel = 0.2;
+  double _duck = 1;
+
+  /// Waits before each attempt to reopen a failed stream, about a minute in
+  /// all before the engine gives up and pauses.
+  static const retryDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+  ];
+
+  /// A failure this soon after a stream was reopened is the same outage,
+  /// so the waits carry on growing instead of starting again.
+  static const sameOutage = Duration(seconds: 20);
+
+  /// Whether the listener asked to play (and has not paused since).
+  bool _wantPlay = false;
+
+  /// Set from a failure until the stream is open again.
+  _Failure? _failure;
+  final _sinceRecovered = Stopwatch();
+  int _lastAttempts = 0;
+
+  /// While above zero the engine is loading the active deck itself, and a
+  /// failure shows up as that load throwing.
+  int _loading = 0;
+
+  /// A crossfade into this entry could not be prepared, so the track change
+  /// happens without one.
+  (int, int)? _noFade;
+
   final _state = StreamController<EngineState>.broadcast();
   final _position = StreamController<Duration>.broadcast();
   final _duration = StreamController<Duration?>.broadcast();
@@ -170,6 +221,10 @@ class MixingEngine implements AudioEngine {
   /// Whether a crossfade is running, for tests.
   bool get isFading => _fade?.started ?? false;
 
+  /// Whether a failed stream is being reopened (or waiting for play to
+  /// try again), for tests.
+  bool get isRecovering => _failure != null;
+
   void _follow(AudioDeck deck) {
     for (final s in _subs) {
       unawaited(s.cancel());
@@ -178,6 +233,8 @@ class MixingEngine implements AudioEngine {
       ..clear()
       ..add(
         deck.stateStream.listen((s) {
+          // The deck is being reopened; [_failure] speaks for it meanwhile.
+          if (_failure != null) return;
           _state.add(s);
           if (s.currentIndex != _lastIndex) {
             _lastIndex = s.currentIndex;
@@ -187,11 +244,135 @@ class MixingEngine implements AudioEngine {
       )
       ..add(
         deck.positionStream.listen((p) {
+          if (_failure != null) return;
           _position.add(p);
           _maybeCrossfade(p);
         }),
       )
-      ..add(deck.durationStream.listen(_duration.add));
+      ..add(deck.durationStream.listen(_duration.add))
+      ..add(deck.errors.listen(_onError));
+  }
+
+  void _onError(Object error) {
+    debugPrint('Playback failed: $error');
+    if (_loading > 0) return;
+    unawaited(_fail());
+  }
+
+  /// Holds the queue at the failed entry and starts reopening it.
+  Future<void> _fail({int? index, Duration? position}) async {
+    if (_failure != null) return;
+    await _finishFade();
+    final at = index ?? _active.currentIndex ?? _lastIndex;
+    if (at == null || at < 0 || at >= _uris.length) return;
+    final f = _failure = _Failure(at, position ?? _active.position);
+    if (_sinceRecovered.isRunning && _sinceRecovered.elapsed < sameOutage) {
+      f.attempts = _lastAttempts;
+    }
+    _emitFailure();
+    if (_wantPlay) _retryLater(f);
+  }
+
+  void _emitFailure() {
+    final f = _failure;
+    if (f == null) return;
+    _state.add(
+      EngineState(
+        playing: _wantPlay,
+        buffering: _wantPlay,
+        currentIndex: f.index,
+      ),
+    );
+  }
+
+  void _retryLater(_Failure f, {bool now = false}) {
+    f.timer?.cancel();
+    f.timer = null;
+    if (f.busy) {
+      // The attempt under way checks for a new target when it finishes.
+      if (now) f.again = true;
+      return;
+    }
+    if (!now && f.attempts >= retryDelays.length) {
+      // Still no stream: stop at the failed spot. Play tries again.
+      _wantPlay = false;
+      f.attempts = 0;
+      _emitFailure();
+      return;
+    }
+    f.timer = Timer(
+      now ? Duration.zero : retryDelays[f.attempts],
+      () => unawaited(_retry(f)),
+    );
+  }
+
+  Future<void> _retry(_Failure f) async {
+    if (!identical(_failure, f)) return;
+    f
+      ..timer = null
+      ..busy = true
+      ..again = false
+      ..attempts += 1;
+    final index = f.index;
+    final position = f.position;
+    final version = _version;
+    var opened = false;
+    _loading++;
+    try {
+      await _active.setVolume(_level(_active, index, 1));
+      await _active.setQueue(
+        List.of(_uris),
+        initialIndex: index,
+        initialPosition: position,
+      );
+      opened = true;
+    } catch (e) {
+      debugPrint('Reopening the stream failed: $e');
+    } finally {
+      _loading--;
+      f.busy = false;
+    }
+    if (!identical(_failure, f)) return;
+    final moved =
+        f.again ||
+        version != _version ||
+        f.index != index ||
+        f.position != position;
+    if (moved) {
+      _retryLater(f, now: true);
+      return;
+    }
+    if (!opened) {
+      if (_wantPlay) _retryLater(f);
+      return;
+    }
+    _failure = null;
+    _lastIndex = index;
+    _lastAttempts = f.attempts;
+    _sinceRecovered
+      ..reset()
+      ..start();
+    if (_wantPlay) {
+      await _active.play();
+    } else {
+      _state.add(EngineState(currentIndex: index));
+    }
+  }
+
+  /// Moves a failure's target, and reopens there now if playing.
+  void _retarget(int index, Duration position) {
+    final f = _failure!;
+    f
+      ..index = index
+      ..position = position
+      ..attempts = 0;
+    _emitFailure();
+    if (_wantPlay) _retryLater(f, now: true);
+  }
+
+  void _dropFailure() {
+    _failure?.timer?.cancel();
+    _failure = null;
   }
 
   double _gain(int? index) {
@@ -200,7 +381,7 @@ class MixingEngine implements AudioEngine {
   }
 
   double _level(AudioDeck deck, int? index, double fade) =>
-      math.min(_volume * _gain(index) * fade, deck.maxVolume);
+      math.min(_volume * _duck * _gain(index) * fade, deck.maxVolume);
 
   Future<void> _applyGain() =>
       _active.setVolume(_level(_active, _active.currentIndex, 1));
@@ -213,7 +394,10 @@ class MixingEngine implements AudioEngine {
   };
 
   void _maybeCrossfade(Duration p) {
-    if (_fade != null || _crossfade <= Duration.zero || !_active.playing) {
+    if (_fade != null ||
+        _failure != null ||
+        _crossfade <= Duration.zero ||
+        !_active.playing) {
       return;
     }
     final cur = _active.currentIndex;
@@ -222,6 +406,7 @@ class MixingEngine implements AudioEngine {
     if (cur == null || dur == null || dur < _crossfade * 2) return;
     final next = _nextIndex(cur);
     if (next == null || !(_info?.crossfadeBetween(cur, next) ?? true)) return;
+    if (_noFade == (_version, next)) return;
     final remaining = dur - p;
     if (remaining <= _crossfade + prepareAhead &&
         (_preparedIndex != next || _preparedVersion != _version) &&
@@ -234,13 +419,21 @@ class MixingEngine implements AudioEngine {
   }
 
   /// Loads the queue into the spare deck, paused and silent at [index].
+  /// If the next track cannot be opened (the network is down), the track
+  /// change happens on the active deck as usual, without a crossfade.
   Future<void> _prepare(int index) async {
     final deck = _spare ??= _createDeck();
     final version = _version;
-    await deck.setVolume(0);
-    await deck.setGapless(_gapless);
-    await deck.setRepeatMode(_repeat);
-    await deck.setQueue(List.of(_uris), initialIndex: index);
+    try {
+      await deck.setVolume(0);
+      await deck.setGapless(_gapless);
+      await deck.setRepeatMode(_repeat);
+      await deck.setQueue(List.of(_uris), initialIndex: index);
+    } catch (e) {
+      debugPrint('Could not prepare the crossfade: $e');
+      _noFade = (version, index);
+      return;
+    }
     if (version == _version) {
       _preparedIndex = index;
       _preparedVersion = version;
@@ -254,7 +447,10 @@ class MixingEngine implements AudioEngine {
       await _prepare(inIndex);
     }
     final incoming = _spare!;
-    if (fade.cancelled || _preparedVersion != _version) {
+    if (fade.cancelled ||
+        _failure != null ||
+        _preparedIndex != inIndex ||
+        _preparedVersion != _version) {
       if (identical(_fade, fade)) _fade = null;
       return;
     }
@@ -314,7 +510,7 @@ class MixingEngine implements AudioEngine {
   @override
   Stream<Duration?> get durationStream => _duration.stream;
   @override
-  Duration get position => _active.position;
+  Duration get position => _failure?.position ?? _active.position;
 
   @override
   set queueInfo(QueueInfo? info) => _info = info;
@@ -331,17 +527,29 @@ class MixingEngine implements AudioEngine {
     Duration initialPosition = Duration.zero,
   }) async {
     await _finishFade();
+    _dropFailure();
     _changed();
     _uris
       ..clear()
       ..addAll(uris);
     _lastIndex = initialIndex;
     await _active.setVolume(_level(_active, initialIndex, 1));
-    await _active.setQueue(
-      uris,
-      initialIndex: initialIndex,
-      initialPosition: initialPosition,
-    );
+    _loading++;
+    try {
+      await _active.setQueue(
+        uris,
+        initialIndex: initialIndex,
+        initialPosition: initialPosition,
+      );
+    } catch (e) {
+      // Offline as the queue starts: keep it, and open it on play.
+      debugPrint('Opening the queue failed: $e');
+      if (uris.isNotEmpty) {
+        await _fail(index: initialIndex, position: initialPosition);
+      }
+    } finally {
+      _loading--;
+    }
     await _spare?.clear();
   }
 
@@ -356,6 +564,8 @@ class MixingEngine implements AudioEngine {
   Future<void> insertAll(int index, List<Uri> uris) async {
     _changed();
     _uris.insertAll(index, uris);
+    final f = _failure;
+    if (f != null && index <= f.index) f.index += uris.length;
     await _active.insertAll(index, uris);
   }
 
@@ -364,6 +574,17 @@ class MixingEngine implements AudioEngine {
     await _finishFade();
     _changed();
     _uris.removeAt(index);
+    final f = _failure;
+    if (f != null) {
+      if (_uris.isEmpty) {
+        _dropFailure();
+      } else if (index < f.index) {
+        f.index--;
+      } else if (index == f.index) {
+        // The next entry takes its place, from the top.
+        _retarget(math.min(index, _uris.length - 1), Duration.zero);
+      }
+    }
     await _active.removeAt(index);
   }
 
@@ -372,12 +593,25 @@ class MixingEngine implements AudioEngine {
     await _finishFade();
     _changed();
     _uris.insert(to, _uris.removeAt(from));
+    final f = _failure;
+    if (f != null) {
+      final at = f.index;
+      if (from == at) {
+        f.index = to;
+      } else if (from < at && to >= at) {
+        f.index = at - 1;
+      } else if (from > at && to <= at) {
+        f.index = at + 1;
+      }
+    }
     await _active.move(from, to);
   }
 
   @override
   Future<void> clear() async {
     await _finishFade();
+    _dropFailure();
+    _wantPlay = false;
     _changed();
     _uris.clear();
     await _active.clear();
@@ -385,28 +619,65 @@ class MixingEngine implements AudioEngine {
   }
 
   @override
-  Future<void> play() => _active.play();
+  Future<void> play() async {
+    _wantPlay = true;
+    final f = _failure;
+    if (f == null) return _active.play();
+    f.attempts = 0;
+    _emitFailure();
+    // An attempt under way plays once it opens.
+    if (!f.busy) _retryLater(f, now: true);
+  }
 
   @override
   Future<void> pause() async {
+    _wantPlay = false;
+    final f = _failure;
+    if (f != null) {
+      f.timer?.cancel();
+      f.timer = null;
+      _emitFailure();
+      // The failed player may still mean to play once it is reopened.
+      try {
+        await _active.pause();
+      } catch (_) {}
+      return;
+    }
     await _finishFade();
     await _active.pause();
   }
 
   @override
   Future<void> seek(Duration position, {int? index}) async {
+    final f = _failure;
+    if (f != null) {
+      final at = index ?? f.index;
+      if (at >= 0 && at < _uris.length) _retarget(at, position);
+      return;
+    }
     await _finishFade();
     await _active.seek(position, index: index);
   }
 
   @override
   Future<void> next() async {
+    final f = _failure;
+    if (f != null) {
+      final to = _nextIndex(f.index);
+      if (to != null) _retarget(to, Duration.zero);
+      return;
+    }
     await _finishFade();
     await _active.next();
   }
 
   @override
   Future<void> previous() async {
+    final f = _failure;
+    if (f != null) {
+      _retarget(math.max(f.index - 1, 0), Duration.zero);
+      return;
+    }
     await _finishFade();
     await _active.previous();
   }
@@ -437,6 +708,12 @@ class MixingEngine implements AudioEngine {
   }
 
   @override
+  Future<void> setDucked(bool ducked) async {
+    _duck = ducked ? duckLevel : 1;
+    if (_fade?.started != true) await _applyGain();
+  }
+
+  @override
   Future<void> setCrossfade(Duration duration) async {
     _crossfade = duration;
     if (duration <= Duration.zero) await _finishFade();
@@ -445,6 +722,7 @@ class MixingEngine implements AudioEngine {
   @override
   Future<void> dispose() async {
     _fade?.timer?.cancel();
+    _dropFailure();
     for (final s in _subs) {
       await s.cancel();
     }
@@ -454,6 +732,22 @@ class MixingEngine implements AudioEngine {
     await _active.dispose();
     await _spare?.dispose();
   }
+}
+
+/// Where a failed stream stopped, while the engine reopens it.
+class _Failure {
+  int index;
+  Duration position;
+  int attempts = 0;
+  Timer? timer;
+
+  /// An attempt to reopen is under way.
+  bool busy = false;
+
+  /// The target moved while [busy], so try again at once when it ends.
+  bool again = false;
+
+  _Failure(this.index, this.position);
 }
 
 class _Fade {

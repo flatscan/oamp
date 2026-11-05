@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/core/models.dart';
@@ -12,7 +13,19 @@ class FakeDeck implements AudioDeck {
   final _state = StreamController<EngineState>.broadcast(sync: true);
   final _pos = StreamController<Duration>.broadcast(sync: true);
   final _dur = StreamController<Duration?>.broadcast(sync: true);
+  final _errors = StreamController<Object>.broadcast(sync: true);
   List<Uri> queue = [];
+
+  /// While set, loading a queue fails, as it does with the network down.
+  bool offline = false;
+
+  /// Pretends the stream dropped: the deck stops and reports it.
+  void fail() {
+    playing = false;
+    _emit();
+    _errors.add('network');
+  }
+
   int? index;
   @override
   bool playing = false;
@@ -35,6 +48,8 @@ class FakeDeck implements AudioDeck {
   @override
   Stream<EngineState> get stateStream => _state.stream;
   @override
+  Stream<Object> get errors => _errors.stream;
+  @override
   Stream<Duration> get positionStream => _pos.stream;
   @override
   Stream<Duration?> get durationStream => _dur.stream;
@@ -52,8 +67,13 @@ class FakeDeck implements AudioDeck {
     Duration initialPosition = Duration.zero,
   }) async {
     log.add('setQueue@$initialIndex');
+    if (offline) {
+      _errors.add('offline');
+      throw Exception('offline');
+    }
     queue = List.of(uris);
     index = initialIndex;
+    _p = initialPosition;
     _emit();
   }
 
@@ -136,7 +156,9 @@ void main() {
   late Info info;
   final uris = [for (var i = 0; i < 4; i++) Uri.parse('t://$i')];
 
-  setUp(() {
+  // Called again inside fakeAsync by tests that need the engine's own
+  // timers and listeners to run on fake time.
+  void build() {
     decks = [];
     info = Info();
     engine = MixingEngine(() {
@@ -144,7 +166,9 @@ void main() {
       decks.add(d);
       return d;
     })..queueInfo = info;
-  });
+  }
+
+  setUp(build);
 
   Future<void> settle() async {
     for (var i = 0; i < 5; i++) {
@@ -294,5 +318,199 @@ void main() {
     decks[0].at(const Duration(seconds: 50));
     await settle();
     expect(decks[1].gapless, isFalse);
+  });
+
+  group('ducking', () {
+    test('turns the level down and back up', () async {
+      info.gains = {0: 0.5};
+      await engine.setQueue(uris);
+      await engine.setDucked(true);
+      expect(decks[0].volume, closeTo(0.5 * MixingEngine.duckLevel, 1e-9));
+      await engine.setDucked(false);
+      expect(decks[0].volume, closeTo(0.5, 1e-9));
+    });
+  });
+
+  group('a dropped stream', () {
+    late List<EngineState> states;
+    late List<Duration> positions;
+
+    void start(FakeAsync async, {int index = 1}) {
+      states = [];
+      positions = [];
+      engine.stateStream.listen(states.add);
+      engine.positionStream.listen(positions.add);
+      engine.setQueue(uris, initialIndex: index);
+      engine.play();
+      async.flushMicrotasks();
+      decks[0].at(const Duration(seconds: 25));
+      async.flushMicrotasks();
+    }
+
+    test('reopens where it stopped and keeps playing', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0]..log.clear();
+        deck.fail();
+        async.flushMicrotasks();
+        expect(engine.isRecovering, isTrue);
+        expect(states.last.playing, isTrue, reason: 'still meant to play');
+        expect(states.last.buffering, isTrue);
+        expect(states.last.currentIndex, 1);
+        expect(engine.position, const Duration(seconds: 25));
+
+        async.elapse(MixingEngine.retryDelays.first);
+        expect(deck.log, ['setQueue@1', 'play']);
+        expect(deck.position, const Duration(seconds: 25));
+        expect(deck.queue, uris, reason: 'the queue is kept');
+        expect(engine.isRecovering, isFalse);
+        expect(states.last.playing, isTrue);
+        expect(states.last.buffering, isFalse);
+      });
+    });
+
+    test('waits longer each time, then pauses where it stopped', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0]..offline = true;
+        deck.fail();
+        async.flushMicrotasks();
+        deck.log.clear();
+        async.elapse(const Duration(seconds: 3));
+        expect(deck.log, ['setQueue@1', 'setQueue@1'], reason: 'at 1s, 3s');
+        async.elapse(const Duration(minutes: 2));
+        expect(deck.log.length, MixingEngine.retryDelays.length);
+        expect(states.last.playing, isFalse);
+        expect(states.last.buffering, isFalse);
+        expect(states.last.currentIndex, 1);
+        expect(engine.position, const Duration(seconds: 25));
+
+        // Back online, play tries again at once.
+        deck.offline = false;
+        deck.log.clear();
+        engine.play();
+        async.flushMicrotasks();
+        async.elapse(Duration.zero);
+        expect(deck.log, ['setQueue@1', 'play']);
+        expect(deck.position, const Duration(seconds: 25));
+        expect(engine.isRecovering, isFalse);
+      });
+    });
+
+    test('a second drop soon after keeps the longer waits', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0];
+        deck.fail();
+        async.elapse(const Duration(seconds: 1));
+        expect(engine.isRecovering, isFalse);
+        deck
+          ..log.clear()
+          ..fail();
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 1));
+        expect(deck.log, isEmpty, reason: 'the next wait is 2s');
+        async.elapse(const Duration(seconds: 1));
+        expect(deck.log, ['setQueue@1', 'play']);
+      });
+    });
+
+    test('pausing stops the attempts and play reopens', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0];
+        deck.fail();
+        async.flushMicrotasks();
+        deck.log.clear();
+        engine.pause();
+        async.flushMicrotasks();
+        expect(states.last.playing, isFalse);
+        async.elapse(const Duration(minutes: 2));
+        expect(deck.log, ['pause'], reason: 'no attempts while paused');
+        engine.play();
+        async.elapse(Duration.zero);
+        expect(deck.log, ['pause', 'setQueue@1', 'play']);
+      });
+    });
+
+    test('skipping while it is down opens the next track', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0]..offline = true;
+        deck.fail();
+        async.flushMicrotasks();
+        engine.next();
+        async.flushMicrotasks();
+        expect(states.last.currentIndex, 2);
+        deck.offline = false;
+        deck.log.clear();
+        async.elapse(const Duration(seconds: 2));
+        expect(deck.log, ['setQueue@2', 'play']);
+        expect(deck.position, Duration.zero);
+      });
+    });
+
+    test('queue edits while it is down keep the same track', () {
+      fakeAsync((async) {
+        build();
+        start(async);
+        final deck = decks[0]..offline = true;
+        deck.fail();
+        async.flushMicrotasks();
+        engine.insertAll(0, [Uri.parse('t://new')]);
+        async.flushMicrotasks();
+        deck.offline = false;
+        deck.log.clear();
+        async.elapse(const Duration(seconds: 5));
+        expect(deck.log.first, 'setQueue@2');
+        expect(deck.queue[2], uris[1]);
+      });
+    });
+
+    test('a queue that cannot open yet opens on play', () {
+      fakeAsync((async) {
+        build();
+        states = [];
+        engine.stateStream.listen(states.add);
+        final deck = decks[0]..offline = true;
+        engine.setQueue(uris, initialIndex: 2);
+        async.flushMicrotasks();
+        expect(engine.isRecovering, isTrue);
+        deck.offline = false;
+        engine.play();
+        async.elapse(Duration.zero);
+        expect(deck.log.last, 'play');
+        expect(deck.index, 2);
+        expect(engine.isRecovering, isFalse);
+      });
+    });
+
+    test('a crossfade that cannot be prepared becomes a plain change', () {
+      fakeAsync((async) {
+        build();
+        engine.setCrossfade(const Duration(seconds: 6));
+        start(async);
+        // The spare deck is made as the prepare window opens, and cannot
+        // open the next track.
+        decks[0].at(const Duration(seconds: 50));
+        expect(decks, hasLength(2));
+        decks[1].offline = true;
+        async.flushMicrotasks();
+        decks[0].at(const Duration(seconds: 50, milliseconds: 500));
+        decks[0].at(const Duration(seconds: 55));
+        async.flushMicrotasks();
+        expect(decks[1].log.where((l) => l.startsWith('setQueue')), [
+          'setQueue@2',
+        ], reason: 'not tried again on every position update');
+        async.elapse(const Duration(seconds: 1));
+        expect(engine.isFading, isFalse);
+        expect(decks[0].playing, isTrue);
+      });
+    });
   });
 }
