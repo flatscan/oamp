@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/track_cache.dart';
 import 'audio_engine.dart';
+import 'audio_focus.dart';
 import 'just_audio_deck.dart';
 import 'mpv_deck.dart';
 import 'stream_cache.dart';
@@ -33,5 +34,22 @@ Future<TrackCache?> openTrackCache() async {
   } catch (e) {
     debugPrint('Playback cache unavailable: $e');
     return null;
+  }
+}
+
+/// The OS audio session on phones: audio focus, ducking and headphones
+/// being unplugged. Windows has nothing to configure, so playback there
+/// carries on exactly as before.
+Future<AudioFocus> openAudioFocus() async {
+  if (kIsWeb) return const NoAudioFocus();
+  if (defaultTargetPlatform != TargetPlatform.android &&
+      defaultTargetPlatform != TargetPlatform.iOS) {
+    return const NoAudioFocus();
+  }
+  try {
+    return await AudioSessionFocus.open();
+  } catch (e) {
+    debugPrint('Audio session unavailable: $e');
+    return const NoAudioFocus();
   }
 }

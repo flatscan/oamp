@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audio/audio_engine.dart';
+import '../audio/audio_focus.dart';
 import '../audio/just_audio_deck.dart';
 import '../core/models.dart';
 import '../core/play_queue.dart';
@@ -98,6 +99,10 @@ final audioDeckFactoryProvider = Provider<AudioDeck Function()>(
   (_) => JustAudioDeck.new,
 );
 
+/// The OS audio session. main.dart swaps in the real one on phones; on
+/// Windows and in tests nothing interrupts playback.
+final audioFocusProvider = Provider<AudioFocus>((_) => const NoAudioFocus());
+
 final audioEngineProvider = Provider<AudioEngine>((ref) {
   final engine = MixingEngine(ref.watch(audioDeckFactoryProvider));
   ref.onDispose(engine.dispose);
@@ -153,6 +158,10 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// The queue's order before it was shuffled, while [PlayerState.shuffled].
   List<Track> _unshuffled = const [];
 
+  /// Playback was paused for a call or another app, and plays again when
+  /// that is over. Anything the listener does meanwhile clears it.
+  bool _resumeAfterInterruption = false;
+
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
 
@@ -190,6 +199,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       }
     });
     ref.onDispose(sub.cancel);
+    final focus = ref.watch(audioFocusProvider).changes.listen(_onFocus);
+    ref.onDispose(focus.cancel);
     // Signing out (or, in v2, switching server) clears the queue, since its
     // URIs belong to the old server.
     ref.listen(sessionProvider, (prev, next) {
@@ -208,6 +219,31 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       if (prev != next) unawaited(_reresolveUpcoming());
     });
     return const PlayerState();
+  }
+
+  /// Calls, other apps and unplugged headphones. Pauses for an
+  /// interruption and plays again after it only if it was what paused us;
+  /// losing the audio to another player or the headphones going away
+  /// pauses for good.
+  void _onFocus(FocusChange change) {
+    switch (change) {
+      case FocusChange.interrupted:
+        if (state.playing) {
+          _resumeAfterInterruption = true;
+          unawaited(_engine.pause());
+        }
+      case FocusChange.lost || FocusChange.becomingNoisy:
+        _resumeAfterInterruption = false;
+        if (state.playing) unawaited(_engine.pause());
+      case FocusChange.duck:
+        unawaited(_engine.setDucked(true));
+      case FocusChange.resumed || FocusChange.ended:
+        unawaited(_engine.setDucked(false));
+        final resume =
+            _resumeAfterInterruption && change == FocusChange.resumed;
+        _resumeAfterInterruption = false;
+        if (resume && state.queue.isNotEmpty) unawaited(_engine.play());
+    }
   }
 
   Future<void> _applyOptions(PlaybackOptions o) async {
@@ -279,6 +315,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     }
     _restoredAt = null;
     _reopened = null;
+    _resumeAfterInterruption = false;
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
@@ -304,6 +341,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         (length != null && position >= length - const Duration(seconds: 1))) {
       position = Duration.zero;
     }
+    _resumeAfterInterruption = false;
     if (state.playing) await _engine.pause();
     _restoredAt = position;
     final uris = await _uris(tracks);
@@ -370,6 +408,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   Future<void> jumpTo(int index) async {
+    _resumeAfterInterruption = false;
     await _engine.seek(Duration.zero, index: index);
     await _engine.play();
   }
@@ -488,6 +527,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   /// Empties the queue, keeping the listener's repeat and volume settings.
   Future<void> clear() async {
+    _resumeAfterInterruption = false;
     _restoredAt = null;
     _reopened = null;
     state = PlayerState(repeat: state.repeat, volume: state.volume);
@@ -495,10 +535,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   Future<void> play() async {
+    _resumeAfterInterruption = false;
     if (state.queue.isNotEmpty) await _engine.play();
   }
 
-  Future<void> pause() => _engine.pause();
+  Future<void> pause() {
+    _resumeAfterInterruption = false;
+    return _engine.pause();
+  }
+
   Future<void> togglePlay() => state.playing ? pause() : play();
   Future<void> next() => _engine.next();
 

@@ -70,6 +70,8 @@ Future<void> main() async {
 
   // The OS media session: the Windows media overlay and keyboard media keys.
   final systemControls = await createSystemControls();
+  // Calls, other apps and unplugged headphones on phones.
+  final audioFocus = await openAudioFocus();
   final trackCache = await openTrackCache();
   final artworkCache = await DiskArtworkCache.open();
 
@@ -79,6 +81,7 @@ Future<void> main() async {
         systemControlsProvider.overrideWithValue(systemControls),
         preferencesProvider.overrideWithValue(preferences),
         audioDeckFactoryProvider.overrideWithValue(createDeck),
+        audioFocusProvider.overrideWithValue(audioFocus),
         trackCacheProvider.overrideWithValue(trackCache),
         artworkCacheProvider.overrideWithValue(artworkCache),
       ],
