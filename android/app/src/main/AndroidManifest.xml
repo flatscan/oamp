@@ -1,9 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Streams from the Navidrome server. -->
+    <!-- Streams from the Navidrome server. Plain http:// is allowed
+         (usesCleartextTraffic) for servers on the home network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="OAmp"
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
