@@ -266,13 +266,18 @@ void main() {
 
     DiskArtworkCache cache({
       String type = 'image/jpeg',
+      String? cacheControl,
       int limit = DiskArtworkCache.defaultLimit,
     }) => DiskArtworkCache(
       dir,
       limitBytes: limit,
       httpClient: MockClient((req) async {
         fetched.add(req.url);
-        return http.Response.bytes(png, 200, headers: {'content-type': type});
+        return http.Response.bytes(
+          png,
+          200,
+          headers: {'content-type': type, 'cache-control': ?cacheControl},
+        );
       }),
     );
 
@@ -303,6 +308,27 @@ void main() {
       );
       await settle();
       expect((await c.usage()).files, 0);
+    });
+
+    test('shows but does not save the server\'s stand-in image', () async {
+      // Navidrome sends its placeholder with no-store while an album's art
+      // is unavailable; saving it would hide the real art for good.
+      final c = cache(cacheControl: 'no-store');
+      final u = Uri.parse('https://m/rest/getCoverArt?id=c1');
+      expect(await c.load('srv/c1/300', u), png);
+      await settle();
+      expect((await c.usage()).files, 0);
+      expect(await c.load('srv/c1/300', u), png);
+      expect(fetched, hasLength(2));
+    });
+
+    test('drops images saved by earlier versions', () async {
+      File('${dir.path}/old.img').writeAsBytesSync(png);
+      final c = cache(cacheControl: 'public, no-cache');
+      await c.load('srv/c1/300', Uri.parse('https://m/c1'));
+      await settle();
+      expect(File('${dir.path}/old.img').existsSync(), isFalse);
+      expect((await c.usage()).files, 1);
     });
 
     test('evicts the least recently used images over the limit', () async {
