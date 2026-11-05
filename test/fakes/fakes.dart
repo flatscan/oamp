@@ -482,6 +482,8 @@ class FakeSystemControls implements SystemControls {
   @override
   Stream<MediaCommand> get commands => _commands.stream;
   @override
+  bool needsLocalArt = false;
+  @override
   Future<void> update(NowPlayingInfo info) async => shown.add(info);
   @override
   Future<void> clear() async => shown.add(null);

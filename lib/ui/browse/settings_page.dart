@@ -24,6 +24,9 @@ class SettingsPage extends ConsumerWidget {
     final cache = settings.cache;
     final hasCache = ref.watch(trackCacheProvider) != null;
     final windows = defaultTargetPlatform == TargetPlatform.windows;
+    // Phones pick a separate quality for mobile data.
+    final android = defaultTargetPlatform == TargetPlatform.android;
+    final mobile = settings.mobileQuality;
 
     void setPlayback(PlaybackOptions o) => notifier.setPlayback(o);
 
@@ -33,15 +36,18 @@ class SettingsPage extends ConsumerWidget {
         SliverList.list(
           children: [
             const SettingsHeading('Playback'),
-            SwitchListTile(
-              secondary: const Icon(Icons.join_inner_rounded),
-              title: const Text('Gapless playback'),
-              subtitle: const Text(
-                'Loads the next track early so albums play without a break.',
+            // Android's player is always gapless, so the switch would do
+            // nothing there.
+            if (windows)
+              SwitchListTile(
+                secondary: const Icon(Icons.join_inner_rounded),
+                title: const Text('Gapless playback'),
+                subtitle: const Text(
+                  'Loads the next track early so albums play without a break.',
+                ),
+                value: playback.gapless,
+                onChanged: (v) => setPlayback(playback.copyWith(gapless: v)),
               ),
-              value: playback.gapless,
-              onChanged: (v) => setPlayback(playback.copyWith(gapless: v)),
-            ),
             SliderTile(
               icon: Icons.swap_horiz_rounded,
               title: 'Crossfade',
@@ -132,7 +138,7 @@ class SettingsPage extends ConsumerWidget {
             const SettingsHeading('Streaming quality'),
             ChoiceTile<StreamFormat>(
               icon: Icons.high_quality_outlined,
-              title: 'Format',
+              title: android ? 'Format on Wi-Fi' : 'Format',
               subtitle: quality.isOriginal
                   ? 'The file as stored on the server.'
                   : 'The server converts each track as it streams.',
@@ -149,13 +155,53 @@ class SettingsPage extends ConsumerWidget {
             if (!quality.isOriginal)
               ChoiceTile<int>(
                 icon: Icons.speed_rounded,
-                title: 'Maximum bit rate',
+                title: android
+                    ? 'Maximum bit rate on Wi-Fi'
+                    : 'Maximum bit rate',
                 value: quality.bitRate,
                 choices: {for (final b in StreamQuality.bitRates) b: '$b kbps'},
                 onChanged: (v) => notifier.setQuality(
                   StreamQuality(format: quality.format, bitRate: v),
                 ),
               ),
+            if (android) ...[
+              ChoiceTile<String>(
+                icon: Icons.signal_cellular_alt_rounded,
+                title: 'Format on mobile data',
+                subtitle: mobile == null
+                    ? 'Streams the same as on Wi-Fi.'
+                    : mobile.isOriginal
+                    ? 'The file as stored on the server.'
+                    : 'The server converts each track as it streams.',
+                value: mobile?.format.name ?? _sameAsWifi,
+                choices: const {
+                  _sameAsWifi: 'Same as Wi-Fi',
+                  'original': 'Original',
+                  'opus': 'Opus',
+                  'mp3': 'MP3',
+                },
+                onChanged: (v) => notifier.setMobileQuality(
+                  v == _sameAsWifi
+                      ? null
+                      : StreamQuality(
+                          format: StreamFormat.values.byName(v),
+                          bitRate: mobile?.bitRate ?? quality.bitRate,
+                        ),
+                ),
+              ),
+              if (mobile != null && !mobile.isOriginal)
+                ChoiceTile<int>(
+                  icon: Icons.speed_rounded,
+                  title: 'Maximum bit rate on mobile data',
+                  value: mobile.bitRate,
+                  choices: {
+                    for (final b in StreamQuality.bitRates) b: '$b kbps',
+                  },
+                  onChanged: (v) => notifier.setMobileQuality(
+                    StreamQuality(format: mobile.format, bitRate: v),
+                  ),
+                ),
+            ],
             if (hasCache) ...[
               const SettingsHeading('Cache'),
               ChoiceTile<int>(
@@ -172,6 +218,18 @@ class SettingsPage extends ConsumerWidget {
                 onChanged: (v) =>
                     notifier.setCache(cache.copyWith(precacheTracks: v)),
               ),
+              if (android && cache.precacheTracks > 0)
+                SwitchListTile(
+                  secondary: const Icon(Icons.signal_cellular_alt_rounded),
+                  title: const Text('Pre-cache on mobile data'),
+                  subtitle: const Text(
+                    'When off, tracks are only fetched as they play while '
+                    'on mobile data.',
+                  ),
+                  value: cache.precacheOnMobile,
+                  onChanged: (v) =>
+                      notifier.setCache(cache.copyWith(precacheOnMobile: v)),
+                ),
               ChoiceTile<int>(
                 icon: Icons.storage_rounded,
                 title: 'Cache size limit',
@@ -339,6 +397,9 @@ class SettingsHeading extends StatelessWidget {
 
 /// A setting with a few named values. Shows the current one on the right
 /// and opens a menu of the others.
+/// The mobile data format choice that follows the Wi-Fi quality.
+const _sameAsWifi = 'same';
+
 class ChoiceTile<T> extends StatelessWidget {
   final IconData icon;
   final String title;

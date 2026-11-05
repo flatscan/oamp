@@ -91,13 +91,54 @@ class _Bridge {
     try {
       while (_dirty) {
         _dirty = false;
-        final info = _snapshot();
+        var info = _snapshot();
+        if (info != null && controls.needsLocalArt) info = _localArt(info);
         await (info == null ? controls.clear() : controls.update(info));
       }
     } finally {
       _sending = false;
     }
   }
+
+  /// The current track's cover as a local file, by artwork cache key:
+  /// null while it is being fetched, or when it can't be had.
+  String? _artKey;
+  Uri? _artFile;
+
+  /// Swaps the signed cover URL in [info] for a local file. The first
+  /// update for a track goes out without art while the file is fetched,
+  /// then is sent again with it.
+  NowPlayingInfo _localArt(NowPlayingInfo info) {
+    final url = info.artUri;
+    final track = ref.read(playerProvider).current;
+    final serverId = ref.read(sessionProvider).value?.serverId;
+    final cache = ref.read(artworkCacheProvider);
+    if (url == null || track?.coverArt == null || cache == null) {
+      return info.withArt(null);
+    }
+    final key = '$serverId/${track!.coverArt}/$_artSize';
+    if (key != _artKey) {
+      _artKey = key;
+      _artFile = null;
+      unawaited(
+        cache
+            .localUri(key, url)
+            .then(
+              (file) {
+                if (key != _artKey || file == null) return;
+                _artFile = file;
+                push();
+              },
+              onError: (Object _) {
+                // No cover in the media controls, rather than the server URL.
+              },
+            ),
+      );
+    }
+    return info.withArt(_artFile);
+  }
+
+  static const _artSize = 512;
 
   NowPlayingInfo? _snapshot() {
     final s = ref.read(playerProvider);
@@ -108,7 +149,7 @@ class _Bridge {
       title: track.title,
       artist: track.artist,
       album: track.album,
-      artUri: source?.coverArtUrl(track.coverArt, size: 512),
+      artUri: source?.coverArtUrl(track.coverArt, size: _artSize),
       playing: s.playing,
       position: ref.read(positionProvider).value ?? Duration.zero,
       duration: ref.read(durationProvider).value ?? track.duration,
