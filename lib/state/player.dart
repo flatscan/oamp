@@ -270,6 +270,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   @override
+  double get boostHeadroom => _options.boostHeadroom;
+
+  @override
   Duration? durationAt(int index) {
     final q = state.queue;
     return index >= 0 && index < q.length ? q[index].duration : null;

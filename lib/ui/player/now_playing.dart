@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -439,7 +440,12 @@ class _Controls extends ConsumerWidget {
     );
     final playback = ref.watch(playbackOptionsProvider);
     final rgDebug = (tr != null && showRgDebug)
-        ? replayGainDebugLabel(tr, playback)
+        ? replayGainDebugLabel(
+            tr,
+            playback,
+            // Only the Windows player can play louder than normal.
+            canBoost: defaultTargetPlatform == TargetPlatform.windows,
+          )
         : null;
     final liked =
         tr != null &&

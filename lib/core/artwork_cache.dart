@@ -13,6 +13,12 @@ abstract class ArtworkCache {
   /// and saved. Throws when it can be neither read nor fetched.
   Future<Uint8List> load(String key, Uri url);
 
+  /// A `file:` URI for the image, fetching and saving it first if needed,
+  /// so it can be handed to the OS without the signed server URL. Null
+  /// when the image can't be kept on disk (the cache has no files, or the
+  /// server said not to store it). Throws when it can't be fetched.
+  Future<Uri?> localUri(String key, Uri url);
+
   Future<CacheUsage> usage();
 
   /// Deletes every cached image.

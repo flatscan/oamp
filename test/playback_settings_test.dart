@@ -268,55 +268,59 @@ void main() {
     expect(ids(s, 0), isEmpty);
   });
 
-  testWidgets('the settings page changes playback options', (tester) async {
-    tester.view.physicalSize = const Size(440, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final prefs = MemoryPreferences();
-    final cache = FakeTrackCache();
-    final c = ProviderContainer(
-      overrides: [
-        sessionProvider.overrideWith(() => FakeSessionNotifier()),
-        audioEngineProvider.overrideWithValue(FakeAudioEngine()),
-        preferencesProvider.overrideWithValue(prefs),
-        trackCacheProvider.overrideWithValue(cache),
-      ],
-    );
-    addTearDown(c.dispose);
-    await tester.runAsync(() => c.read(sessionProvider.future));
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: c,
-        child: MaterialApp(theme: buildTheme(), home: const SettingsPage()),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'the settings page changes playback options',
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    (tester) async {
+      tester.view.physicalSize = const Size(440, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final prefs = MemoryPreferences();
+      final cache = FakeTrackCache();
+      final c = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => FakeSessionNotifier()),
+          audioEngineProvider.overrideWithValue(FakeAudioEngine()),
+          preferencesProvider.overrideWithValue(prefs),
+          trackCacheProvider.overrideWithValue(cache),
+        ],
+      );
+      addTearDown(c.dispose);
+      await tester.runAsync(() => c.read(sessionProvider.future));
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(theme: buildTheme(), home: const SettingsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Gapless playback'), findsOneWidget);
-    expect(find.text('Pre-amp'), findsNothing, reason: 'ReplayGain is off');
-    expect(find.text('50 MB in 7 tracks'), findsOneWidget);
+      expect(find.text('Gapless playback'), findsOneWidget);
+      expect(find.text('Pre-amp'), findsNothing, reason: 'ReplayGain is off');
+      expect(find.text('50 MB in 7 tracks'), findsOneWidget);
 
-    await tester.tap(find.text('ReplayGain'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Album').last);
-    await tester.pumpAndSettle();
-    expect(prefs.getString('oamp.playback.replayGain'), 'album');
-    expect(find.text('Pre-amp'), findsOneWidget);
+      await tester.tap(find.text('ReplayGain'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Album').last);
+      await tester.pumpAndSettle();
+      expect(prefs.getString('oamp.playback.replayGain'), 'album');
+      expect(find.text('Pre-amp'), findsOneWidget);
 
-    await tester.tap(find.text('Format'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Opus').last);
-    await tester.pumpAndSettle();
-    expect(prefs.getString('oamp.stream.format'), 'opus');
-    expect(find.text('Maximum bit rate'), findsOneWidget);
+      await tester.tap(find.text('Format'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Opus').last);
+      await tester.pumpAndSettle();
+      expect(prefs.getString('oamp.stream.format'), 'opus');
+      expect(find.text('Maximum bit rate'), findsOneWidget);
 
-    await tester.tap(find.text('Gapless playback'));
-    await tester.pumpAndSettle();
-    expect(prefs.getBool('oamp.playback.gapless'), isFalse);
+      await tester.tap(find.text('Gapless playback'));
+      await tester.pumpAndSettle();
+      expect(prefs.getBool('oamp.playback.gapless'), isFalse);
 
-    await tester.tap(find.text('Clear cache'));
-    await tester.pumpAndSettle();
-    expect(cache.cleared, isTrue);
-    expect(find.text('0.0 MB in 0 tracks'), findsOneWidget);
-  });
+      await tester.tap(find.text('Clear cache'));
+      await tester.pumpAndSettle();
+      expect(cache.cleared, isTrue);
+      expect(find.text('0.0 MB in 0 tracks'), findsOneWidget);
+    },
+  );
 }

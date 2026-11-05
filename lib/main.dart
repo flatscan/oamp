@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'audio/platform_audio.dart';
 import 'platform/disk_artwork_cache.dart';
+import 'platform/network_monitor.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
@@ -74,6 +75,8 @@ Future<void> main() async {
   final audioFocus = await openAudioFocus();
   final trackCache = await openTrackCache();
   final artworkCache = await DiskArtworkCache.open();
+  // Wi-Fi or mobile data, for the mobile data quality on phones.
+  final network = await ConnectivityNetworkMonitor.open();
 
   runApp(
     ProviderScope(
@@ -84,6 +87,7 @@ Future<void> main() async {
         audioFocusProvider.overrideWithValue(audioFocus),
         trackCacheProvider.overrideWithValue(trackCache),
         artworkCacheProvider.overrideWithValue(artworkCache),
+        networkMonitorProvider.overrideWithValue(network),
       ],
       child: const OAmpApp(),
     ),

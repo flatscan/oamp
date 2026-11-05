@@ -59,6 +59,13 @@ class DiskArtworkCache implements ArtworkCache {
     });
   }
 
+  @override
+  Future<Uri?> localUri(String key, Uri url) async {
+    await load(key, url);
+    final file = _file(key);
+    return await file.exists() ? file.uri : null;
+  }
+
   Future<Uint8List> _load(String key, Uri url) async {
     final file = _file(key);
     try {

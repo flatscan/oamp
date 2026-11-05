@@ -48,7 +48,8 @@ class AndroidSystemControls implements SystemControls {
           // Opening the app from the notification brings the player back
           // rather than starting a second copy.
           androidResumeOnClick: true,
-          // Cover art is fetched by audio_service itself.
+          // Cover art is a file from the artwork cache (see needsLocalArt),
+          // loaded by audio_service itself.
           artDownscaleWidth: 512,
           artDownscaleHeight: 512,
         ),
@@ -74,6 +75,11 @@ class AndroidSystemControls implements SystemControls {
 
   @override
   Stream<MediaCommand> get commands => _handler.commands;
+
+  /// The session's art URI is visible to car units, watches and any app
+  /// that reads media sessions, so it must not be the signed server URL.
+  @override
+  bool get needsLocalArt => true;
 
   @override
   Future<void> update(NowPlayingInfo info) async {
