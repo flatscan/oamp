@@ -19,6 +19,33 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # The run number as the version code, so each CI build installs over
+      # the previous one.
+      - run: flutter build apk --release --build-number=${{ github.run_number }}
+      - name: Name the APK
+        run: |
+          mkdir -p build/apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/apk/oamp-${{ github.run_number }}.apk
+          ls -l build/apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oamp-android
+          path: build/apk/*.apk
+          if-no-files-found: error
+
   build-windows:
     runs-on: windows-latest
     steps:
