@@ -147,6 +147,13 @@ void main() {
       tester.getBottomLeft(find.text('Search').last).dy,
       lessThan(851 - navBar),
     );
+    // The status bar's inset doesn't push the tab icons down: the tab bar
+    // is only the icons, labels and the gesture bar.
+    expect(
+      tester.getTopLeft(find.byIcon(Icons.search_rounded).last).dy -
+          tester.getTopLeft(find.byType(NavigationBar)).dy,
+      lessThan(16),
+    );
 
     // A library page's top bar also starts below the status bar.
     await tester.tap(find.text('Library'));
