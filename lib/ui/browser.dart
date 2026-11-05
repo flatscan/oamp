@@ -66,7 +66,7 @@ class BrowserState extends ConsumerState<Browser> {
   void push(Widget page) {
     Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
     hideNowPlaying(context);
-    _nav?.push(MaterialPageRoute<void>(builder: (_) => page));
+    _nav?.push(MaterialPageRoute<void>(builder: (_) => _SheetGuard(page)));
   }
 
   /// Switches tab. Choosing the tab that is already showing goes back to
@@ -195,5 +195,22 @@ class BrowserState extends ConsumerState<Browser> {
         ],
       ],
     );
+  }
+}
+
+/// Keeps a library page from taking Android's back gesture while now
+/// playing covers it. Each page claims the gesture for its own slide-back
+/// animation, which would pop the page out of sight under now playing;
+/// while the sheet is up, the browser's back handling closes it instead.
+class _SheetGuard extends ConsumerWidget {
+  final Widget child;
+  const _SheetGuard(this.child);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final covered =
+        ref.watch(nowPlayingSheetProvider.select((s) => s.open)) &&
+        !ref.watch(flyoutOpenProvider);
+    return PopScope(canPop: !covered, child: child);
   }
 }

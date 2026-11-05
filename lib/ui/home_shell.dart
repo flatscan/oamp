@@ -60,11 +60,52 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   void _close() => ref.read(nowPlayingSheetProvider.notifier).close();
 
+  /// Height of the column, for turning a finger's pull into sheet travel.
+  double _height = 1;
+
+  /// Whether the sheet is following a finger (or settling after one), when
+  /// it moves in step with the finger instead of on its usual curve.
+  bool _dragged = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sheet.addStatusListener((status) {
+      if (status.isCompleted || status.isDismissed) _dragged = false;
+    });
+  }
+
+  void _pull(double dy) {
+    _dragged = true;
+    _sheet.value = (_sheet.value - dy / _height).clamp(0.0, 1.0);
+  }
+
+  /// Let go: close if pulled a quarter of the way or flicked down, else
+  /// settle back up.
+  void _pullEnd(double velocity) {
+    if (_sheet.value < 0.75 || velocity > 700) {
+      _close();
+    } else {
+      _sheet.animateTo(
+        1,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(nowPlayingSheetProvider, (_, next) {
       if (!next.animate) {
         _sheet.value = next.open ? 1 : 0;
+      } else if (!next.open && _dragged) {
+        // Carry on from where the finger let go.
+        _sheet.animateBack(
+          0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
       } else if (next.open) {
         _sheet.forward();
       } else {
@@ -104,60 +145,72 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 context: context,
                 removeTop: banner,
                 child: LayoutBuilder(
-                  builder: (context, constraints) => Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: _columnWidth(expanded, constraints.maxWidth),
-                        child: AnimatedBuilder(
-                          animation: sheet,
-                          builder: (context, _) => Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // Covered (and paused) while now playing is fully up.
-                              Offstage(
-                                offstage: expanded || sheet.isCompleted,
-                                child: expanded
-                                    ? const SizedBox.shrink()
-                                    : browser,
-                              ),
-                              if (!sheet.isDismissed)
-                                SlideTransition(
-                                  position:
-                                      Tween(
-                                        begin: const Offset(0, 1),
-                                        end: Offset.zero,
-                                      ).animate(
-                                        CurvedAnimation(
-                                          parent: sheet,
-                                          curve: Curves.easeOutCubic,
-                                          reverseCurve: Curves.easeInCubic,
-                                        ),
-                                      ),
-                                  child: NowPlayingView(
-                                    key: _nowPlayingKey,
-                                    onClose: expanded ? null : _close,
-                                  ),
+                  builder: (context, constraints) {
+                    _height = constraints.maxHeight;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: _columnWidth(expanded, constraints.maxWidth),
+                          child: AnimatedBuilder(
+                            animation: sheet,
+                            builder: (context, _) => Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // Covered (and paused) while now playing is fully up.
+                                Offstage(
+                                  offstage: expanded || sheet.isCompleted,
+                                  child: expanded
+                                      ? const SizedBox.shrink()
+                                      : browser,
                                 ),
-                            ],
+                                if (!sheet.isDismissed)
+                                  SlideTransition(
+                                    position:
+                                        Tween(
+                                          begin: const Offset(0, 1),
+                                          end: Offset.zero,
+                                        ).animate(
+                                          _dragged
+                                              ? sheet
+                                              : CurvedAnimation(
+                                                  parent: sheet,
+                                                  curve: Curves.easeOutCubic,
+                                                  reverseCurve:
+                                                      Curves.easeInCubic,
+                                                ),
+                                        ),
+                                    child: NowPlayingView(
+                                      key: _nowPlayingKey,
+                                      onClose: expanded ? null : _close,
+                                      onPull: expanded || isDesktop
+                                          ? null
+                                          : _pull,
+                                      onPullEnd: expanded || isDesktop
+                                          ? null
+                                          : _pullEnd,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: expanded
-                            ? FlyoutSlide(
-                                reveal: reveal,
-                                child: Row(
-                                  children: [
-                                    const VerticalDivider(width: 1),
-                                    Expanded(child: browser),
-                                  ],
-                                ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ),
+                        Expanded(
+                          child: expanded
+                              ? FlyoutSlide(
+                                  reveal: reveal,
+                                  child: Row(
+                                    children: [
+                                      const VerticalDivider(width: 1),
+                                      Expanded(child: browser),
+                                    ],
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

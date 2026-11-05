@@ -89,12 +89,7 @@ void main() {
     expect(find.text('UP NEXT'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Play'), findsOneWidget);
 
-    // So does the close arrow over the top of the artwork.
-    await tester.tap(find.text('La femme d’argent').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('UP NEXT'), findsNothing);
+    // (Desktop's close arrow: see phone_layout_test.dart.)
   });
 
   testWidgets('search finds a track and typing a space does not pause', (

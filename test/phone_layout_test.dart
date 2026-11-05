@@ -75,6 +75,30 @@ void main() {
   bool nowPlayingUp(WidgetTester tester) =>
       find.text('UP NEXT').hitTestable().evaluate().isNotEmpty;
 
+  /// Swipes back from the left edge, as Android's predictive back gesture
+  /// reports it.
+  Future<void> swipeBack(WidgetTester tester) async {
+    Future<void> send(String method, [Object? args]) =>
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          SystemChannels.backGesture.name,
+          SystemChannels.backGesture.codec.encodeMethodCall(
+            MethodCall(method, args),
+          ),
+          (_) {},
+        );
+    Map<String, Object?> at(double progress) => {
+      'touchOffset': [4.0, 400.0],
+      'progress': progress,
+      'swipeEdge': 0,
+    };
+    await send('startBackGesture', at(0));
+    await tester.pump();
+    await send('updateBackGestureProgress', at(0.5));
+    await tester.pump();
+    await send('commitBackGesture');
+    await tester.pumpAndSettle();
+  }
+
   /// Presses the system back button. True if the app handled it rather
   /// than closing.
   Future<bool> pressBack(WidgetTester tester) async {
@@ -143,9 +167,7 @@ void main() {
     expect(jump.right, lessThanOrEqualTo(393 - gestureEdge));
   });
 
-  testWidgets('now playing runs under the status bar with Close below it', (
-    tester,
-  ) async {
+  testWidgets('now playing runs under the status bar', (tester) async {
     await pumpPhone(tester);
     await playAlbumFromLibrary(tester);
     await tester.tap(find.text('La femme d’argent').last);
@@ -158,11 +180,8 @@ void main() {
       matching: find.byType(ClipRRect),
     );
     expect(tester.getTopLeft(cover.first).dy, 0);
-    // ... and the Close button is below the bar.
-    expect(
-      tester.getTopLeft(find.byTooltip('Close')).dy,
-      greaterThan(statusBar),
-    );
+    // ... with no Close button: a pull down or back closes it.
+    expect(find.byTooltip('Close'), findsNothing);
 
     // Phones set the volume with their own buttons.
     expect(find.byType(VolumeControl), findsNothing);
@@ -206,6 +225,62 @@ void main() {
 
     // ... and from Home it leaves the app.
     expect(await pressBack(tester), isFalse);
+  });
+
+  testWidgets('the back gesture closes now playing before the page', (
+    tester,
+  ) async {
+    await pumpPhone(tester);
+    await playAlbumFromLibrary(tester);
+    await tester.tap(find.text('La femme d’argent').last);
+    await tester.pumpAndSettle();
+    expect(nowPlayingUp(tester), isTrue);
+
+    // Now playing closes; the album page under it stays.
+    await swipeBack(tester);
+    expect(nowPlayingUp(tester), isFalse);
+    expect(find.widgetWithText(FilledButton, 'Play'), findsOneWidget);
+
+    // With now playing closed, the gesture goes back a page.
+    await swipeBack(tester);
+    expect(find.widgetWithText(FilledButton, 'Play'), findsNothing);
+    expect(find.text('1 album').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('pulling now playing down closes it', (tester) async {
+    await pumpPhone(tester);
+    await tester.tap(find.text('Shuffle library'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pumpAndSettle();
+    expect(nowPlayingUp(tester), isTrue);
+
+    // A short, slow pull settles back up.
+    final art =
+        tester.getCenter(find.byType(NowPlayingView)) - const Offset(0, 250);
+    var g = await tester.startGesture(art);
+    for (var i = 0; i < 5; i++) {
+      await g.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // The sheet follows the finger.
+    expect(tester.getTopLeft(find.byType(NowPlayingView)).dy, greaterThan(60));
+    await tester.pump(const Duration(milliseconds: 300));
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(nowPlayingUp(tester), isTrue);
+    expect(tester.getTopLeft(find.byType(NowPlayingView)).dy, 0);
+
+    // A longer pull closes it, back to Home with the mini-player.
+    g = await tester.startGesture(art);
+    for (var i = 0; i < 15; i++) {
+      await g.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(nowPlayingUp(tester), isFalse);
+    expect(find.byType(MiniPlayer).hitTestable(), findsOneWidget);
   });
 
   testWidgets('back from search returns Home', (tester) async {
@@ -283,12 +358,25 @@ void main() {
     expect(tabs.left, 32);
     expect(tabs.right, 851);
 
-    // Now playing's cover is short enough for the controls to show.
+    // Now playing puts the cover on the left and the controls beside it,
+    // all on screen at once.
     await tester.tap(find.text('Shuffle library'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(MiniPlayer));
     await tester.pumpAndSettle();
-    expect(find.byType(SeekBar).hitTestable(), findsOneWidget);
+    final cover = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(NowPlayingView),
+            matching: find.byType(ClipRRect),
+          )
+          .first,
+    );
+    expect(cover.height, closeTo(393, 1));
+    expect(cover.left, 32);
+    final seek = tester.getRect(find.byType(SeekBar));
+    expect(seek.left, greaterThanOrEqualTo(cover.right));
+    expect(find.byType(TransportControls).hitTestable(), findsOneWidget);
   });
 
   testWidgets('settings leave out the desktop window options', (tester) async {
@@ -330,7 +418,9 @@ void main() {
     );
   });
 
-  testWidgets('desktop keeps its volume slider', (tester) async {
+  testWidgets('desktop keeps its volume slider and close arrow', (
+    tester,
+  ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await pumpPhone(tester, size: const Size(440, 900), statusBarHeight: 0);
@@ -339,6 +429,11 @@ void main() {
     await tester.fling(find.byTooltip('Pause'), const Offset(0, -200), 1000);
     await tester.pumpAndSettle();
     expect(find.byType(VolumeControl), findsOneWidget);
+
+    // Desktop keeps the close arrow over the artwork.
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('UP NEXT').hitTestable(), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
 }
