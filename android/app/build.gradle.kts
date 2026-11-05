@@ -15,11 +15,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "dev.oamp.oamp"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Android 7.0. flutter_secure_storage needs 23; 24 keeps the media
+        // session and foreground service code on one code path.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -29,11 +28,31 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Side-load builds are signed with a key kept in the repo on
+        // purpose. It is not a secret: it only keeps the signature the same
+        // from one CI build to the next, so a new APK installs over the old
+        // one and keeps the login and settings. Builds for distribution get
+        // a private key (OAMP_KEYSTORE* variables) before the alpha.
+        create("sideload") {
+            val keystore = System.getenv("OAMP_KEYSTORE")
+            if (keystore != null) {
+                storeFile = file(keystore)
+                storePassword = System.getenv("OAMP_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("OAMP_KEY_ALIAS")
+                keyPassword = System.getenv("OAMP_KEY_PASSWORD")
+            } else {
+                storeFile = file("sideload.keystore")
+                storePassword = "oamp-sideload"
+                keyAlias = "oamp-sideload"
+                keyPassword = "oamp-sideload"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("sideload")
         }
     }
 }
