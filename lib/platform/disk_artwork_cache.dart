@@ -13,6 +13,10 @@ import '../core/track_cache.dart';
 /// [ArtworkCache] in a folder of image files named by a hash of their key.
 /// Reading a file marks it as recently used; once the folder passes
 /// [limitBytes], the least recently used images are deleted.
+///
+/// A reply marked `Cache-Control: no-store` is shown but not saved.
+/// Navidrome marks its stand-in image that way when an album's art is not
+/// available yet, so the real art is fetched once the server has it.
 class DiskArtworkCache implements ArtworkCache {
   DiskArtworkCache(
     this.dir, {
@@ -37,8 +41,14 @@ class DiskArtworkCache implements ArtworkCache {
 
   File _file(String key) => File(
     '${dir.path}${Platform.pathSeparator}'
-    '${sha1.convert(utf8.encode(key))}.img',
+    '${sha1.convert(utf8.encode(key))}$_ext',
   );
+
+  static const _ext = '.art';
+
+  /// Files saved by earlier versions, which may hold the server's stand-in
+  /// image saved in place of real art. Deleted on first use.
+  static const _legacyExt = '.img';
 
   @override
   Future<Uint8List> load(String key, Uri url) {
@@ -72,6 +82,7 @@ class DiskArtworkCache implements ArtworkCache {
       throw HttpException('Artwork not available (HTTP ${res.statusCode})');
     }
     final bytes = res.bodyBytes;
+    if (_noStore(res.headers['cache-control'])) return bytes;
     // Saved before returning, so a second request for the same image,
     // made as soon as this one finishes, finds it on disk.
     await _save(file, bytes);
@@ -94,15 +105,33 @@ class DiskArtworkCache implements ArtworkCache {
     }
   }
 
+  static bool _noStore(String? cacheControl) =>
+      cacheControl != null &&
+      cacheControl.toLowerCase().split(',').any((d) => d.trim() == 'no-store');
+
   Future<List<File>> _files() async {
     if (!await dir.exists()) return const [];
     return [
       await for (final f in dir.list())
-        if (f is File && f.path.endsWith('.img')) f,
+        if (f is File && f.path.endsWith(_ext)) f,
     ];
   }
 
+  Future<void> _deleteLegacy() async {
+    if (!await dir.exists()) return;
+    await for (final f in dir.list()) {
+      if (f is File && f.path.endsWith(_legacyExt)) {
+        try {
+          await f.delete();
+        } on FileSystemException {
+          // In use or gone; skip it.
+        }
+      }
+    }
+  }
+
   Future<int> _countBytes() async {
+    await _deleteLegacy();
     var total = 0;
     for (final f in await _files()) {
       try {
@@ -157,6 +186,7 @@ class DiskArtworkCache implements ArtworkCache {
 
   @override
   Future<void> clear() async {
+    await _deleteLegacy();
     for (final f in await _files()) {
       try {
         await f.delete();
