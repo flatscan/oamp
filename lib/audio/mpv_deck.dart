@@ -98,6 +98,11 @@ class MpvDeck implements AudioDeck {
 
   @override
   Stream<EngineState> get stateStream => _state.stream;
+
+  /// Not reported on Windows, so [MixingEngine] never retries there and
+  /// playback behaves as it always has.
+  @override
+  Stream<Object> get errors => const Stream.empty();
   @override
   Stream<Duration> get positionStream => _positions.stream;
   @override
