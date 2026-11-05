@@ -51,6 +51,7 @@ dependencies:
   # together with an smtc_windows release built for the new version.
   flutter_rust_bridge: 2.11.1
   shared_preferences: ^2.5.6
+  audio_service: ^0.18.19
 dev_dependencies:
   flutter_test:
     sdk: flutter
