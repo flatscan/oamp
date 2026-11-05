@@ -7,8 +7,14 @@ import 'audio_engine.dart';
 
 /// [AudioDeck] on just_audio's platform players (Android, iOS, macOS).
 /// Those players are gapless on their own, so [setGapless] does nothing.
+///
+/// The player still asks for audio focus when it starts, but leaves
+/// interruptions (calls, ducking, headphones unplugged) to
+/// PlayerController: a crossfade plays two decks at once, and each pausing
+/// and resuming on its own would fight the queue. Failed streams are
+/// reported on [errors] for [MixingEngine] to retry, rather than skipped.
 class JustAudioDeck implements AudioDeck {
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer(handleInterruptions: false);
   final _state = StreamController<EngineState>.broadcast();
   final List<StreamSubscription> _subs = [];
 
@@ -38,6 +44,8 @@ class JustAudioDeck implements AudioDeck {
 
   @override
   Stream<EngineState> get stateStream => _state.stream;
+  @override
+  Stream<Object> get errors => _player.errorStream;
   @override
   Stream<Duration> get positionStream => _player.positionStream;
   @override
