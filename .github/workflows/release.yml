@@ -1,8 +1,13 @@
 name: Release
 
-# Builds signed release artifacts when a version tag such as v1.0.0 is
-# pushed, or on demand. Test builds stay in ci.yml and keep using the public
-# side-load key; this workflow refuses to fall back to it.
+# Builds release artifacts when a version tag such as v1.0.0 is pushed, or on
+# demand. Test builds stay in ci.yml and keep using the public side-load key;
+# this workflow refuses to fall back to it.
+#
+# On a tag push it also creates a draft GitHub release for the tag with the
+# Android APK, the Windows installer and a zip of the Windows app attached.
+# The release notes come from docs/releases/<tag>.md. Nothing is public until
+# a maintainer reviews the draft and presses Publish.
 #
 # Secrets (see docs/signing.md):
 #   OAMP_RELEASE_KEYSTORE_BASE64, OAMP_RELEASE_KEYSTORE_PASSWORD,
@@ -97,3 +102,71 @@ jobs:
           name: oamp-android-release
           path: build/release/*
           if-no-files-found: error
+
+  # Unsigned until Windows code signing is set up (see docs/signing.md).
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Check native plugin DLLs shipped
+        shell: pwsh
+        run: |
+          $dir = 'build/windows/x64/runner/Release'
+          foreach ($dll in 'smtc_windows.dll', 'libmpv-2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
+            if (-not (Test-Path "$dir/$dll")) { throw "$dll missing from the Windows build" }
+          }
+      - name: Build installer and zip
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc windows\installer\oamp.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          $name = "oamp-$($env:GITHUB_REF_NAME -replace '/', '-')"
+          New-Item -ItemType Directory -Force build/release | Out-Null
+          Copy-Item (Get-ChildItem build/installer/*.exe | Select-Object -First 1) "build/release/$name-windows-setup.exe"
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "build/release/$name-windows.zip"
+          Get-ChildItem build/release | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oamp-windows-release
+          path: build/release/*
+          if-no-files-found: error
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/$TAG.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing"
+            exit 1
+          fi
+          # The Play bundle is for Google Play only, so it is not attached.
+          rm -f dist/*.aab
+          ls -l dist
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --draft $prerelease \
+            --title "OAmp ${TAG#v}" --notes-file "$notes"
