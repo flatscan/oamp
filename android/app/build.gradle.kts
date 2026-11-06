@@ -29,12 +29,16 @@ android {
     }
 
     signingConfigs {
-        // Side-load builds are signed with a key kept in the repo on
-        // purpose. It is not a secret: it only keeps the signature the same
-        // from one CI build to the next, so a new APK installs over the old
-        // one and keeps the login and settings. Builds for distribution get
-        // a private key (OAMP_KEYSTORE* variables) before the alpha.
-        create("sideload") {
+        // Test builds (pull requests, main) are signed with a key kept in the
+        // repo on purpose. It is public, so it is not a secret: it only keeps
+        // the signature the same from one CI build to the next, so a new APK
+        // installs over the old one and keeps the login and settings. Nothing
+        // published may be signed with it.
+        //
+        // Release builds set OAMP_KEYSTORE* to a private key held in GitHub
+        // secrets (see docs/signing.md). OAMP_REQUIRE_RELEASE_KEY=true makes
+        // a missing private key a build error instead of a silent fallback.
+        create("oamp") {
             val keystore = System.getenv("OAMP_KEYSTORE")
             if (keystore != null) {
                 storeFile = file(keystore)
@@ -42,6 +46,12 @@ android {
                 keyAlias = System.getenv("OAMP_KEY_ALIAS")
                 keyPassword = System.getenv("OAMP_KEY_PASSWORD")
             } else {
+                if (System.getenv("OAMP_REQUIRE_RELEASE_KEY") == "true") {
+                    throw GradleException(
+                        "OAMP_REQUIRE_RELEASE_KEY is set but OAMP_KEYSTORE is not: " +
+                            "refusing to sign a release with the public side-load key."
+                    )
+                }
                 storeFile = file("sideload.keystore")
                 storePassword = "oamp-sideload"
                 keyAlias = "oamp-sideload"
@@ -52,7 +62,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("sideload")
+            signingConfig = signingConfigs.getByName("oamp")
         }
     }
 }

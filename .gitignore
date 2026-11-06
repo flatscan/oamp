@@ -46,3 +46,10 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Private signing keys never go in the repo. The public side-load key
+# (android/app/sideload.keystore) is the one exception.
+*.jks
+*.p12
+*.pfx
+key.properties
