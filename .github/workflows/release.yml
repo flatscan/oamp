@@ -1,0 +1,99 @@
+name: Release
+
+# Builds signed release artifacts when a version tag such as v1.0.0 is
+# pushed, or on demand. Test builds stay in ci.yml and keep using the public
+# side-load key; this workflow refuses to fall back to it.
+#
+# Secrets (see docs/signing.md):
+#   OAMP_RELEASE_KEYSTORE_BASE64, OAMP_RELEASE_KEYSTORE_PASSWORD,
+#   OAMP_RELEASE_KEY_ALIAS, OAMP_RELEASE_KEY_PASSWORD   (required)
+#   OAMP_UPLOAD_KEYSTORE_BASE64, OAMP_UPLOAD_KEYSTORE_PASSWORD,
+#   OAMP_UPLOAD_KEY_ALIAS, OAMP_UPLOAD_KEY_PASSWORD     (optional, Google Play)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    # GitHub creates the "release" environment on first use. Adding a
+    # required reviewer to it in the repo settings makes every signed
+    # release wait for an approval click.
+    environment: release
+    env:
+      OAMP_REQUIRE_RELEASE_KEY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      - name: Restore signing keys
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.OAMP_RELEASE_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.OAMP_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::error::OAMP_RELEASE_KEYSTORE_BASE64 is not set; see docs/signing.md"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/keys/release.jks"
+          if [ -n "$UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "$UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/keys/upload.jks"
+            echo "HAS_UPLOAD_KEY=true" >> "$GITHUB_ENV"
+          fi
+
+      # The run number is the version code, so every release is newer than
+      # the one before it (Google Play requires that).
+      - name: Build release APK
+        env:
+          OAMP_KEYSTORE: ${{ runner.temp }}/keys/release.jks
+          OAMP_KEYSTORE_PASSWORD: ${{ secrets.OAMP_RELEASE_KEYSTORE_PASSWORD }}
+          OAMP_KEY_ALIAS: ${{ secrets.OAMP_RELEASE_KEY_ALIAS }}
+          OAMP_KEY_PASSWORD: ${{ secrets.OAMP_RELEASE_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release --build-number=${{ github.run_number }}
+          mkdir -p build/release
+          cp build/app/outputs/flutter-apk/app-release.apk "build/release/oamp-${GITHUB_REF_NAME//\//-}.apk"
+
+      - name: Check the APK is not signed with the side-load key
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs build/release/*.apk | tee certs.txt
+          if grep -q "OAmp side-load build" certs.txt; then
+            echo "::error::Release APK is signed with the public side-load key"
+            exit 1
+          fi
+
+      - name: Build Play bundle (upload key)
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          OAMP_KEYSTORE: ${{ runner.temp }}/keys/upload.jks
+          OAMP_KEYSTORE_PASSWORD: ${{ secrets.OAMP_UPLOAD_KEYSTORE_PASSWORD }}
+          OAMP_KEY_ALIAS: ${{ secrets.OAMP_UPLOAD_KEY_ALIAS }}
+          OAMP_KEY_PASSWORD: ${{ secrets.OAMP_UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release --build-number=${{ github.run_number }}
+          cp build/app/outputs/bundle/release/app-release.aab "build/release/oamp-${GITHUB_REF_NAME//\//-}.aab"
+
+      - name: Remove keys
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oamp-android-release
+          path: build/release/*
+          if-no-files-found: error
