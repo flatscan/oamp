@@ -42,10 +42,14 @@ upload key.
 
 ### Releasing
 
-Push a tag such as `v1.0.0`. The `Release` workflow builds the APK with the
-release key (and the Play bundle with the upload key, when its secrets
-exist) and uploads them as the `oamp-android-release` artifact. It fails
-rather than fall back to the side-load key.
+Write the release notes in `docs/releases/<tag>.md` (for example
+`docs/releases/v1.0.0-Alpha1.md`), merge them, then push a tag such as
+`v1.0.0`. The `Release` workflow builds the APK with the release key (and the
+Play bundle with the upload key, when its secrets exist), builds the Windows
+installer and a zip of the app, and creates a draft GitHub release for the
+tag with the APK, installer and zip attached. Tags with a suffix, such as
+`-Alpha1`, are marked as pre-releases. Review the draft on GitHub and press
+Publish. The Android build fails rather than fall back to the side-load key.
 
 ## Windows
 
