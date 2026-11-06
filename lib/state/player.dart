@@ -9,6 +9,7 @@ import '../core/models.dart';
 import '../core/play_queue.dart';
 import '../core/playback_options.dart';
 import '../core/track_resolver.dart';
+import '../platform/preferences.dart';
 import 'session.dart';
 import 'settings.dart';
 
@@ -162,6 +163,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// that is over. Anything the listener does meanwhile clears it.
   bool _resumeAfterInterruption = false;
 
+  /// Where the volume level is kept between runs.
+  static const volumeKey = 'oamp.player.volume';
+
+  /// Dragging the slider sets the volume many times a second, so saving
+  /// waits until it settles.
+  Timer? _saveVolume;
+  late Preferences _prefs;
+  double _savedVolume = 1;
+
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
 
@@ -218,7 +228,13 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     ref.listen(streamQualityProvider, (prev, next) {
       if (prev != next) unawaited(_reresolveUpcoming());
     });
-    return const PlayerState();
+    _prefs = ref.read(preferencesProvider);
+    ref.onDispose(_flushVolume);
+    final saved = _prefs.getDouble(volumeKey);
+    if (saved == null) return const PlayerState();
+    final volume = saved.clamp(0.0, 1.0);
+    unawaited(_engine.setVolume(volume));
+    return PlayerState(volume: volume);
   }
 
   /// Calls, other apps and unplugged headphones. Pauses for an
@@ -525,7 +541,18 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   Future<void> setVolume(double volume) async {
     final v = volume.clamp(0.0, 1.0);
     state = state.copyWith(volume: v);
+    _saveVolume?.cancel();
+    _savedVolume = v;
+    _saveVolume = Timer(const Duration(milliseconds: 500), _flushVolume);
     await _engine.setVolume(v);
+  }
+
+  void _flushVolume() {
+    final pending = _saveVolume;
+    if (pending == null) return;
+    pending.cancel();
+    _saveVolume = null;
+    unawaited(_prefs.setDouble(volumeKey, _savedVolume));
   }
 
   /// Empties the queue, keeping the listener's repeat and volume settings.
