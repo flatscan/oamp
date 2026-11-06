@@ -12,6 +12,13 @@ Windows is the first target. macOS, Android and iOS build from the same code.
 > overlay and media keys. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
 > for the v1 plan.
 
+## How OAmp is built
+
+OAmp was developed with significant augmented assistance provided by
+[Claude](https://claude.ai), Anthropic's AI assistant. Ed Jackson directs the
+project, sets the design and tests every change; much of the code was written
+with Claude.
+
 ## Features so far
 
 - Sign in with server URL, username and password. OAmp uses Subsonic token
