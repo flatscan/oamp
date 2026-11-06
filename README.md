@@ -1,16 +1,111 @@
 # OAmp
 
-An open source music player for [Navidrome](https://www.navidrome.org/),
-built with Flutter. It talks to your server over the Subsonic / OpenSubsonic
-API and uses a tall, single-column layout: browse above, a mini-player along
-the bottom, and a full now playing screen one click away.
+OAmp is an open source music player for [Navidrome](https://www.navidrome.org/).
+It is built to just work: sign in to your server and start listening, with
+little to set up and nothing to fiddle with.
 
-Windows is the first target. macOS, Android and iOS build from the same code.
+It runs on Windows and Android. The layout is a tall single column on every
+device, the same on a desktop as on a phone: browse your library above, a
+mini-player along the bottom, and a full now playing screen one tap away.
 
-> Status: early prototype. Sign in, browse and search the library, play,
-> manage the queue, like tracks, and control playback from the Windows media
-> overlay and media keys. See the [design doc](https://claude.ai/artifact/KijCrsNp8q1eTdPPqadg3i)
-> for the v1 plan.
+> **Status: alpha.** [v1.0.0-Alpha1](https://github.com/flatscan/oamp/releases/tag/v1.0.0-Alpha1)
+> is the first public release. It is ready for people happy to try things out
+> and report problems, so expect some rough edges.
+
+## Download
+
+Get the latest build from the
+[Releases page](https://github.com/flatscan/oamp/releases).
+
+| Platform | File | |
+| --- | --- | --- |
+| Windows 10/11 (x64) | `oamp-<version>-windows-setup.exe` | Installer. Installs for your user, no admin needed. |
+| Windows 10/11 (x64) | `oamp-<version>-windows.zip` | Portable. Unzip anywhere and run `oamp.exe`. |
+| Android 7.0 or later | `oamp-<version>.apk` | Side-load it on your phone. |
+
+You need a Navidrome server, **v0.64.2 or later**. Plain `http://` addresses on
+your home network work fine. To listen away from home, reach your server
+through a VPN such as Tailscale, or over HTTPS.
+
+### Installing on Windows
+
+Run the installer and open OAmp from the Start menu. The installer adds OAmp
+to *Settings → Apps*, upgrades an existing install in place, and keeps your
+sign-in and settings if you uninstall and reinstall.
+
+OAmp isn't code-signed yet, so Windows SmartScreen may say "Windows protected
+your PC" the first time. Click **More info**, then **Run anyway**. Signed
+builds are planned for a later release.
+
+### Installing on Android
+
+Download the APK on your phone and tap it. Android asks once to allow installs
+from your browser or file manager; allow it, then open **OAmp** from the app
+drawer. Later releases install over the top and keep your sign-in.
+
+If you installed a test build from GitHub Actions before, uninstall it once
+first. Test builds are signed with a different key, so Android won't install a
+release over one. You'll need to sign in again afterwards.
+
+## What it does
+
+- **Simple sign-in** with your server address and either your username and
+  password or a Navidrome API key. OAmp uses token sign-in, so your password
+  is never sent or stored, and the sign-in is kept in the system's secure
+  store.
+- **Home** with one-tap *Shuffle library* and *Liked tracks*, then rows of
+  recently played, recently added, most played, liked and random albums.
+- **Library**: artists and albums with an A to Z jump bar, playlists you can
+  create, rename and reorder, and liked tracks. Stays quick with libraries of
+  thousands of albums.
+- **Search** across artists, albums and tracks as you type, with filters and
+  recent searches.
+- **Now playing**, tinted from the cover art, with the queue underneath: drag
+  to reorder, swipe to remove, tap to jump. Your queue is saved on the server,
+  so you can pick up on another device where you left off.
+- **Lyrics** (synced where your server has them), **star ratings** and likes
+  for tracks, albums and artists, and **track radio**.
+- **Playback settings**: gapless playback (Windows), crossfade, ReplayGain,
+  streaming quality (with a separate setting for mobile data on Android), and a
+  cache that loads the next tracks ahead of time.
+- **Plays are reported** to Navidrome, so play counts and "recently played"
+  stay current.
+
+On **Windows**, OAmp opens as a tall, narrow window where you last left it. The mode button switches
+to expanded mode, which adds a library panel beside the column. OAmp shows up
+in the Windows media overlay and on the lock screen, the keyboard's media keys
+work while it's minimised, and there are shortcuts for the basics: `Space` to
+play or pause, `Ctrl+←`/`Ctrl+→` to skip, `Ctrl+↑`/`Ctrl+↓` for volume and
+`Ctrl+F` to search.
+
+On **Android**, it keeps playing in the background with notification, lock
+screen, Bluetooth and headset controls, pauses for calls and other apps, pauses when headphones are
+unplugged, recovers when the network drops, and has a landscape layout for now
+playing.
+
+## What's next
+
+Alpha2 is in the works. Planned so far:
+
+- Offline downloads, with playlists that stay in sync
+- Endless play: keep going after the queue ends, with the next album by the
+  same artist or similar tracks
+- An equaliser with simple presets that suit your device
+- More than one server, a backup address for when you're away from home, and
+  other server types such as Jellyfin and Plex
+- Android home screen widgets
+- Player controls in the Windows taskbar preview
+- An option for expanded mode to open to the left, so the window can sit
+  against the right edge of the screen
+
+Also on the list: Android Auto, CarPlay, Chromecast, Linux and a web version. macOS and iOS
+versions are on hold for now.
+
+## Reporting problems
+
+Please open an issue at <https://github.com/flatscan/oamp/issues>. It helps to
+include your OAmp version, your device and its Windows or Android version, and
+your Navidrome version.
 
 ## How OAmp is built
 
@@ -19,279 +114,78 @@ OAmp was developed with significant augmented assistance provided by
 project, sets the design and tests every change; much of the code was written
 with Claude.
 
-## Features so far
+## Building from source
 
-- Sign in with server URL, username and password. OAmp uses Subsonic token
-  auth (`t = md5(password + salt)`), so the password is never sent or stored.
-  The token, salt, URL and username are kept in the OS secure store (Windows
-  Credential Manager, macOS/iOS Keychain, Android Keystore).
-- **Home:** one-click *Shuffle library* and *Liked tracks*, then rows of
-  recently played, recently added, most played, liked and random albums.
-- **Library:** artists A to Z, every album (sortable, loaded as you scroll),
-  playlists and liked tracks. Artist pages play or shuffle everything by the
-  artist; album pages group tracks by disc.
-- **Search** across artists, albums and tracks as you type.
-- Hover an album (or an artist in search) for a play button in the middle of
-  the cover that plays it without opening it.
-- **Mini-player** above the tabs. Click it (or swipe up) for **now playing**,
-  one scrolling screen tinted from the cover: the artwork edge to edge, seek
-  bar, artist / title / album, format and quality, play controls, volume,
-  like, shuffle up next and repeat, then the queue directly below. The close
-  arrow sits over the top of the artwork. *Up next*:
-  click to jump, drag to reorder, swipe or click to remove, clear. *Earlier*
-  lists what already played. Swipe the artwork sideways to skip.
-- Right-click (or long-press) any track for play next, add to queue, like,
-  go to album and go to artist.
-- Plays are reported to the server (scrobbles), so Navidrome's play counts and
-  "recently played" stay current.
-- One tall column on every platform, the same as on a phone. On Windows the
-  window has its own dark title bar (it can be hidden in Settings; then drag
-  the top of Home or of the now playing artwork to move the window), and in
-  single-column mode only its height can be changed.
-- The mode button switches to expanded mode: a library fly-out opens to the
-  right of the column, the window widens and can be resized or maximised
-  freely, and the column shows now playing while browsing moves into the
-  fly-out. The button sits in exactly the same spot on single-column Home and
-  Library, single-column now playing and the expanded column, so switching
-  back and forth needs no mouse movement; expanded Home and Library have a
-  second one at their top right. Switching back to one column lands on now
-  playing.
-- Settings (gear on Home): server, sign out, and the title bar toggle.
-- Album rows on Home scroll sideways on their own: drag them with the mouse,
-  use the arrows next to each heading, or Shift + mouse wheel.
-- Keyboard: `Space` play/pause, `Ctrl+←`/`Ctrl+→` previous/next,
-  `Ctrl+↑`/`Ctrl+↓` volume, `Ctrl+F` search, `Esc` closes now playing, and the
-  mouse's back button goes back.
-- On Windows, keeps playing in the background and shows up in the Windows
-  media overlay (the panel next to the volume flyout, and the lock screen)
-  with title, artist, album, cover and play/pause, next and previous. The
-  keyboard's media keys control OAmp even when its window is minimised.
+OAmp is a [Flutter](https://flutter.dev/) app. How the code is organised, and
+how it leaves room for the features above, is described in
+[docs/architecture.md](docs/architecture.md). Release signing is covered in
+[docs/signing.md](docs/signing.md).
 
-## Setting up on Windows with VS Code
+### Windows
 
-1. **Install Git** from <https://git-scm.com/download/win> if you don't have it.
-2. **Install Visual Studio 2022** (Community is fine, this is not VS Code)
-   from <https://visualstudio.microsoft.com/downloads/>. In the installer tick
-   the **Desktop development with C++** workload. Flutter needs its C++
-   compiler and Windows SDK to build desktop apps.
-3. **Turn on Developer Mode**: Settings → System → For developers →
-   Developer Mode. Flutter plugins need symlink support, which this enables.
-4. **Install VS Code** from <https://code.visualstudio.com/> and then the
-   **Flutter** extension (it installs the Dart extension too).
-5. **Install Rust.** The Windows media overlay package
-   ([`smtc_windows`](https://pub.dev/packages/smtc_windows)) is written in
-   Rust and compiled during the Windows build. In a terminal run
-   `winget install Rustlang.Rustup`, or use the installer from
-   <https://rustup.rs>, then open a new terminal. You only need to do this once.
-6. **Install the Flutter SDK.** The easiest way is from VS Code: open the
-   Command Palette (`Ctrl+Shift+P`), run **Flutter: New Project**, and when it
-   says the SDK is missing choose **Download SDK**. Pick a folder without
-   spaces or admin rights, such as `C:\dev\flutter`, and let it add Flutter to
-   your PATH. (You can cancel the new-project step afterwards.)
-
-   To do it by hand instead, follow
-   <https://docs.flutter.dev/get-started/install/windows/desktop>, unzip the
-   SDK to `C:\dev\flutter` and add `C:\dev\flutter\bin` to your user PATH.
-7. **Check the install.** Open a new terminal and run:
-
-   ```powershell
-   flutter doctor
-   ```
-
-   The *Flutter* and *Visual Studio - develop Windows apps* lines should be
-   green. Android and Chrome warnings can be ignored for now.
-8. **Get the code and its packages:**
+1. **Install Git** from <https://git-scm.com/download/win>.
+2. **Install Visual Studio 2022** (Community is fine; this is not VS Code)
+   from <https://visualstudio.microsoft.com/downloads/>, with the
+   **Desktop development with C++** workload. Flutter needs its C++ compiler
+   and Windows SDK to build desktop apps.
+3. **Turn on Developer Mode** in *Settings → System → For developers*.
+   Flutter plugins need the symlink support it enables.
+4. **Install Rust** with `winget install Rustlang.Rustup` (or from
+   <https://rustup.rs>), then open a new terminal. The Windows media overlay
+   package, [`smtc_windows`](https://pub.dev/packages/smtc_windows), is
+   written in Rust and compiled during the build. Keep `flutter_rust_bridge`
+   at the version pinned in `pubspec.yaml`: a newer one builds but fails at
+   launch.
+5. **Install the Flutter SDK** by following
+   <https://docs.flutter.dev/get-started/install/windows/desktop>. Put it in a
+   folder without spaces, such as `C:\dev\flutter`, and add its `bin` folder to
+   your PATH. If you use VS Code, its **Flutter** extension can download the
+   SDK for you.
+6. **Check the setup** in a new terminal with `flutter doctor`. The *Flutter*
+   and *Visual Studio - develop Windows apps* lines should be green.
+7. **Get the code and run it:**
 
    ```powershell
    git clone https://github.com/flatscan/oamp.git
    cd oamp
    flutter pub get
-   code .
+   flutter run -d windows
    ```
-9. **Run it.** In VS Code pick **Windows (windows-x64)** as the device in the
-   status bar, then press `F5` (or choose *OAmp (Windows)* in the Run and Debug
-   panel). From a terminal, `flutter run -d windows` does the same.
 
-To build a release `.exe`:
+   In VS Code, pick **Windows (windows-x64)** as the device and press `F5`.
+
+To build a release:
 
 ```powershell
 flutter build windows --release
 ```
 
-The app ends up in `build\windows\x64\runner\Release\`. Copy that whole folder
-to share it; `oamp.exe` needs the DLLs and `data` folder next to it.
+The app is written to `build\windows\x64\runner\Release\`. `oamp.exe` needs the
+DLLs and `data` folder next to it, so copy the whole folder. The Visual C++
+runtime is bundled, so nothing else needs installing.
 
-### Windows installer
-
-The installer is built with [Inno Setup](https://jrsoftware.org/isdl.php) 6.3
-or later. After the release build above, run:
+To build the installer, install [Inno Setup](https://jrsoftware.org/isdl.php)
+6.3 or later and run this after the release build:
 
 ```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\oamp.iss
 ```
 
-This writes `build\installer\oamp-<version>-setup.exe`. CI builds the same
-file as the `oamp-windows-installer` artifact. The installer:
+It writes `build\installer\oamp-<version>-setup.exe`.
 
-- installs for the current user without admin rights (it offers an
-  all-users install, which asks for admin);
-- adds a Start menu shortcut, and optionally a desktop one. The shortcut is
-  what lets the Windows media overlay show "OAmp" and its icon instead of
-  "Unknown app";
-- upgrades an existing install in place, asking to close OAmp first if it is
-  running;
-- adds OAmp to *Settings → Apps*, where it can be uninstalled. Uninstalling
-  keeps your settings and sign-in, so a reinstall picks up where you left off.
+### Android
 
-The Visual C++ runtime DLLs are copied next to `oamp.exe` during the build, so
-neither the installer nor the copied folder needs the Visual C++
-Redistributable installed separately. The installer isn't code-signed yet, so
-Windows SmartScreen shows a warning on first run: choose *More info → Run
-anyway*.
+Install Android Studio (for the Android SDK) and JDK 17, then:
 
-## Android
-
-CI builds a side-loadable APK on every push as the `oamp-android` artifact
-(`oamp-<build>.apk`). To install it:
-
-1. Download the artifact from the CI run and unzip it.
-2. Copy the `.apk` to the phone (or open the download on the phone) and tap
-   it. Android asks once to allow installs from that app (*Files*, *Chrome*
-   and so on); allow it.
-3. Open **OAmp** from the app drawer and sign in to your server.
-
-Android 7.0 or later is needed. Each CI build has a higher version code and the
-same signing key, so a newer APK installs over the old one and keeps the login
-and settings. That key is in the repo (`android/app/sideload.keystore`) and is
-not a secret; distributed builds get a private key before the alpha.
-
-To build it yourself you need Android Studio (for the Android SDK) and a JDK
-17, then:
-
-```
+```sh
 flutter build apk --release
 ```
 
 The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. With a
-phone connected over USB (developer options and USB debugging on), `flutter run
--d android` runs a debug build on it.
+phone connected and USB debugging on, `flutter run -d android` runs a debug
+build on it.
 
-## Other platforms
-
-| Platform | Needs | Run |
-| --- | --- | --- |
-| macOS | Xcode and CocoaPods | `flutter run -d macos` |
-| iOS | A Mac with Xcode, CocoaPods and a device or simulator | `flutter run -d ios` |
-
-Plain `http://` servers on your LAN are allowed on every platform. Background
-playback and lock-screen controls are wired up on Windows only so far; Android,
-iOS and macOS get them through `audio_service` in a later milestone. On macOS the secure-storage package may need the Keychain Sharing
-capability added in Xcode before sign-in persists.
-
-## Project layout
-
-```
-lib/
-  main.dart                 App entry: audio backend, desktop window, routing
-  core/                     Backend-neutral, no dart:io
-    models.dart             Artist, Album, Track, Playlist (OAmp's own models)
-    music_source.dart       MusicSource interface + capability flags
-    playback_options.dart   Gapless, crossfade, ReplayGain, stream quality, cache
-    track_cache.dart        TrackCache interface: temporary playback cache
-    track_resolver.dart     Track -> playable URI (stream now, downloads in v2)
-  sources/subsonic/         The only v1 MusicSource: Navidrome / Subsonic
-    subsonic_client.dart    Transport and token auth
-    subsonic_source.dart    Maps Subsonic JSON to OAmp models
-  audio/
-    audio_engine.dart       AudioEngine interface; MixingEngine crossfades decks
-    mpv_deck.dart           libmpv player (Windows)
-    just_audio_deck.dart    just_audio player (Android, iOS, macOS)
-    stream_cache.dart       On-disk cache served to the player over loopback
-    platform_audio.dart     Picks the player and opens the cache per platform
-  platform/                 Platform code behind interfaces
-    secure_store.dart       SecureStore (OS keychain)
-    preferences.dart        Preferences (plain settings, shared_preferences)
-    platform_info.dart      isDesktop without dart:io
-    system_controls.dart    SystemControls: the OS media session interface
-    windows_system_controls.dart   SMTC: media overlay and media keys
-    platform_system_controls.dart  Picks the implementation per platform
-  state/                    Riverpod providers
-    session.dart            ServerSession keyed by serverId, sign-in
-    library.dart            Cached library queries
-    player.dart             PlayerController: the queue; engine is its output
-    playback_reporter.dart  Reports now playing and plays to the server
-    settings.dart           App settings: playback, quality, cache, window
-    precache.dart           Keeps the cache fetching the next tracks in the queue
-    system_controls_bridge.dart  Mirrors the player into SystemControls
-  ui/
-    app_frame.dart          Window bar and keyboard shortcuts around every screen
-    window_mode.dart        Single-column / expanded mode and window size limits
-    mode_switch.dart        The mode switch button and where it sits
-    login_screen.dart
-    home_shell.dart         Single column with mini-player, desktop fly-out
-    browser.dart            Home / Library / Search tabs, each with its history
-    browse/                 Home, library, search, album, artist, playlist pages
-    player/                 Mini-player, now playing with its queue, controls
-    widgets.dart            Shared rows, cards and the track menu
-test/
-  fakes/                    FakeMusicSource, FakeAudioEngine, FakeSystemControls
-  system_controls_test.dart Media keys and overlay, driven through fakes
-  ui_with_fake_source_test.dart  Drives the whole UI with no server
-  player_test.dart          Queue, repeat, shuffle, volume and play reports
-  window_mode_test.dart     Mode switch position across modes, title bar setting
-  mixing_engine_test.dart   Crossfade hand-over and ReplayGain levels
-  stream_cache_test.dart    Cache pass-through, prefetch, eviction
-  playback_settings_test.dart  Settings, ReplayGain maths, settings page
-  mpv_playback_test.dart    Real libmpv playback; runs where libmpv is
-                            installed (apt install libmpv-dev), skipped on CI
-  architecture_test.dart    Enforces the seams below
-```
-
-### Built for v2
-
-The design doc's v2 goals plug into seams that already exist, so they add
-implementations rather than rewrite v1:
-
-- **Other backends (Jellyfin, Plex):** a new `MusicSource`. The UI and
-  providers only see `core/` models.
-- **Multiple servers:** credentials are stored per `serverId`, and the
-  active one is a `ServerSession`. A switcher only changes which is active.
-- **Offline downloads:** a `TrackResolver` that returns a local file when
-  the track is downloaded. The playback cache (`TrackCache`) is separate:
-  it is temporary, evicted oldest first, and never counts as downloaded.
-- **Chromecast:** `PlayerController` owns the queue and sends it to an
-  `AudioEngine`, so a cast engine is another output.
-- **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`,
-  `SystemControls` and `platform_info`. `architecture_test.dart` fails if
-  `lib/ui` imports the Subsonic or audio code, if core, state or UI import
-  `dart:io`, or if anything outside `lib/platform` touches a media session
-  package.
-- **Lock screens, CarPlay and Android Auto:** the player talks to the OS only
-  through `SystemControls`, and OS buttons call the same `PlayerController`
-  methods as the app's own. Android, iOS and macOS add an `audio_service`
-  implementation, and Linux an MPRIS one, as new files in `lib/platform`.
-
-### Packages
-
-- [`media_kit`](https://pub.dev/packages/media_kit) (libmpv) for playback
-  on Windows, and [`just_audio`](https://pub.dev/packages/just_audio) on
-  Android, iOS and macOS. All playback goes through `AudioEngine`, so the
-  backend can be swapped in one file.
-- [`path_provider`](https://pub.dev/packages/path_provider) for the
-  playback cache's folder.
-- [`flutter_riverpod`](https://pub.dev/packages/flutter_riverpod) for state.
-- [`http`](https://pub.dev/packages/http) and
-  [`crypto`](https://pub.dev/packages/crypto) for the API and token auth.
-- [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage)
-  for saved credentials, and
-  [`shared_preferences`](https://pub.dev/packages/shared_preferences) for
-  plain settings.
-- [`window_manager`](https://pub.dev/packages/window_manager) for the
-  phone-shaped desktop window and the library fly-out.
-- [`smtc_windows`](https://pub.dev/packages/smtc_windows) for the Windows
-  media overlay and media keys (needs Rust to build).
-
-## Development
+### Checks
 
 ```sh
 flutter analyze
@@ -299,9 +193,13 @@ flutter test
 dart format lib test
 ```
 
-CI runs the same checks plus a Windows release build on every pull request,
-and uploads the built app as a workflow artifact.
+CI runs these on every pull request and builds the Windows app, installer and
+an Android APK as downloadable artifacts. These test APKs are signed with a
+public side-load key kept in the repo (`android/app/sideload.keystore`), so
+each one installs over the last. Pushing a `v*` tag builds release-signed
+files and drafts a GitHub release from `docs/releases/<tag>.md`.
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+OAmp is free software under the GNU General Public License v3.0. See
+[LICENSE](LICENSE).
