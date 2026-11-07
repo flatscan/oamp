@@ -115,9 +115,16 @@ server's own interface for that.
 
 ## Reporting problems
 
-Please open an issue at <https://github.com/flatscan/oamp/issues>. It helps to
-include your OAmp version, your device and its Windows or Android version, and
-your Navidrome version.
+In OAmp, open Settings and press **Report a bug** under About. It copies the
+diagnostics and opens a new issue at
+<https://github.com/flatscan/oamp/issues>, where you paste them in. The
+diagnostics hold your OAmp, device and server versions, your playback settings
+and recent errors, but no song titles, user names, server addresses or
+passwords, and they never leave your device unless you paste or share them.
+
+OAmp asks on first launch whether to check for updates. If you say yes, it asks
+GitHub once a day whether a new version is out; nothing about you or your
+music is sent. You can change this under About in Settings.
 
 ## How OAmp is built
 
