@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in OAmp doesn't work as it should
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open an album
+        2. Press play on track 3
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: OAmp version
+      description: The release you downloaded.
+      placeholder: 1.0.0-Alpha1
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Android
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      placeholder: Windows 11 24H2, or Galaxy S25 with Android 16
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server and version
+      placeholder: Navidrome 0.64.2
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, or the text from Settings > Copy diagnostics once that exists.
