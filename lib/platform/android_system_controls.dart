@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../core/models.dart' show PlaybackRepeat;
 import 'system_controls.dart';
 
 /// [SystemControls] on Android, through `audio_service`.
@@ -144,13 +145,16 @@ class OampAudioHandler extends BaseAudioHandler {
     if (previous == null || !previous.sameMetadata(info)) {
       mediaItem.add(mediaItemFor(info));
     }
-    playbackState.add(stateFor(info));
+    if (!identical(previous?.queue, info.queue)) _showQueue(info);
+    playbackState.add(stateFor(info, queueStart: _queueStart));
   }
 
   /// Nothing is loaded: an idle session stops the service and removes the
   /// notification.
   void hide() {
     last = null;
+    _queueStart = 0;
+    queue.add(const []);
     playbackState.add(
       PlaybackState(processingState: AudioProcessingState.idle),
     );
@@ -341,20 +345,85 @@ class OampAudioHandler extends BaseAudioHandler {
   /// DiskArtworkCache's file names: a SHA-1 of the key, then `.art`.
   static final _cachedArtName = RegExp(r'^[0-9a-f]{40}\.art$');
 
+  /// The queue Android Auto lists from Now Playing. A long queue is sent
+  /// as a window around the current track; [_queueStart] is where the
+  /// window begins, so queue item ids map back to queue positions.
+  int _queueStart = 0;
+
+  /// The most queue entries sent at once.
+  static const queueWindow = 300;
+
+  void _showQueue(NowPlayingInfo info) {
+    final all = info.queue;
+    final current = info.queueIndex ?? 0;
+    _queueStart = all.length <= queueWindow
+        ? 0
+        : (current - queueWindow ~/ 3).clamp(0, all.length - queueWindow);
+    final end = (_queueStart + queueWindow).clamp(0, all.length);
+    queue.add([
+      for (var i = _queueStart; i < end; i++)
+        MediaItem(
+          id: 'queue/$i',
+          title: all[i].title,
+          artist: all[i].artist,
+          artUri: all[i].coverArt == null ? null : artworkUri(all[i].coverArt!),
+        ),
+    ]);
+  }
+
+  // Android Auto shows custom actions as extra buttons beside the transport
+  // controls (and Android 13+ in the notification's spare slots).
+  static const likeAction = 'oamp.like';
+  static const shuffleAction = 'oamp.shuffle';
+  static const repeatAction = 'oamp.repeat';
+
+  static List<MediaControl> _extraControls(NowPlayingInfo info) => [
+    if (info.liked != null)
+      MediaControl.custom(
+        androidIcon: info.liked!
+            ? 'drawable/ic_media_liked'
+            : 'drawable/ic_media_like',
+        label: info.liked! ? 'Unlike' : 'Like',
+        name: likeAction,
+      ),
+    MediaControl.custom(
+      androidIcon: info.shuffled
+          ? 'drawable/ic_media_shuffle_on'
+          : 'drawable/ic_media_shuffle_off',
+      label: info.shuffled ? 'Shuffle on' : 'Shuffle off',
+      name: shuffleAction,
+    ),
+    MediaControl.custom(
+      androidIcon: switch (info.repeat) {
+        PlaybackRepeat.off => 'drawable/ic_media_repeat_off',
+        PlaybackRepeat.all => 'drawable/ic_media_repeat_all',
+        PlaybackRepeat.one => 'drawable/ic_media_repeat_one',
+      },
+      label: switch (info.repeat) {
+        PlaybackRepeat.off => 'Repeat off',
+        PlaybackRepeat.all => 'Repeat queue',
+        PlaybackRepeat.one => 'Repeat track',
+      },
+      name: repeatAction,
+    ),
+  ];
+
   @visibleForTesting
-  static PlaybackState stateFor(NowPlayingInfo info) {
-    final controls = [
+  static PlaybackState stateFor(NowPlayingInfo info, {int queueStart = 0}) {
+    final transport = [
       if (info.canGoPrevious) MediaControl.skipToPrevious,
       info.playing ? MediaControl.pause : MediaControl.play,
       if (info.canGoNext) MediaControl.skipToNext,
     ];
+    final index = info.queueIndex;
     return PlaybackState(
-      controls: controls,
+      controls: [...transport, ..._extraControls(info)],
+      queueIndex: index == null ? null : index - queueStart,
       // The seek bar on the notification and lock screen.
       systemActions: const {MediaAction.seek},
       // The collapsed notification shows every button; there are at most 3.
       androidCompactActionIndices: [
-        for (var i = 0; i < controls.length; i++) i,
+        for (var i = 0; i < transport.length; i++) i,
       ],
       // Ready even while paused, so the paused notification stays until the
       // user swipes it away; idle is kept for "nothing loaded" (see hide).
@@ -386,6 +455,22 @@ class OampAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> seek(Duration position) async => _send(SeekCommand(position));
+
+  @override
+  Future<dynamic> customAction(
+    String name, [
+    Map<String, dynamic>? extras,
+  ]) async => switch (name) {
+    likeAction => _send(const ToggleLikeCommand()),
+    shuffleAction => _send(const ToggleShuffleCommand()),
+    repeatAction => _send(const CycleRepeatCommand()),
+    _ => null,
+  };
+
+  /// A track picked from the queue list on Android Auto's Now Playing.
+  @override
+  Future<void> skipToQueueItem(int index) async =>
+      _send(JumpToCommand(_queueStart + index));
 
   /// A headset or Bluetooth button. A single press toggles the player's real
   /// state rather than the state the session last showed, which can lag by a

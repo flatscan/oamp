@@ -1,8 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/models.dart';
 import '../platform/system_controls.dart';
+import 'library.dart';
 import 'car_library.dart';
 import 'player.dart';
 import 'session.dart';
@@ -78,7 +82,47 @@ class _Bridge {
       NextCommand() => _player.next(),
       PreviousCommand() => _player.previous(),
       SeekCommand(:final position) => _player.seek(position),
+      ToggleShuffleCommand() => _player.toggleShuffle(),
+      CycleRepeatCommand() => _player.cycleRepeat(),
+      ToggleLikeCommand() => _toggleLike(),
+      JumpToCommand(:final index) => _player.jumpTo(index),
     });
+  }
+
+  Future<void> _toggleLike() async {
+    final track = ref.read(playerProvider).current;
+    if (track == null) return;
+    try {
+      await ref
+          .read(likesProvider(LikeTarget.track).notifier)
+          .toggle(track.id, fetched: track.liked);
+    } catch (e) {
+      debugPrint('Could not update like from the media controls: $e');
+    }
+    push();
+  }
+
+  /// The queue as last sent, so an unchanged queue keeps the same list.
+  List<Track>? _queueOf;
+  List<QueueEntry> _queue = const [];
+
+  List<QueueEntry> _entries(List<Track> queue) {
+    if (!identical(queue, _queueOf)) {
+      _queueOf = queue;
+      _queue = List.unmodifiable([
+        for (final t in queue)
+          QueueEntry(title: t.title, artist: t.artist, coverArt: t.coverArt),
+      ]);
+    }
+    return _queue;
+  }
+
+  bool _liked(Track track) {
+    try {
+      return ref.read(likesProvider(LikeTarget.track))[track.id] ?? track.liked;
+    } catch (_) {
+      return track.liked;
+    }
   }
 
   void pushPosition() {
@@ -164,6 +208,11 @@ class _Bridge {
       canGoNext: s.hasNext,
       // Previous restarts the current track, so it always does something.
       canGoPrevious: true,
+      liked: _liked(track),
+      shuffled: s.shuffled,
+      repeat: s.repeat,
+      queue: _entries(s.queue),
+      queueIndex: s.currentIndex,
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oamp/core/models.dart' show PlaybackRepeat;
 import 'package:oamp/platform/android_system_controls.dart';
 import 'package:oamp/platform/system_controls.dart';
 
@@ -57,7 +58,7 @@ void main() {
     expect(state.processingState, AudioProcessingState.ready);
     expect(state.updatePosition, const Duration(seconds: 42));
     expect(state.systemActions, contains(MediaAction.seek));
-    expect(state.controls, [
+    expect(state.controls.take(3), [
       MediaControl.skipToPrevious,
       MediaControl.pause,
       MediaControl.skipToNext,
@@ -69,7 +70,10 @@ void main() {
     final state = OampAudioHandler.stateFor(
       info(playing: false, canGoNext: false),
     );
-    expect(state.controls, [MediaControl.skipToPrevious, MediaControl.play]);
+    expect(state.controls.take(2), [
+      MediaControl.skipToPrevious,
+      MediaControl.play,
+    ]);
     expect(state.androidCompactActionIndices, [0, 1]);
     // Still ready, so the paused notification stays until swiped away.
     expect(state.processingState, AudioProcessingState.ready);
@@ -203,6 +207,87 @@ void main() {
     expect(OampAudioHandler.sharedArtUri(other), other);
     expect(OampAudioHandler.sharedArtUri(art), art);
     expect(OampAudioHandler.sharedArtUri(null), isNull);
+  });
+
+  List<String> extras(PlaybackState s) => [
+    for (final c in s.controls)
+      if (c.customAction != null) '${c.customAction!.name}:${c.label}',
+  ];
+
+  test('like, shuffle and repeat buttons show their state', () {
+    expect(extras(OampAudioHandler.stateFor(info())), [
+      'oamp.shuffle:Shuffle off',
+      'oamp.repeat:Repeat off',
+    ]);
+    final on = NowPlayingInfo(
+      title: 'T',
+      liked: true,
+      shuffled: true,
+      repeat: PlaybackRepeat.one,
+    );
+    final state = OampAudioHandler.stateFor(on);
+    expect(extras(state), [
+      'oamp.like:Unlike',
+      'oamp.shuffle:Shuffle on',
+      'oamp.repeat:Repeat track',
+    ]);
+    expect(
+      state.controls.firstWhere((c) => c.label == 'Unlike').androidIcon,
+      'drawable/ic_media_liked',
+    );
+    // The compact notification keeps to the transport buttons.
+    expect(state.androidCompactActionIndices, [0]);
+  });
+
+  test('the buttons become commands', () async {
+    final got = <MediaCommand>[];
+    final sub = controls.commands.listen(got.add);
+    addTearDown(sub.cancel);
+    await handler.customAction('oamp.like');
+    await handler.customAction('oamp.shuffle');
+    await handler.customAction('oamp.repeat');
+    await handler.customAction('something else');
+    await Future<void>.delayed(Duration.zero);
+    expect(got.map((c) => c.runtimeType), [
+      ToggleLikeCommand,
+      ToggleShuffleCommand,
+      CycleRepeatCommand,
+    ]);
+  });
+
+  test('the queue is listed, windowed around the current track', () async {
+    final got = <MediaCommand>[];
+    final sub = controls.commands.listen(got.add);
+    addTearDown(sub.cancel);
+    final long = [
+      for (var i = 0; i < 1000; i++)
+        QueueEntry(title: 'Song $i', coverArt: 'c$i'),
+    ];
+    await controls.update(
+      NowPlayingInfo(title: 'Song 500', queue: long, queueIndex: 500),
+    );
+    final q = handler.queue.value;
+    expect(q, hasLength(OampAudioHandler.queueWindow));
+    final current = handler.playbackState.value.queueIndex!;
+    expect(q[current].title, 'Song 500');
+    expect(
+      q[current].artUri.toString(),
+      'content://dev.oamp.oamp.artwork/c500',
+    );
+
+    await handler.skipToQueueItem(current + 2);
+    await Future<void>.delayed(Duration.zero);
+    expect((got.single as JumpToCommand).index, 502);
+
+    // Same queue again: not resent.
+    final sent = <List<MediaItem>>[];
+    final qsub = handler.queue.skip(1).listen(sent.add);
+    addTearDown(qsub.cancel);
+    await controls.update(
+      NowPlayingInfo(title: 'Song 500', queue: long, queueIndex: 501),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(sent, isEmpty);
   });
 
   group('Android Auto', () {

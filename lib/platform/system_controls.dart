@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/models.dart' show PlaybackRepeat;
+
 /// What the OS media UI should show: the Windows media overlay, the Android
 /// notification and lock screen, and later iOS/macOS Now Playing and MPRIS.
 class NowPlayingInfo {
@@ -19,6 +21,16 @@ class NowPlayingInfo {
   final bool canGoNext;
   final bool canGoPrevious;
 
+  /// Whether the track is liked, or null where liking isn't offered.
+  final bool? liked;
+  final bool shuffled;
+  final PlaybackRepeat repeat;
+
+  /// The play queue, for media UIs that list it (Android Auto). The list
+  /// is replaced, never changed in place, so a new queue is a new list.
+  final List<QueueEntry> queue;
+  final int? queueIndex;
+
   const NowPlayingInfo({
     required this.title,
     this.artist,
@@ -29,6 +41,11 @@ class NowPlayingInfo {
     this.duration,
     this.canGoNext = false,
     this.canGoPrevious = false,
+    this.liked,
+    this.shuffled = false,
+    this.repeat = PlaybackRepeat.off,
+    this.queue = const [],
+    this.queueIndex,
   });
 
   NowPlayingInfo withArt(Uri? artUri) => NowPlayingInfo(
@@ -41,6 +58,11 @@ class NowPlayingInfo {
     duration: duration,
     canGoNext: canGoNext,
     canGoPrevious: canGoPrevious,
+    liked: liked,
+    shuffled: shuffled,
+    repeat: repeat,
+    queue: queue,
+    queueIndex: queueIndex,
   );
 
   /// Same track and metadata, ignoring transport state.
@@ -50,6 +72,17 @@ class NowPlayingInfo {
       album == o.album &&
       artUri == o.artUri &&
       duration == o.duration;
+}
+
+/// One track in [NowPlayingInfo.queue].
+class QueueEntry {
+  final String title;
+  final String? artist;
+
+  /// The source's cover art id.
+  final String? coverArt;
+
+  const QueueEntry({required this.title, this.artist, this.coverArt});
 }
 
 /// A button pressed outside the app: a keyboard media key, the Windows media
@@ -80,6 +113,24 @@ class PreviousCommand extends MediaCommand {
 
 class StopCommand extends MediaCommand {
   const StopCommand();
+}
+
+class ToggleShuffleCommand extends MediaCommand {
+  const ToggleShuffleCommand();
+}
+
+class CycleRepeatCommand extends MediaCommand {
+  const CycleRepeatCommand();
+}
+
+class ToggleLikeCommand extends MediaCommand {
+  const ToggleLikeCommand();
+}
+
+/// Play the queue entry at [index] (in [NowPlayingInfo.queue]).
+class JumpToCommand extends MediaCommand {
+  final int index;
+  const JumpToCommand(this.index);
 }
 
 class SeekCommand extends MediaCommand {
