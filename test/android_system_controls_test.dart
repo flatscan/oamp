@@ -191,6 +191,20 @@ void main() {
     expect(got.map((c) => c.runtimeType), [StopCommand]);
   });
 
+  test('cached cover files go out as content URIs other apps can read', () {
+    const name = '0123456789abcdef0123456789abcdef01234567.art';
+    final file = Uri.file('/data/user/0/dev.oamp.oamp/cache/artwork/$name');
+    expect(
+      OampAudioHandler.sharedArtUri(file).toString(),
+      'content://dev.oamp.oamp.artwork/file/$name',
+    );
+    // Anything that isn't a cache file is left alone.
+    final other = Uri.file('/data/user/0/dev.oamp.oamp/files/cover.jpg');
+    expect(OampAudioHandler.sharedArtUri(other), other);
+    expect(OampAudioHandler.sharedArtUri(art), art);
+    expect(OampAudioHandler.sharedArtUri(null), isNull);
+  });
+
   group('Android Auto', () {
     TestWidgetsFlutterBinding.ensureInitialized();
 

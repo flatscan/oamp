@@ -313,9 +313,33 @@ class OampAudioHandler extends BaseAudioHandler {
     title: info.title,
     artist: info.artist,
     album: info.album,
-    artUri: info.artUri,
+    artUri: sharedArtUri(info.artUri),
     duration: info.duration,
   );
+
+  /// The cover as Android Auto's home screen can read it. That screen runs
+  /// in another app and can't open the app's own files, so a cover from the
+  /// artwork cache goes out as a content URI that ArtworkProvider serves
+  /// straight from the file (the notification and lock screen read it the
+  /// same way). Anything else is left as it is.
+  @visibleForTesting
+  static Uri? sharedArtUri(Uri? art) {
+    if (art == null || art.scheme != 'file') return art;
+    final segments = art.pathSegments;
+    if (segments.length < 2 ||
+        segments[segments.length - 2] != 'artwork' ||
+        !_cachedArtName.hasMatch(segments.last)) {
+      return art;
+    }
+    return Uri(
+      scheme: 'content',
+      host: 'dev.oamp.oamp.artwork',
+      pathSegments: ['file', segments.last],
+    );
+  }
+
+  /// DiskArtworkCache's file names: a SHA-1 of the key, then `.art`.
+  static final _cachedArtName = RegExp(r'^[0-9a-f]{40}\.art$');
 
   @visibleForTesting
   static PlaybackState stateFor(NowPlayingInfo info) {

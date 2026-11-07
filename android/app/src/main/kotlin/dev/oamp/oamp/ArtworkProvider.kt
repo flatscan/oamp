@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import com.ryanheise.audioservice.AudioServicePlugin
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.io.FileNotFoundException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -17,7 +18,8 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /**
- * Cover art for Android Auto, at content://dev.oamp.oamp.artwork/<cover id>.
+ * Cover art for Android Auto, at content://dev.oamp.oamp.artwork/<cover id>
+ * (browse lists) or .../file/<cache file name> (what is playing).
  *
  * The car loads browse artwork itself, in its own process, so it can't be
  * given the server's cover URL (it carries the sign-in token) or a file in
@@ -34,6 +36,12 @@ class ArtworkProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") throw SecurityException("Artwork is read only")
+        val segments = uri.pathSegments
+        // content://dev.oamp.oamp.artwork/file/<name>: a cover already in the
+        // artwork cache, for the now playing card on Android Auto's home
+        // screen. Read straight from disk, so it also works on the main
+        // thread, where audio_service loads the notification art.
+        if (segments.size == 2 && segments[0] == "file") return cachedFile(segments[1], uri)
         val coverArt = uri.lastPathSegment ?: throw FileNotFoundException(uri.toString())
         // Waiting on the main thread from the main thread would never end;
         // only the car (another process, so a binder thread) reads these.
@@ -48,6 +56,15 @@ class ArtworkProvider : ContentProvider() {
             }
         }
         return read
+    }
+
+    private fun cachedFile(name: String, uri: Uri): ParcelFileDescriptor {
+        // Only DiskArtworkCache's own file names, never a path.
+        if (!CACHED_NAME.matches(name)) throw FileNotFoundException(uri.toString())
+        val dir = context?.cacheDir ?: throw FileNotFoundException(uri.toString())
+        val file = File(File(dir, "artwork"), name)
+        if (!file.isFile) throw FileNotFoundException(uri.toString())
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
     /** Asks the Dart side for the image, waiting a while for a slow server. */
@@ -99,5 +116,6 @@ class ArtworkProvider : ContentProvider() {
     companion object {
         private const val CHANNEL = "oamp/artwork"
         private const val TIMEOUT_SECONDS = 15L
+        private val CACHED_NAME = Regex("^[0-9a-f]{40}\\.art$")
     }
 }
