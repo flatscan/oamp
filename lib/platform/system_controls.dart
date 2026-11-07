@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/models.dart' show PlaybackRepeat;
+
 /// What the OS media UI should show: the Windows media overlay, the Android
 /// notification and lock screen, and later iOS/macOS Now Playing and MPRIS.
 class NowPlayingInfo {
@@ -19,6 +21,16 @@ class NowPlayingInfo {
   final bool canGoNext;
   final bool canGoPrevious;
 
+  /// Whether the track is liked, or null where liking isn't offered.
+  final bool? liked;
+  final bool shuffled;
+  final PlaybackRepeat repeat;
+
+  /// The play queue, for media UIs that list it (Android Auto). The list
+  /// is replaced, never changed in place, so a new queue is a new list.
+  final List<QueueEntry> queue;
+  final int? queueIndex;
+
   const NowPlayingInfo({
     required this.title,
     this.artist,
@@ -29,6 +41,11 @@ class NowPlayingInfo {
     this.duration,
     this.canGoNext = false,
     this.canGoPrevious = false,
+    this.liked,
+    this.shuffled = false,
+    this.repeat = PlaybackRepeat.off,
+    this.queue = const [],
+    this.queueIndex,
   });
 
   NowPlayingInfo withArt(Uri? artUri) => NowPlayingInfo(
@@ -41,6 +58,11 @@ class NowPlayingInfo {
     duration: duration,
     canGoNext: canGoNext,
     canGoPrevious: canGoPrevious,
+    liked: liked,
+    shuffled: shuffled,
+    repeat: repeat,
+    queue: queue,
+    queueIndex: queueIndex,
   );
 
   /// Same track and metadata, ignoring transport state.
@@ -50,6 +72,17 @@ class NowPlayingInfo {
       album == o.album &&
       artUri == o.artUri &&
       duration == o.duration;
+}
+
+/// One track in [NowPlayingInfo.queue].
+class QueueEntry {
+  final String title;
+  final String? artist;
+
+  /// The source's cover art id.
+  final String? coverArt;
+
+  const QueueEntry({required this.title, this.artist, this.coverArt});
 }
 
 /// A button pressed outside the app: a keyboard media key, the Windows media
@@ -80,6 +113,24 @@ class PreviousCommand extends MediaCommand {
 
 class StopCommand extends MediaCommand {
   const StopCommand();
+}
+
+class ToggleShuffleCommand extends MediaCommand {
+  const ToggleShuffleCommand();
+}
+
+class CycleRepeatCommand extends MediaCommand {
+  const CycleRepeatCommand();
+}
+
+class ToggleLikeCommand extends MediaCommand {
+  const ToggleLikeCommand();
+}
+
+/// Play the queue entry at [index] (in [NowPlayingInfo.queue]).
+class JumpToCommand extends MediaCommand {
+  final int index;
+  const JumpToCommand(this.index);
 }
 
 class SeekCommand extends MediaCommand {
@@ -134,4 +185,96 @@ class NoSystemControls implements SystemControls {
   Future<void> clear() async {}
   @override
   Future<void> dispose() async {}
+}
+
+/// One entry in the library a car (Android Auto) can browse: a folder to
+/// open, or something to play.
+class MediaNode {
+  /// Opaque to the OS; [MediaLibrary] hands it back to open or play.
+  final String id;
+  final String title;
+  final String? subtitle;
+
+  /// The source's cover art id, which [MediaLibrary.artwork] turns into an
+  /// image. Null for no picture.
+  final String? coverArt;
+
+  /// Played when picked, rather than opened as a folder.
+  final bool playable;
+
+  /// How the car lays out this folder's folders and playable items.
+  final NodeStyle folderStyle;
+  final NodeStyle itemStyle;
+
+  /// A heading the car shows above a run of entries with the same group.
+  final String? group;
+
+  const MediaNode({
+    required this.id,
+    required this.title,
+    this.subtitle,
+    this.coverArt,
+    this.playable = false,
+    this.folderStyle = NodeStyle.list,
+    this.itemStyle = NodeStyle.list,
+    this.group,
+  });
+}
+
+enum NodeStyle { list, grid }
+
+/// What a voice request ("play Air on OAmp") asked for. [focus] says what
+/// kind of thing the assistant understood, when it could tell.
+class VoiceRequest {
+  final String query;
+  final VoiceFocus focus;
+  final String? artist;
+  final String? album;
+  final String? title;
+  final String? playlist;
+  final String? genre;
+
+  const VoiceRequest(
+    this.query, {
+    this.focus = VoiceFocus.any,
+    this.artist,
+    this.album,
+    this.title,
+    this.playlist,
+    this.genre,
+  });
+}
+
+enum VoiceFocus { any, artist, album, track, playlist, genre }
+
+/// The library as a car head unit sees it: folders to browse, search, and
+/// ways to start playback, all without the app's screens.
+abstract class MediaLibrary {
+  /// The top folder. Its children are the car's tabs.
+  static const rootId = 'root';
+
+  /// What the car offers to resume when it starts up.
+  static const recentId = 'recent';
+
+  Future<List<MediaNode>> children(String parentId);
+  Future<List<MediaNode>> search(String query);
+
+  /// Plays the playable node [id].
+  Future<void> play(String id);
+  Future<void> playFromVoice(VoiceRequest request);
+
+  /// The cover image for a [MediaNode.coverArt] id, or null when there is
+  /// none or it can't be fetched.
+  Future<Uint8List?> artwork(String coverArt);
+
+  /// Fires when what the folders hold has changed, such as after signing
+  /// in or out.
+  Stream<void> get changes;
+}
+
+/// [SystemControls] whose OS session can also be browsed, such as from
+/// Android Auto.
+abstract class BrowsableSystemControls {
+  /// Serves [library] to the car, or stops when it is null.
+  void attachLibrary(MediaLibrary? library);
 }

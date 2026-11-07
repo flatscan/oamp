@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oamp/core/models.dart';
 import 'package:oamp/platform/system_controls.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
@@ -94,4 +95,44 @@ void main() {
     const c = NoSystemControls(unavailableReason: 'no dll');
     expect(c.problem.value, 'no dll');
   });
+
+  test(
+    'car buttons: like, shuffle, repeat and picking from the queue',
+    () async {
+      final source =
+          container.read(sessionProvider).value!.source as FakeMusicSource;
+      await player().playTracks([
+        ...FakeMusicSource.tracks,
+        for (var i = 0; i < 4; i++) Track(id: 'x$i', title: 'Extra $i'),
+      ]);
+      await settle();
+
+      expect(controls.last!.queue.map((e) => e.title).take(3), [
+        'La femme d’argent',
+        'Sexy Boy',
+        'Extra 0',
+      ]);
+      expect(controls.last!.queueIndex, 0);
+      expect(controls.last!.liked, isFalse);
+      expect(controls.last!.repeat, PlaybackRepeat.off);
+
+      controls.press(const ToggleLikeCommand());
+      await settle();
+      await settle();
+      expect(source.calls, contains('like:t1'));
+      expect(controls.last!.liked, isTrue);
+
+      controls.press(const CycleRepeatCommand());
+      await settle();
+      expect(controls.last!.repeat, PlaybackRepeat.all);
+
+      controls.press(const ToggleShuffleCommand());
+      await settle();
+      expect(controls.last!.shuffled, isTrue);
+
+      controls.press(const JumpToCommand(1));
+      await settle();
+      expect(engine.index, 1);
+    },
+  );
 }

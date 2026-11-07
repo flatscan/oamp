@@ -59,6 +59,21 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON"/>
             </intent-filter>
         </receiver>
+        <!-- Android Auto: OAmp shows up as a media app in the car, browsed
+             through the media service above. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc"/>
+        <meta-data
+            android:name="com.google.android.gms.car.notification.SmallIcon"
+            android:resource="@drawable/ic_stat_oamp"/>
+        <!-- Cover art for Android Auto's browse lists, served from the
+             artwork cache (ArtworkProvider.kt). The car runs in another app,
+             so this is exported; it serves cover images only, by cover id. -->
+        <provider
+            android:name=".ArtworkProvider"
+            android:authorities="dev.oamp.oamp.artwork"
+            android:exported="true"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
