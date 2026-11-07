@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
@@ -154,7 +155,7 @@ class ArtistPage extends ConsumerWidget {
               if (info != null && info.similar.isNotEmpty)
                 HorizontalShelf(
                   title: 'Similar artists',
-                  height: 140,
+                  height: artistShelfHeight(context, 100),
                   spacing: 16,
                   itemCount: info.similar.length,
                   itemBuilder: (_, i) =>
@@ -280,7 +281,7 @@ class _ReleaseShelf extends StatelessWidget {
     return HorizontalShelf(
       title: title,
       onSeeAll: albums.length > 2 ? onSeeAll : null,
-      height: _card + 52,
+      height: shelfHeight(context, _card),
       itemCount: albums.length,
       itemBuilder: (_, i) => SizedBox(
         width: _card,
@@ -392,13 +393,58 @@ class _ReleasesPage extends StatelessWidget {
   }
 }
 
-/// Columns that adapt to the width, for grids of album cards.
-const albumGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 200,
-  mainAxisSpacing: 16,
-  crossAxisSpacing: 14,
-  childAspectRatio: 0.74,
-);
+/// Columns that adapt to the width, for grids of album cards. Cards keep
+/// their usual shape, and rows grow taller when the system text is
+/// enlarged so the title and subtitle still fit under the cover.
+class AlbumGridDelegate extends SliverGridDelegate {
+  /// Room under the cover for the caption; see [albumCaptionHeight].
+  final double caption;
+  const AlbumGridDelegate({required this.caption});
+
+  AlbumGridDelegate.of(BuildContext context)
+    : caption = albumCaptionHeight(context);
+
+  static const maxCrossAxisExtent = 200.0;
+  static const mainAxisSpacing = 16.0;
+  static const crossAxisSpacing = 14.0;
+
+  /// Cards are this wide for every unit of height at normal text size.
+  static const aspectRatio = 0.74;
+
+  /// Columns for a grid [width] pixels wide, worked out the same way
+  /// [SliverGridDelegateWithMaxCrossAxisExtent] does.
+  static int columns(double width) =>
+      (width / (maxCrossAxisExtent + crossAxisSpacing)).ceil().clamp(
+        1,
+        1 << 20,
+      );
+
+  /// Height of one card in a grid [width] pixels wide.
+  double cardHeight(double width) {
+    final n = columns(width);
+    final cell = (width - crossAxisSpacing * (n - 1)) / n;
+    final usual = cell / aspectRatio;
+    final needed = cell + caption;
+    return needed > usual ? needed : usual;
+  }
+
+  /// Distance from the top of one row to the top of the next.
+  double rowStride(double width) => cardHeight(width) + mainAxisSpacing;
+
+  @override
+  SliverGridLayout getLayout(SliverConstraints constraints) {
+    return SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: maxCrossAxisExtent,
+      mainAxisSpacing: mainAxisSpacing,
+      crossAxisSpacing: crossAxisSpacing,
+      mainAxisExtent: cardHeight(constraints.crossAxisExtent),
+    ).getLayout(constraints);
+  }
+
+  @override
+  bool shouldRelayout(AlbumGridDelegate oldDelegate) =>
+      oldDelegate.caption != caption;
+}
 
 /// Albums as a grid sliver whose columns adapt to the width.
 class AlbumSliverGrid extends StatelessWidget {
@@ -413,7 +459,7 @@ class AlbumSliverGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverGrid.builder(
-      gridDelegate: albumGridDelegate,
+      gridDelegate: AlbumGridDelegate.of(context),
       itemCount: albums.length,
       itemBuilder: (_, i) =>
           AlbumCard(album: albums[i], showArtist: showArtist),
