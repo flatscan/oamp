@@ -13,10 +13,15 @@ makes problems much quicker to track down.
 Before asking for a feature, check the roadmap in the
 [README](README.md#whats-next); it may already be planned.
 
-OAmp is a player, not a library manager. It will never edit or delete your
-music files or their tags and artwork; use your server's own interface for
-that. Your own data, such as playlists, ratings, favourites and the play
-queue, is fine.
+OAmp is a client player, not a stand-alone player or media manager. It will
+never edit or delete your music files or their tags and artwork, nor will it
+create a local library on your device or manage or play local files unmanaged
+by a backend music server such as Navidrome. If you need such functionality,
+there are many fine player applications out there that will meet your needs
+better than OAmp.
+
+Your own data on the server, such as playlists, ratings, favourites and the
+play queue, is fine.
 
 ## Security problems
 
