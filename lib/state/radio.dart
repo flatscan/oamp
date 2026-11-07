@@ -113,7 +113,7 @@ class RadioMixer {
       final pools = await Future.wait([
         for (final g in used) source.getRandomTracks(size: perGenre, genre: g),
       ]);
-      add(_interleave(pools));
+      add(interleave(pools));
     }
     final genreCount = picked.length - similarCount - (seed == null ? 0 : 1);
     return _mix(picked, similarCount, genreCount > 0 ? used : const [], seed);
@@ -148,7 +148,7 @@ class RadioMixer {
 
   /// One from each list in turn, so a radio does not play one genre in a
   /// block.
-  static List<Track> _interleave(List<List<Track>> pools) {
+  static List<Track> interleave(List<List<Track>> pools) {
     final out = <Track>[];
     for (var i = 0; pools.any((p) => i < p.length); i++) {
       for (final p in pools) {

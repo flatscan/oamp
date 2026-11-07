@@ -21,6 +21,14 @@ class SavedQueue {
   /// Where the queue came from, such as an album name.
   final String? from;
 
+  /// Whether the queue was started by playing a whole album in order, which
+  /// decides the endless play mode. Only kept on this device.
+  final bool albumQueue;
+
+  /// Positions in [tracks] that endless play added. Only kept on this
+  /// device.
+  final Set<int> endless;
+
   const SavedQueue({
     this.tracks = const [],
     this.currentIndex,
@@ -28,6 +36,8 @@ class SavedQueue {
     this.changed,
     this.changedBy,
     this.from,
+    this.albumQueue = false,
+    this.endless = const {},
   });
 
   bool get isEmpty => tracks.isEmpty;
@@ -49,6 +59,12 @@ class SavedQueue {
   String get contentFingerprint =>
       '${tracks.map((t) => t.id).join(',')}|${current?.id}';
 
+  /// Like [contentFingerprint], plus what only this device keeps, to tell
+  /// whether its saved copy needs rewriting.
+  String get localFingerprint =>
+      '$contentFingerprint|$from|$albumQueue'
+      '|${(endless.toList()..sort()).join(',')}';
+
   SavedQueue copyWith({
     int? currentIndex,
     Duration? position,
@@ -61,6 +77,8 @@ class SavedQueue {
     changed: changed ?? this.changed,
     changedBy: changedBy,
     from: from ?? this.from,
+    albumQueue: albumQueue,
+    endless: endless,
   );
 
   Map<String, Object?> toJson() => {
@@ -70,6 +88,8 @@ class SavedQueue {
     'positionMs': position.inMilliseconds,
     'changed': ?changed?.toUtc().toIso8601String(),
     'from': ?from,
+    if (albumQueue) 'album': true,
+    if (endless.isNotEmpty) 'endless': (endless.toList()..sort()),
   };
 
   static SavedQueue? fromJson(Map<String, Object?> j) {
@@ -84,6 +104,11 @@ class SavedQueue {
       position: Duration(milliseconds: (j['positionMs'] as int?) ?? 0),
       changed: DateTime.tryParse('${j['changed']}'),
       from: j['from'] as String?,
+      albumQueue: j['album'] == true,
+      endless: {
+        for (final i in (j['endless'] as List? ?? const []))
+          if (i is int && i >= 0 && i < tracks.length) i,
+      },
     );
   }
 

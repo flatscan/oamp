@@ -20,6 +20,7 @@ import 'platform/preferences.dart';
 import 'platform/window_geometry.dart';
 import 'state/app_updates.dart';
 import 'state/diagnostics.dart';
+import 'state/endless_play.dart';
 import 'state/playback_reporter.dart';
 import 'state/player.dart';
 import 'state/precache.dart';
@@ -120,7 +121,8 @@ Future<void> main() async {
     ..listen(systemControlsBridgeProvider, (_, _) {})
     ..listen(playbackReporterProvider, (_, _) {})
     ..listen(precacheProvider, (_, _) {})
-    ..listen(queueSyncProvider, (_, _) {});
+    ..listen(queueSyncProvider, (_, _) {})
+    ..listen(endlessPlayProvider, (_, _) {});
 
   runApp(
     UncontrolledProviderScope(container: container, child: const OAmpApp()),
@@ -224,6 +226,7 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
     ref.watch(queueSyncProvider);
+    ref.watch(endlessPlayProvider);
     ref.watch(serverRouteProvider);
     ref.watch(awayAddressProvider);
     final session = ref.watch(sessionProvider);

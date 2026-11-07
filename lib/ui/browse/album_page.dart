@@ -28,6 +28,7 @@ class AlbumPage extends ConsumerWidget {
       startIndex: start,
       shuffle: shuffle,
       from: a.name,
+      album: true,
     );
 
     final discs = {for (final t in tracks) t.discNumber ?? 1};

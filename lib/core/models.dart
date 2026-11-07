@@ -181,6 +181,30 @@ class Track {
   });
 
   String? get genre => genres.isEmpty ? null : genres.first;
+
+  /// The same track as a separate object, for queue entries that are told
+  /// apart by identity.
+  Track copy() => Track(
+    id: id,
+    title: title,
+    artist: artist,
+    artistId: artistId,
+    album: album,
+    albumId: albumId,
+    track: track,
+    discNumber: discNumber,
+    duration: duration,
+    coverArt: coverArt,
+    liked: liked,
+    rating: rating,
+    year: year,
+    format: format,
+    bitRate: bitRate,
+    sampleRate: sampleRate,
+    bitDepth: bitDepth,
+    replayGain: replayGain,
+    genres: genres,
+  );
 }
 
 /// ReplayGain values for a track, as the server read them from the file's

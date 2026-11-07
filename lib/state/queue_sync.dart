@@ -212,7 +212,7 @@ class QueueSync {
         (jsonDecode(raw) as Map).cast<String, Object?>(),
       );
       if (q == null) return null;
-      _localPrint = '${q.contentFingerprint}|${q.from}';
+      _localPrint = q.localFingerprint;
       return q.copyWith(
         position: Duration(milliseconds: _prefs.getInt(_positionKey(id)) ?? 0),
         changed: DateTime.tryParse(_prefs.getString(_changedKey(id)) ?? ''),
@@ -245,7 +245,7 @@ class QueueSync {
     final canSync = _canSync;
     final now = DateTime.now().toUtc();
     final snap = _player.snapshot().copyWith(changed: now);
-    final content = '${snap.contentFingerprint}|${snap.from}';
+    final content = snap.localFingerprint;
     final fp = snap.fingerprint;
     final push = canSync && fp != _serverPrint;
     final p = _prefs;

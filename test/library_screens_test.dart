@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/main.dart';
+import 'package:oamp/state/endless_play.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
 
@@ -272,6 +273,31 @@ void main() {
     await tapText(tester, 'Save as playlist');
     await tester.enterText(find.byType(TextField), 'Tonight');
     await tapText(tester, 'Create');
-    expect(source.calls, contains('create:Tonight:t1,t2'));
+    // The album, then what endless play added after it.
+    expect(source.calls, contains(startsWith('create:Tonight:t1,t2,')));
+  });
+
+  testWidgets('the queue ends with a row of endless play modes', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tester.tap(find.text('Moon Safari').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Play'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('La femme d’argent').last);
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('When the queue ends'));
+    final container = ProviderScope.containerOf(
+      tester.element(find.text('When the queue ends')),
+    );
+    expect(container.read(endlessModeProvider), EndlessMode.nextAlbum);
+    expect(find.byTooltip('Added by endless play'), findsWidgets);
+
+    await tester.tap(find.text('Similar'));
+    await tester.pumpAndSettle();
+    expect(container.read(endlessSettingsProvider).album, EndlessMode.similar);
+    // Other queues keep their own default.
+    expect(container.read(endlessSettingsProvider).other, EndlessMode.stop);
   });
 }
