@@ -85,21 +85,32 @@ playing.
 
 ## What's next
 
-Alpha2 is in the works. Planned so far:
+Alpha2 is in the works, for Windows and Android. Planned:
 
-- Offline downloads, with playlists that stay in sync
+- Offline downloads, with playlists that stay in sync and plays that are
+  counted once you're back online
+- Android Auto
+- Casting to Chromecast speakers and TVs
+- A backup server address for when you're away from home
 - Endless play: keep going after the queue ends, with the next album by the
-  same artist or similar tracks
+  same artist, similar tracks, your liked tracks or a shuffle of the same genres
 - An equaliser with simple presets that suit your device
-- More than one server, a backup address for when you're away from home, and
-  other server types such as Jellyfin and Plex
 - Android home screen widgets
 - Player controls in the Windows taskbar preview
-- An option for expanded mode to open to the left, so the window can sit
-  against the right edge of the screen
+- A notice when a new version is out, and a button that copies diagnostics
+  for bug reports
 
-Also on the list: Android Auto, CarPlay, Chromecast, Linux and a web version. macOS and iOS
-versions are on hold for now.
+After that:
+
+- **Alpha3**: more than one server, other server types such as Jellyfin and
+  Plex, and Linux and web versions
+- **Alpha4**: a round of UI rework and polish, including an option for
+  expanded mode to open to the left so the window can sit against the right
+  edge of the screen
+
+macOS, iOS and CarPlay are on hold for now. OAmp is a player, not a library
+manager: it never edits or deletes your music files or their tags, so use your
+server's own interface for that.
 
 ## Reporting problems
 
