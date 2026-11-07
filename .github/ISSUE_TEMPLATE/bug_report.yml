@@ -21,7 +21,7 @@ body:
     id: version
     attributes:
       label: OAmp version
-      description: The release you downloaded.
+      description: The release you downloaded. Shown under About at the bottom of Settings.
       placeholder: 1.0.0-Alpha1
     validations:
       required: true
@@ -49,7 +49,13 @@ body:
     validations:
       required: true
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In OAmp, open Settings, scroll to About and press Copy diagnostics (Report a bug copies them for you), then paste here. They hold no song titles, user names or server addresses.
+      render: text
+  - type: textarea
     id: extra
     attributes:
       label: Anything else?
-      description: Screenshots, or the text from Settings > Copy diagnostics once that exists.
+      description: Screenshots, or anything else that helps.

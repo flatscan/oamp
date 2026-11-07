@@ -11,6 +11,7 @@ import '../core/track_resolver.dart';
 import '../platform/secure_store.dart';
 import '../sources/subsonic/subsonic_client.dart';
 import '../sources/subsonic/subsonic_source.dart';
+import 'diagnostics.dart';
 import 'settings.dart';
 
 final secureStoreProvider = Provider<SecureStore>((_) => PlatformSecureStore());
@@ -86,6 +87,7 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
       final raw = await _store.read(_serverKey(id));
       if (raw == null) return null;
       final source = _sourceFromJson(jsonDecode(raw) as Map<String, dynamic>);
+      if (source is SubsonicSource) _hideFromLog(source.credentials);
       return source == null ? null : ServerSession(source);
     } catch (e) {
       debugPrint('Could not restore saved login: $e');
@@ -132,14 +134,28 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     ),
   );
 
+  /// Keeps the server's address, the user name and the credentials out
+  /// of the diagnostics log.
+  void _hideFromLog(SubsonicCredentials c) {
+    final redact = ref.read(diagnosticsLogProvider).redact;
+    redact.hide(c.baseUrl.host, '<server>');
+    redact.hide(c.username, '<user>');
+    for (final secret in [c.token, c.salt, ?c.apiKey]) {
+      redact.hide(secret, '<hidden>');
+    }
+  }
+
   Future<void> _login(SubsonicCredentials creds) async {
+    _hideFromLog(creds);
     final source = SubsonicSource(creds);
     try {
       await source.ping();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Sign-in failed: $e');
       source.close();
       rethrow;
     }
+    debugPrint('Signed in');
     await _store.write(
       _serverKey(source.serverId),
       jsonEncode({'type': 'subsonic', 'credentials': creds.toJson()}),
@@ -178,6 +194,7 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
       current.source.close();
     }
     await _store.delete(_activeKey);
+    debugPrint('Signed out');
     state = const AsyncData(null);
   }
 }
@@ -251,6 +268,11 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
     }
     // Signed out or switched server while the ping was out.
     if (generation != _generation) return;
+    if (next.health != ServerHealth.ok && next.health != state.health) {
+      debugPrint('Server ${next.health.name}: ${next.message}');
+    } else if (next.health == ServerHealth.ok && wasDown) {
+      debugPrint('Server reachable again');
+    }
     state = next;
     if (next.health == ServerHealth.ok) {
       // Extensions are detected once per sign-in; if that ran while the

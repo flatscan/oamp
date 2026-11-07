@@ -58,6 +58,12 @@ dependencies:
   # Wi-Fi or mobile data, for the mobile data streaming quality
   # (lib/platform/network_monitor.dart).
   connectivity_plus: ^7.3.2
+  # Release pages, bug reports and the log folder (lib/platform/external_actions.dart).
+  url_launcher: ^6.3.3
+  # Sharing the diagnostics file on Android.
+  share_plus: ^13.3.1
+  # OS version and phone model for diagnostics (lib/platform/device_details.dart).
+  device_info_plus: ^13.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

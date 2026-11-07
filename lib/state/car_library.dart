@@ -437,7 +437,7 @@ class CarLibrary implements MediaLibrary {
       ).forTrack(seed);
       if (!mix.isEmpty) tracks = mix.tracks;
     } catch (e) {
-      debugPrint('Radio for ${seed.title} failed: $e');
+      debugPrint('Radio for track ${seed.id} failed: $e');
     }
     await _player.playTracks(tracks, from: '${seed.title} radio');
   }
@@ -449,7 +449,7 @@ class CarLibrary implements MediaLibrary {
     try {
       await _playFromVoice(source, r);
     } catch (e) {
-      debugPrint('Voice request "${r.query}" failed: $e');
+      debugPrint('Voice request failed: $e');
     }
   }
 

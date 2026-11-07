@@ -1,4 +1,4 @@
-import 'dart:ui' show AppExitResponse;
+import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,12 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'audio/platform_audio.dart';
+import 'core/build_info.dart';
+import 'core/diagnostics.dart';
+import 'platform/device_details.dart';
+import 'platform/external_actions.dart';
+import 'platform/file_log_store.dart';
 import 'platform/disk_artwork_cache.dart';
 import 'platform/network_monitor.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
 import 'platform/window_geometry.dart';
+import 'state/app_updates.dart';
+import 'state/diagnostics.dart';
 import 'state/playback_reporter.dart';
 import 'state/player.dart';
 import 'state/precache.dart';
@@ -28,6 +35,16 @@ import 'ui/window_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The log for bug reports collects everything the app prints and any
+  // error nothing else caught, from here on.
+  final log = DiagnosticsLog(await FileLogStore.open());
+  _captureIntoLog(log);
+  final device = await DeviceDetails.read();
+  debugPrint(
+    'OAmp ${BuildInfo.current.label} starting on ${device.system}'
+    '${device.model == null ? '' : ', ${device.model}'}',
+  );
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     // Draw under clear status and navigation bars; pages pad themselves
@@ -87,6 +104,12 @@ Future<void> main() async {
       trackCacheProvider.overrideWithValue(trackCache),
       artworkCacheProvider.overrideWithValue(artworkCache),
       networkMonitorProvider.overrideWithValue(network),
+      diagnosticsLogProvider.overrideWithValue(log),
+      askAboutUpdatesProvider.overrideWithValue(true),
+      deviceDetailsProvider.overrideWithValue(device),
+      externalActionsProvider.overrideWithValue(
+        const PlatformExternalActions(),
+      ),
     ],
   );
   // The OS media controls (and Android Auto), play reports and the saved
@@ -103,6 +126,33 @@ Future<void> main() async {
     UncontrolledProviderScope(container: container, child: const OAmpApp()),
   );
 }
+
+/// Sends `debugPrint` output, Flutter errors and uncaught async errors to
+/// [log] as well as to the console.
+void _captureIntoLog(DiagnosticsLog log) {
+  final print = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) log.add(message);
+    print(message, wrapWidth: wrapWidth);
+  };
+  final onFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    log.add(
+      'Error: ${details.exceptionAsString()}\n${_shortStack(details.stack)}',
+    );
+    onFlutterError?.call(details);
+  };
+  final dispatcher = PlatformDispatcher.instance;
+  final onError = dispatcher.onError;
+  dispatcher.onError = (error, stack) {
+    log.add('Uncaught error: $error\n${_shortStack(stack)}');
+    return onError?.call(error, stack) ?? false;
+  };
+}
+
+/// The top of a stack trace, which is where the cause usually is.
+String _shortStack(StackTrace? stack) =>
+    (stack?.toString() ?? '').trim().split('\n').take(12).join('\n');
 
 class OAmpApp extends StatelessWidget {
   const OAmpApp({super.key});

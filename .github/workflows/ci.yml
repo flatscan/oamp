@@ -33,8 +33,8 @@ jobs:
           cache: true
       - run: flutter pub get
       # The run number as the version code, so each CI build installs over
-      # the previous one.
-      - run: flutter build apk --release --build-number=${{ github.run_number }}
+      # the previous one. OAMP_CI_RUN names it "Test build #N" in Settings.
+      - run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=OAMP_CI_RUN=${{ github.run_number }}
       - name: Name the APK
         run: |
           mkdir -p build/apk
@@ -55,7 +55,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define=OAMP_CI_RUN=${{ github.run_number }}
       - name: Check native plugin DLLs shipped
         shell: pwsh
         run: |

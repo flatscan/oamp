@@ -69,7 +69,7 @@ jobs:
           OAMP_KEY_ALIAS: ${{ secrets.OAMP_RELEASE_KEY_ALIAS }}
           OAMP_KEY_PASSWORD: ${{ secrets.OAMP_RELEASE_KEY_PASSWORD }}
         run: |
-          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=OAMP_RELEASE_TAG=${{ github.ref_name }}
           mkdir -p build/release
           cp build/app/outputs/flutter-apk/app-release.apk "build/release/oamp-${GITHUB_REF_NAME//\//-}.apk"
 
@@ -90,7 +90,7 @@ jobs:
           OAMP_KEY_ALIAS: ${{ secrets.OAMP_UPLOAD_KEY_ALIAS }}
           OAMP_KEY_PASSWORD: ${{ secrets.OAMP_UPLOAD_KEY_PASSWORD }}
         run: |
-          flutter build appbundle --release --build-number=${{ github.run_number }}
+          flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=OAMP_RELEASE_TAG=${{ github.ref_name }}
           cp build/app/outputs/bundle/release/app-release.aab "build/release/oamp-${GITHUB_REF_NAME//\//-}.aab"
 
       - name: Remove keys
@@ -113,7 +113,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define=OAMP_RELEASE_TAG=${{ github.ref_name }}
       - name: Check native plugin DLLs shipped
         shell: pwsh
         run: |

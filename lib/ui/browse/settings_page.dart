@@ -10,6 +10,7 @@ import '../../state/session.dart';
 import '../../state/settings.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'about_section.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -281,6 +282,8 @@ class SettingsPage extends ConsumerWidget {
                 onChanged: notifier.setShowTitleBar,
               ),
             ],
+            const SettingsHeading('About'),
+            const AboutSection(),
           ],
         ),
       ],

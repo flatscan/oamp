@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../platform/platform_info.dart';
+import '../state/app_updates.dart';
 import '../state/session.dart';
 import 'browser.dart';
 import 'player/mini_player.dart';
 import 'player/now_playing.dart';
 import 'server_banner.dart';
+import 'update_banner.dart';
 import 'window_mode.dart';
 
 /// Main screen: one column, the same on desktop as on a phone. Browsing
@@ -73,6 +75,19 @@ class _HomeShellState extends ConsumerState<HomeShell>
     _sheet.addStatusListener((status) {
       if (status.isCompleted || status.isDismissed) _dragged = false;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updatesOnLaunch());
+  }
+
+  /// Asks once whether to check for updates, and checks when it's due.
+  void _updatesOnLaunch() {
+    if (!mounted) return;
+    final updates = ref.read(appUpdatesProvider.notifier);
+    if (ref.read(appUpdatesProvider).choice == UpdateCheckChoice.unasked) {
+      if (!ref.read(askAboutUpdatesProvider)) return;
+      askAboutUpdateChecks(context, ref);
+    } else {
+      updates.checkIfDue();
+    }
   }
 
   void _pull(double dy) {
@@ -127,9 +142,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
       keyboardUp: !isDesktop && MediaQuery.viewInsetsOf(context).bottom > 0,
     );
     final sheet = expanded ? kAlwaysCompleteAnimation : _sheet;
-    final banner = ServerStatusBanner.visibleFor(
+    final serverBanner = ServerStatusBanner.visibleFor(
       ref.watch(serverStatusProvider),
     );
+    final banner =
+        serverBanner ||
+        ref.watch(appUpdatesProvider.select((s) => s.announce != null));
     // Edge to edge on a phone: the banner (when shown) or each page pads
     // for the status bar, the tab bar for the navigation bar, and the sides
     // keep clear of a landscape cutout or navigation bar.
@@ -140,6 +158,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
         child: Column(
           children: [
             const ServerStatusBanner(),
+            UpdateBanner(padTop: !serverBanner),
             Expanded(
               child: MediaQuery.removePadding(
                 context: context,
