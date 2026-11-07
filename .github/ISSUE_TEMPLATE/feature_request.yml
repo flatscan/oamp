@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest something OAmp should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the roadmap in the [README](https://github.com/flatscan/oamp#whats-next) first; it may already be planned.
+        OAmp is a player, not a library manager, so it won't edit or delete music files, tags or artwork.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like OAmp to do?
+      description: Describe what you're trying to do and why. The why helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: elsewhere
+    attributes:
+      label: Have you seen this done elsewhere?
+      description: Optional. How another player handles it, if you know one.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Windows
+        - Android
+        - Both
