@@ -6,7 +6,7 @@ OAmp uses three Android keys.
 
 | Key | Signs | Where it lives |
 | --- | --- | --- |
-| Side-load (`android/app/sideload.keystore`) | CI test builds from pull requests and `main` | In the repo. It is public, so nothing published may be signed with it. |
+| Side-load (`android/app/sideload.keystore`) | CI test builds from pull requests, `dev` and `main` | In the repo. It is public, so nothing published may be signed with it. |
 | Release (`oamp-release`) | GitHub release APKs; given to Google Play as the app signing key | Maintainer's password manager plus an offline backup, and GitHub secrets |
 | Upload (`oamp-upload`) | Bundles uploaded to Google Play | Maintainer's password manager and GitHub secrets. Google can reset it. |
 
@@ -35,23 +35,35 @@ offline backup, and delete `passwords.txt`.
 
 ### Google Play
 
-When creating the app in Play Console, choose to use your own app signing
-key instead of a Google-generated one, and follow Play Console's steps to
-export `oamp-release` with the PEPK tool. Register `oamp-upload` as the
-upload key.
+OAmp isn't on Google Play yet; that is planned for the beta. When creating
+the app in Play Console, choose to use your own app signing key instead of a
+Google-generated one, and follow Play Console's steps to export
+`oamp-release` with the PEPK tool. Register `oamp-upload` as the upload key.
 
 ### Releasing
 
 Write the release notes in `docs/releases/<tag>.md` (for example
-`docs/releases/v1.0.0-Alpha1.md`), merge them, then push a tag such as
-`v1.0.0`. The `Release` workflow builds the APK with the release key (and the
-Play bundle with the upload key, when its secrets exist), builds the Windows
-installer and a zip of the app, and creates a draft GitHub release for the
-tag with the APK, installer and zip attached. Tags with a suffix, such as
-`-Alpha1`, are marked as pre-releases. Review the draft on GitHub and press
-Publish. The Android build fails rather than fall back to the side-load key.
+`docs/releases/v1.0.0-Alpha1.md`), merge them, merge `dev` into `main` with a
+merge commit, then push a tag such as `v1.0.0` on `main`. The `Release`
+workflow builds the APK with the release key (and the Play bundle with the
+upload key, when its secrets exist), builds the Windows installer and a zip
+of the app, and creates a draft GitHub release for the tag with the APK,
+installer and zip attached. Tags with a suffix, such as `-Alpha1`, are marked
+as pre-releases. Review the draft on GitHub and press Publish. The Android
+build fails rather than fall back to the side-load key.
 
 ## Windows
 
-Planned: signing through the SignPath Foundation programme for open source
-projects. Until then the Windows exe and installer are unsigned.
+The Windows exe and installer are unsigned for now, so Windows SmartScreen
+warns the first time someone runs them.
+
+Code signing is planned for the beta, with a Certum open source code signing
+certificate. When it arrives, the `Release` workflow gets a signing step for
+`oamp.exe` and the installer.
+
+Options looked at and set aside:
+
+- SignPath Foundation's free programme for open source projects: the
+  application stalled, so it was dropped.
+- Azure Artifact Signing: only open to individual developers in the USA and
+  Canada.

@@ -49,8 +49,9 @@ class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
     if (!mounted || !_scroll.hasClients) return;
     final width = (context.size?.width ?? 0) - _gridPadding.horizontal;
     if (width <= 0) return;
-    final row = index ~/ _columns(width);
-    final offset = _gridPadding.top + row * _rowStride(width);
+    final grid = AlbumGridDelegate.of(context);
+    final row = index ~/ AlbumGridDelegate.columns(width);
+    final offset = _gridPadding.top + row * grid.rowStride(width);
     final p = _scroll.position;
     _scroll.jumpTo(offset.clamp(p.minScrollExtent, p.maxScrollExtent));
     if (offset > p.maxScrollExtent && tries > 0) {
@@ -58,22 +59,6 @@ class _AllAlbumsPageState extends ConsumerState<AllAlbumsPage> {
         ..addPostFrameCallback((_) => _scrollToIndex(index, tries - 1))
         ..scheduleFrame();
     }
-  }
-
-  // The same sums SliverGridDelegateWithMaxCrossAxisExtent does.
-  static int _columns(double width) {
-    final d = albumGridDelegate;
-    return (width / (d.maxCrossAxisExtent + d.crossAxisSpacing)).ceil().clamp(
-      1,
-      1 << 20,
-    );
-  }
-
-  static double _rowStride(double width) {
-    final d = albumGridDelegate;
-    final n = _columns(width);
-    final cell = (width - d.crossAxisSpacing * (n - 1)) / n;
-    return cell / d.childAspectRatio + d.mainAxisSpacing;
   }
 
   static const _labels = {

@@ -331,7 +331,7 @@ class _Results extends ConsumerWidget {
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           sliver: SliverGrid.builder(
-            gridDelegate: albumGridDelegate,
+            gridDelegate: AlbumGridDelegate.of(context),
             itemCount: r.albums.length,
             itemBuilder: (_, i) => picked(AlbumCard(album: r.albums[i])),
           ),
@@ -373,7 +373,7 @@ class _Results extends ConsumerWidget {
               onSeeAll: r.artists.length > 3
                   ? () => onFilter(SearchFilter.artists)
                   : null,
-              height: 140,
+              height: artistShelfHeight(context, 100),
               spacing: 16,
               itemCount: r.artists.length,
               itemBuilder: (_, i) =>

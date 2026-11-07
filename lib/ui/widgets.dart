@@ -67,6 +67,40 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
+/// Height of one line of [style] at the current system text size.
+double lineHeight(BuildContext context, TextStyle? style) {
+  final painter = TextPainter(
+    text: TextSpan(text: 'Ag', style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  final height = painter.height;
+  painter.dispose();
+  return height;
+}
+
+/// Room an [AlbumCard] needs under its cover for the gap, title and
+/// subtitle at the current system text size, so grids and shelves grow
+/// with enlarged text instead of cutting the card off.
+double albumCaptionHeight(BuildContext context) {
+  final t = Theme.of(context).textTheme;
+  return 8 +
+      lineHeight(context, t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)) +
+      lineHeight(context, t.bodySmall) +
+      2;
+}
+
+/// Room an [ArtistBubble] needs under its photo for the gap and name.
+double artistCaptionHeight(BuildContext context) =>
+    8 +
+    lineHeight(
+      context,
+      Theme.of(context).textTheme.bodyMedium
+          ?.copyWith(fontWeight: FontWeight.w600),
+    ) +
+    2;
+
 /// Cover, title and subtitle, used in rows and grids of albums. Hovering
 /// the cover shows a play button that plays the album without opening it.
 class AlbumCard extends ConsumerWidget {
@@ -227,6 +261,19 @@ class _HoverPlayState extends State<HoverPlay> {
 
 /// A horizontally scrolling row of albums under a heading. Hidden when the
 /// list is empty, so sections the server has no data for do not show.
+/// Height of a shelf of album cards [card] pixels wide: the old fixed
+/// room for the caption, or more when the system text is enlarged.
+double shelfHeight(BuildContext context, double card) {
+  final caption = albumCaptionHeight(context);
+  return card + (caption > 52 ? caption : 52);
+}
+
+/// Height of a shelf of [ArtistBubble]s [size] pixels across.
+double artistShelfHeight(BuildContext context, double size) {
+  final caption = artistCaptionHeight(context);
+  return size + (caption > 40 ? caption : 40);
+}
+
 class AlbumCarousel extends StatelessWidget {
   final String title;
   final AsyncValue<List<Album>> albums;
@@ -244,6 +291,7 @@ class AlbumCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final height = shelfHeight(context, _cardSize);
     final list = albums.value;
     if (list != null && list.isEmpty) return const SizedBox.shrink();
     if (list == null && albums.hasError) return const SizedBox.shrink();
@@ -252,9 +300,11 @@ class AlbumCarousel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SectionHeader(title),
-          const SizedBox(
-            height: _cardSize + 52,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(
+            height: height,
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
         ],
       );
@@ -262,7 +312,7 @@ class AlbumCarousel extends StatelessWidget {
     return HorizontalShelf(
       title: title,
       onSeeAll: onSeeAll,
-      height: _cardSize + 52,
+      height: height,
       itemCount: list.length,
       itemBuilder: (_, i) => SizedBox(
         width: _cardSize,
