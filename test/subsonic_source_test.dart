@@ -209,6 +209,20 @@ void main() {
     expect(tracks.last.replayGain, isNull);
   });
 
+  test('getSong returns one track with its ReplayGain', () async {
+    final c = sourceReturning({
+      'status': 'ok',
+      'song': {
+        'id': 't3',
+        'title': 'On a Quest for Aberdeen',
+        'replayGain': {'trackGain': -10.14, 'albumGain': -9.76},
+      },
+    });
+    final t = await c.getTrack('t3');
+    expect(t.id, 't3');
+    expect(t.replayGain?.trackGain, -10.14);
+  });
+
   test('getAlbum parses tracks with durations', () async {
     final c = sourceReturning({
       'status': 'ok',
