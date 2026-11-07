@@ -39,4 +39,18 @@ void main() {
     expect(WindowsSystemControls.commandForKey('stop'), isA<StopCommand>());
     expect(WindowsSystemControls.commandForKey('bogus'), isNull);
   });
+
+  test('taskbar thumbnail buttons follow the player state', () {
+    const info = NowPlayingInfo(
+      title: 'Song',
+      playing: true,
+      canGoNext: false,
+      canGoPrevious: true,
+    );
+    expect(WindowsSystemControls.taskbarStateFor(info), {
+      'playing': true,
+      'canPrevious': true,
+      'canNext': false,
+    });
+  });
 }

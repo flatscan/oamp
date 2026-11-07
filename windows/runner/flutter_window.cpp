@@ -67,6 +67,48 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
         }
       });
+  // Previous / play-pause / next on the taskbar thumbnail (see
+  // lib/platform/windows_system_controls.dart).
+  taskbar_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "oamp/taskbar",
+          &flutter::StandardMethodCodec::GetInstance());
+  taskbar_buttons_.Attach(
+      GetHandle(),
+      [](void* context, const char* name) {
+        auto* self = static_cast<FlutterWindow*>(context);
+        if (self->taskbar_channel_) {
+          self->taskbar_channel_->InvokeMethod(
+              "pressed",
+              std::make_unique<flutter::EncodableValue>(std::string(name)));
+        }
+      },
+      this);
+  taskbar_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "show") {
+          const auto* args =
+              std::get_if<flutter::EncodableMap>(call.arguments());
+          auto flag = [args](const char* key, bool fallback) {
+            if (args == nullptr) return fallback;
+            auto it = args->find(flutter::EncodableValue(key));
+            if (it == args->end()) return fallback;
+            const auto* value = std::get_if<bool>(&it->second);
+            return value ? *value : fallback;
+          };
+          taskbar_buttons_.Show(flag("playing", false),
+                                flag("canPrevious", true),
+                                flag("canNext", true));
+          result->Success();
+        } else if (call.method_name() == "hide") {
+          taskbar_buttons_.Hide();
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
   // Window calls window_manager doesn't do precisely enough (see
   // lib/platform/native_window.dart).
   window_channel_ =
@@ -144,6 +186,8 @@ void FlutterWindow::OnDestroy() {
   UnregisterMediaKeys();
   media_keys_channel_ = nullptr;
   window_channel_ = nullptr;
+  taskbar_buttons_.Detach();
+  taskbar_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -155,6 +199,12 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Taskbar thumbnail button presses, and the taskbar announcing it is
+  // ready for them. Before Flutter, which has no use for either.
+  if (taskbar_buttons_.HandleMessage(message, wparam, lparam)) {
+    return 0;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

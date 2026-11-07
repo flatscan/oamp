@@ -8,6 +8,7 @@
 
 #include <memory>
 
+#include "taskbar_buttons.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -37,6 +38,10 @@ class FlutterWindow : public Win32Window {
   bool media_keys_registered_ = false;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_channel_;
+  // Player buttons on the taskbar thumbnail.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      taskbar_channel_;
+  TaskbarButtons taskbar_buttons_;
   bool RegisterMediaKeys();
   void UnregisterMediaKeys();
 };

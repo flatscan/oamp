@@ -17,8 +17,19 @@ import 'system_controls.dart';
 /// (windows/runner/flutter_window.cpp) and reports each press on the
 /// `oamp/media_keys` channel. When nothing is loaded the hotkeys are
 /// released, so other apps get the keys back.
+///
+/// The taskbar thumbnail (the preview shown when hovering OAmp's taskbar
+/// icon) carries previous, play/pause and next buttons while something is
+/// loaded. The runner draws them (windows/runner/taskbar_buttons.cpp) and
+/// reports presses on the `oamp/taskbar` channel, by the same names as the
+/// media keys.
 class WindowsSystemControls implements SystemControls {
   static const _mediaKeys = MethodChannel('oamp/media_keys');
+  static const _taskbar = MethodChannel('oamp/taskbar');
+
+  /// The taskbar button state last sent, so unchanged state isn't resent
+  /// with every progress update.
+  Map<String, bool>? _taskbarState;
   bool _keysHeld = false;
   MediaCommand? _lastKey;
   final _sinceKey = Stopwatch();
@@ -55,6 +66,32 @@ class WindowsSystemControls implements SystemControls {
         ..reset()
         ..start();
       _commands.add(cmd);
+    });
+    _taskbar.setMethodCallHandler((call) async {
+      if (call.method != 'pressed') return;
+      final cmd = commandForKey(call.arguments as String?);
+      if (cmd != null) _commands.add(cmd);
+    });
+  }
+
+  /// What the taskbar thumbnail buttons show for [info].
+  @visibleForTesting
+  static Map<String, bool> taskbarStateFor(NowPlayingInfo info) => {
+    'playing': info.playing,
+    'canPrevious': info.canGoPrevious,
+    'canNext': info.canGoNext,
+  };
+
+  Future<void> _showTaskbar(NowPlayingInfo? info) async {
+    final state = info == null ? null : taskbarStateFor(info);
+    if (mapEquals(state, _taskbarState)) return;
+    _taskbarState = state;
+    await _try('Updating the taskbar buttons failed', () async {
+      if (state == null) {
+        await _taskbar.invokeMethod<void>('hide');
+      } else {
+        await _taskbar.invokeMethod<void>('show', state);
+      }
     });
   }
 
@@ -143,6 +180,7 @@ class WindowsSystemControls implements SystemControls {
     // its status is Playing or Paused, so that goes first.
     final last = _last;
     await _holdKeys(true);
+    await _showTaskbar(info);
     await _try('Enabling the Windows media overlay failed', () async {
       if (!_smtc.enabled) await _smtc.enableSmtc();
     });
@@ -222,6 +260,7 @@ class WindowsSystemControls implements SystemControls {
   Future<void> clear() async {
     _last = null;
     await _holdKeys(false);
+    await _showTaskbar(null);
     try {
       if (!_smtc.enabled) return;
       await _smtc.setPlaybackStatus(PlaybackStatus.stopped);
@@ -236,6 +275,7 @@ class WindowsSystemControls implements SystemControls {
   Future<void> dispose() async {
     await _holdKeys(false);
     _mediaKeys.setMethodCallHandler(null);
+    _taskbar.setMethodCallHandler(null);
     await _sub?.cancel();
     await _commands.close();
     await _smtc.dispose();
