@@ -16,6 +16,10 @@ enum NetworkKind {
 abstract class NetworkMonitor {
   NetworkKind get current;
   Stream<NetworkKind> get changes;
+
+  /// Fires once the network has changed in any way and settled, including
+  /// from one Wi-Fi network to another, which [changes] doesn't report.
+  Stream<void> get anyChange;
   Future<void> dispose();
 }
 
@@ -28,6 +32,9 @@ class FixedNetworkMonitor implements NetworkMonitor {
 
   @override
   Stream<NetworkKind> get changes => const Stream.empty();
+
+  @override
+  Stream<void> get anyChange => const Stream.empty();
 
   @override
   Future<void> dispose() async {}
@@ -50,6 +57,8 @@ class ConnectivityNetworkMonitor implements NetworkMonitor {
   NetworkKind _current;
   NetworkKind? _pending;
   Timer? _timer;
+  Timer? _anyTimer;
+  final _any = StreamController<void>.broadcast();
   late final StreamSubscription<NetworkKind> _sub;
   final _changes = StreamController<NetworkKind>.broadcast();
 
@@ -94,6 +103,8 @@ class ConnectivityNetworkMonitor implements NetworkMonitor {
   }
 
   void _onChange(NetworkKind kind) {
+    _anyTimer?.cancel();
+    _anyTimer = Timer(settle, () => _any.add(null));
     _timer?.cancel();
     if (kind == _current) {
       _pending = null;
@@ -116,8 +127,13 @@ class ConnectivityNetworkMonitor implements NetworkMonitor {
   Stream<NetworkKind> get changes => _changes.stream;
 
   @override
+  Stream<void> get anyChange => _any.stream;
+
+  @override
   Future<void> dispose() async {
     _timer?.cancel();
+    _anyTimer?.cancel();
+    await _any.close();
     await _sub.cancel();
     await _changes.close();
   }

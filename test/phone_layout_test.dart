@@ -441,7 +441,7 @@ void main() {
 
     final url = tester.widget<TextField>(
       find.descendant(
-        of: find.widgetWithText(TextFormField, 'Server URL'),
+        of: find.widgetWithText(TextFormField, 'Server address'),
         matching: find.byType(TextField),
       ),
     );

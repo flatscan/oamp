@@ -190,8 +190,12 @@ class _RootState extends ConsumerState<_Root> {
     super.initState();
     QueueSync sync() => ref.read(queueSyncProvider);
     _lifecycle = AppLifecycleListener(
-      // Back in front: pick up a queue saved meanwhile on another device.
-      onResume: () => sync().checkServer(),
+      // Back in front: pick up a queue saved meanwhile on another device,
+      // and check whether the server is now at home or away.
+      onResume: () {
+        sync().checkServer();
+        ref.read(serverStatusProvider.notifier).recheckAddress();
+      },
       onHide: () => sync().flush(),
       onExitRequested: () async {
         // Save where playback stands before the window closes, without
@@ -220,6 +224,8 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
     ref.watch(queueSyncProvider);
+    ref.watch(serverRouteProvider);
+    ref.watch(awayAddressProvider);
     final session = ref.watch(sessionProvider);
     return switch (session) {
       AsyncData(value: final session?) => HomeShell(

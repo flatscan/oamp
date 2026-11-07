@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:http/http.dart' as http;
 
 import '../../core/lyrics.dart';
@@ -5,6 +7,7 @@ import '../../core/models.dart';
 import '../../core/music_source.dart';
 import '../../core/play_queue.dart';
 import '../../core/playback_options.dart';
+import '../../core/server_route.dart';
 import 'subsonic_client.dart';
 
 /// [MusicSource] for Navidrome and other Subsonic/OpenSubsonic servers.
@@ -16,6 +19,26 @@ class SubsonicSource implements MusicSource {
     : client = SubsonicClient(credentials, httpClient: httpClient);
 
   SubsonicCredentials get credentials => client.credentials;
+
+  /// Sets or clears the away address, keeping this source (and so the
+  /// library, queue and caches) as it is.
+  void setAwayUrl(Uri? url, {bool connected = false}) =>
+      client.setAwayUrl(url, connected: connected);
+
+  @override
+  ServerRoute get route => client.picker.route;
+
+  @override
+  Stream<ServerRoute> get routeChanges => client.picker.changes;
+
+  @override
+  Future<void> connect() => client.connect();
+
+  @override
+  void reportUnreachable() {
+    if (client.picker.away == null) return;
+    unawaited(client.picker.recover(client.probe, client.baseUrl));
+  }
 
   @override
   String get serverId => credentials.serverId;

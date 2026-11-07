@@ -27,6 +27,7 @@ import 'playback_settings_test.dart' show FakeTrackCache;
 class FakeNetwork implements NetworkMonitor {
   FakeNetwork([this.current = NetworkKind.wifi]);
   final _changes = StreamController<NetworkKind>.broadcast(sync: true);
+  final _any = StreamController<void>.broadcast(sync: true);
 
   @override
   NetworkKind current;
@@ -34,13 +35,23 @@ class FakeNetwork implements NetworkMonitor {
   void set(NetworkKind kind) {
     current = kind;
     _changes.add(kind);
+    _any.add(null);
   }
+
+  /// A change that keeps the kind, such as another Wi-Fi network.
+  void hop() => _any.add(null);
 
   @override
   Stream<NetworkKind> get changes => _changes.stream;
 
   @override
-  Future<void> dispose() => _changes.close();
+  Stream<void> get anyChange => _any.stream;
+
+  @override
+  Future<void> dispose() async {
+    await _changes.close();
+    await _any.close();
+  }
 }
 
 /// A source whose covers have (signed) server URLs.

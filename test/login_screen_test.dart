@@ -33,7 +33,9 @@ void main() {
         ),
       ),
     );
-    expect(find.text('https://nd.home.lan'), findsOneWidget);
+    // The scheme sits in the toggle in front of the address.
+    expect(find.text('nd.home.lan'), findsOneWidget);
+    expect(find.text('https://'), findsOneWidget);
     expect(find.text('ed'), findsOneWidget);
     expect(find.text('Sign in again'), findsOneWidget);
   });

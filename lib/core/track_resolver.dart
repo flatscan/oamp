@@ -49,9 +49,10 @@ class StreamingTrackResolver implements TrackResolver {
   @override
   CacheRequest? cacheRequest(Track track) => cache == null
       ? null
-      : CacheRequest(
+      : CacheRequest.lazy(
           '${source.serverId}|${track.id}|${quality.tag}',
-          source.streamUrl(track.id, quality: quality),
+          () => source.streamUrl(track.id, quality: quality),
+          onUnreachable: source.reportUnreachable,
         );
 
   @override

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/session.dart';
+import 'server_address_field.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   /// Filled in when the saved server asks to sign in again.
@@ -10,6 +11,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 
   /// Start on the API key form rather than username and password.
   final bool initialApiKey;
+
+  /// The saved away address, when signing in again.
+  final String? initialAwayUrl;
 
   /// Called after a successful sign-in when the screen was pushed on top of
   /// the app (signing in again) rather than shown in its place.
@@ -20,6 +24,7 @@ class LoginScreen extends ConsumerStatefulWidget {
     this.initialServerUrl,
     this.initialUsername,
     this.initialApiKey = false,
+    this.initialAwayUrl,
     this.onSignedIn,
   });
 
@@ -29,7 +34,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _form = GlobalKey<FormState>();
-  late final _url = TextEditingController(text: widget.initialServerUrl);
+  late final _url = ServerAddressController(widget.initialServerUrl);
+  late final _away = ServerAddressController(widget.initialAwayUrl);
+  late bool _showAway = (widget.initialAwayUrl ?? '').isNotEmpty;
   late final _user = TextEditingController(text: widget.initialUsername);
   final _pass = TextEditingController();
   final _key = TextEditingController();
@@ -41,13 +48,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void dispose() {
     _url.dispose();
+    _away.dispose();
     _user.dispose();
     _pass.dispose();
     _key.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool keepUnreachableAway = false}) async {
     if (!_form.currentState!.validate()) return;
     // Put the keyboard away so a sign-in error shows above it.
     FocusScope.of(context).unfocus();
@@ -57,25 +65,68 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       final session = ref.read(sessionProvider.notifier);
+      final away = _showAway ? _away.url : '';
+      // Signing in again with the address already saved: don't ask again
+      // if it can't be reached from here.
+      final keep =
+          keepUnreachableAway ||
+          (away.isNotEmpty && away == widget.initialAwayUrl);
       if (_useKey) {
         await session.loginSubsonicWithApiKey(
-          serverUrl: _url.text,
+          serverUrl: _url.url,
           apiKey: _key.text,
+          awayUrl: away,
+          keepUnreachableAway: keep,
         );
       } else {
         await session.loginSubsonic(
-          serverUrl: _url.text,
+          serverUrl: _url.url,
           username: _user.text,
           password: _pass.text,
+          awayUrl: away,
+          keepUnreachableAway: keep,
         );
       }
       widget.onSignedIn?.call();
+    } on AwayAddressUnreachable catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final keep = await _askKeepAway(e.reason);
+      if (!mounted || keep == null) return;
+      if (!keep) setState(() => _showAway = false);
+      await _submit(keepUnreachableAway: true);
+      return;
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Asks whether to keep an away address that didn't answer. True keeps
+  /// it, false signs in without it, null goes back to the form.
+  Future<bool?> _askKeepAway(String reason) => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Away address not reached'),
+      content: Text(
+        'Your server answered, but not at the away address:\n\n$reason\n\n'
+        'Many home networks can\'t reach their own public address, so it may '
+        'still work when you\'re away. Settings will show a warning until '
+        'OAmp has connected through it.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Leave it out'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Save anyway'),
+        ),
+      ],
+    ),
+  );
 
   Widget _showHide() => IconButton(
     tooltip: _obscure ? 'Show' : 'Hide',
@@ -127,20 +178,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         style: theme.textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 24),
-                      TextFormField(
+                      ServerAddressField(
                         controller: _url,
-                        decoration: const InputDecoration(
-                          labelText: 'Server URL',
-                          hintText: 'https://music.example.com',
-                          prefixIcon: Icon(Icons.dns_outlined),
-                        ),
-                        keyboardType: TextInputType.url,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        autofillHints: const [AutofillHints.url],
+                        label: 'Server address',
+                        hint: 'music.example.com',
                         validator: _required,
                         textInputAction: TextInputAction.next,
                       ),
+                      if (_showAway) ...[
+                        const SizedBox(height: 12),
+                        ServerAddressField(
+                          key: const ValueKey('away-address'),
+                          controller: _away,
+                          label: 'Away address (optional)',
+                          helper:
+                              'Used when the server address can\'t be '
+                              'reached, such as away from home.',
+                          warnUnencrypted: true,
+                          textInputAction: TextInputAction.next,
+                        ),
+                      ] else
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() => _showAway = true),
+                            child: const Text('Add an away address'),
+                          ),
+                        ),
                       const SizedBox(height: 12),
                       if (_useKey)
                         TextFormField(

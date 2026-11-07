@@ -11,6 +11,7 @@ import '../../state/settings.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'about_section.dart';
+import 'away_address_tile.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -253,6 +254,7 @@ class SettingsPage extends ConsumerWidget {
               title: Text(source.displayName),
               subtitle: _serverSummary(ref.watch(capabilitiesProvider)),
             ),
+            const AwayAddressTile(),
             if (source.capabilities.hasQueueSync)
               SwitchListTile(
                 secondary: const Icon(Icons.devices_rounded),

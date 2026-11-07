@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/artwork_cache.dart';
 import '../core/music_source.dart';
+import '../core/server_route.dart';
 import '../core/track_cache.dart';
 import '../core/track_resolver.dart';
 import '../platform/secure_store.dart';
@@ -110,16 +111,23 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
   /// `ping`, saves them and makes the server active. Throws
   /// [MusicSourceException] with a readable message on failure, leaving the
   /// current session untouched.
+  ///
+  /// With an [awayUrl], signs in at whichever address answers (home first)
+  /// and throws [AwayAddressUnreachable] when the away address didn't
+  /// answer, unless [keepUnreachableAway] is set.
   Future<void> loginSubsonic({
     required String serverUrl,
     required String username,
     required String password,
+    String? awayUrl,
+    bool keepUnreachableAway = false,
   }) => _login(
     SubsonicCredentials.fromPassword(
       baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
       username: username.trim(),
       password: password,
-    ),
+    ).withAwayUrl(_awayFrom(awayUrl)),
+    keepUnreachableAway: keepUnreachableAway,
   );
 
   /// Signs in with an API key instead of a username and password, on
@@ -127,47 +135,140 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
   Future<void> loginSubsonicWithApiKey({
     required String serverUrl,
     required String apiKey,
+    String? awayUrl,
+    bool keepUnreachableAway = false,
   }) => _login(
     SubsonicCredentials.fromApiKey(
       baseUrl: SubsonicClient.normaliseServerUrl(serverUrl),
       apiKey: apiKey.trim(),
-    ),
+    ).withAwayUrl(_awayFrom(awayUrl)),
+    keepUnreachableAway: keepUnreachableAway,
   );
+
+  static Uri? _awayFrom(String? url) => url == null || url.trim().isEmpty
+      ? null
+      : SubsonicClient.normaliseServerUrl(url);
 
   /// Keeps the server's address, the user name and the credentials out
   /// of the diagnostics log.
   void _hideFromLog(SubsonicCredentials c) {
     final redact = ref.read(diagnosticsLogProvider).redact;
     redact.hide(c.baseUrl.host, '<server>');
+    if (c.awayUrl case final away?) redact.hide(away.host, '<server>');
     redact.hide(c.username, '<user>');
     for (final secret in [c.token, c.salt, ?c.apiKey]) {
       redact.hide(secret, '<hidden>');
     }
   }
 
-  Future<void> _login(SubsonicCredentials creds) async {
+  Future<void> _login(
+    SubsonicCredentials creds, {
+    bool keepUnreachableAway = false,
+  }) async {
     _hideFromLog(creds);
     final source = SubsonicSource(creds);
     try {
-      await source.ping();
+      await source.connect();
+      if (creds.awayUrl != null) {
+        final awayError = await source.client.picker.lastAwayAttempt;
+        if (awayError == null || await _awayWorkedBefore(creds)) {
+          source.client.markAwayConnected();
+        }
+        if (awayError != null && !keepUnreachableAway) {
+          throw AwayAddressUnreachable('$awayError');
+        }
+      }
     } catch (e) {
       debugPrint('Sign-in failed: $e');
       source.close();
       rethrow;
     }
-    debugPrint('Signed in');
-    await _store.write(
-      _serverKey(source.serverId),
-      jsonEncode({'type': 'subsonic', 'credentials': creds.toJson()}),
+    debugPrint(
+      source.route == ServerRoute.away
+          ? 'Signed in (away address)'
+          : 'Signed in',
     );
+    await _save(source.credentials);
     await _store.write(_activeKey, source.serverId);
     state.value?.source.close();
     state = AsyncData(ServerSession(source));
   }
 
+  /// Whether this login's away address is the one already saved for the
+  /// server and reached before, as when signing in again.
+  Future<bool> _awayWorkedBefore(SubsonicCredentials creds) async {
+    try {
+      final raw = await _store.read(_serverKey(creds.serverId));
+      if (raw == null) return false;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      final saved = SubsonicCredentials.fromJson(
+        j['credentials'] as Map<String, dynamic>,
+      );
+      return saved.awayConnected && saved.awayUrl == creds.awayUrl;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _save(SubsonicCredentials creds) => _store.write(
+    _serverKey(creds.serverId),
+    jsonEncode({'type': 'subsonic', 'credentials': creds.toJson()}),
+  );
+
+  SubsonicSource? get _subsonic => switch (state.value?.source) {
+    final SubsonicSource s => s,
+    _ => null,
+  };
+
+  /// Signs in at [awayUrl] with the active server's login, to check it
+  /// before saving. Returns null when it worked, or what went wrong. The
+  /// home network often cannot reach its own public address, so a failure
+  /// here doesn't mean the address is wrong.
+  Future<String?> testAwayAddress(String awayUrl) async {
+    final source = _subsonic;
+    if (source == null) return 'Not signed in.';
+    final url = SubsonicClient.normaliseServerUrl(awayUrl);
+    _hideFromLog(source.credentials.withAwayUrl(url));
+    try {
+      await source.client.probe(url, const Duration(seconds: 10));
+      return null;
+    } catch (e) {
+      debugPrint('Away address check failed: $e');
+      return '$e';
+    }
+  }
+
+  /// Sets the away address of the active server ([awayUrl] null removes
+  /// it), noting whether it has been reached. The server, its queue and
+  /// caches stay as they are. Use [AwayAddressNotifier.save], which also
+  /// updates settings and checks which address to use.
+  Future<void> saveAwayAddress(
+    String? awayUrl, {
+    bool connected = false,
+  }) async {
+    final source = _subsonic;
+    if (source == null) return;
+    final url = awayUrl == null || awayUrl.trim().isEmpty
+        ? null
+        : SubsonicClient.normaliseServerUrl(awayUrl);
+    source.setAwayUrl(url, connected: connected);
+    _hideFromLog(source.credentials);
+    await _save(source.credentials);
+    debugPrint(url == null ? 'Away address removed' : 'Away address saved');
+  }
+
+  /// Records that the away address has worked, which clears the warning in
+  /// settings.
+  Future<void> markAwayConnected() async {
+    final source = _subsonic;
+    if (source == null || source.credentials.awayConnected) return;
+    source.client.markAwayConnected();
+    await _save(source.credentials);
+  }
+
   /// The address and username saved for the active server, to fill in the
   /// login form when the server asks to sign in again.
-  Future<({String serverUrl, String username, bool apiKey})?>
+  Future<({String serverUrl, String username, bool apiKey, String? awayUrl})?>
   savedLoginHint() async {
     final id = state.value?.serverId;
     if (id == null) return null;
@@ -180,6 +281,7 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
         serverUrl: c['baseUrl'] as String,
         username: (c['username'] as String?) ?? '',
         apiKey: c['apiKey'] != null,
+        awayUrl: c['awayUrl'] as String?,
       );
     } catch (_) {
       return null;
@@ -196,6 +298,92 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     await _store.delete(_activeKey);
     debugPrint('Signed out');
     state = const AsyncData(null);
+  }
+}
+
+/// Thrown by sign-in when the server answered but its away address didn't.
+/// The sign-in can be repeated keeping the address anyway.
+class AwayAddressUnreachable implements Exception {
+  final String reason;
+  const AwayAddressUnreachable(this.reason);
+
+  @override
+  String toString() => reason;
+}
+
+/// The active server's away address, or null when it has none.
+class AwayAddress {
+  final Uri url;
+
+  /// Whether OAmp has reached the server there at least once. Until then
+  /// settings warn that it may not work.
+  final bool connected;
+  const AwayAddress(this.url, {this.connected = false});
+}
+
+final awayAddressProvider = NotifierProvider<AwayAddressNotifier, AwayAddress?>(
+  AwayAddressNotifier.new,
+);
+
+class AwayAddressNotifier extends Notifier<AwayAddress?> {
+  SubsonicSource? _source;
+
+  @override
+  AwayAddress? build() {
+    final source = ref.watch(sessionProvider).value?.source;
+    _source = source is SubsonicSource ? source : null;
+    if (source == null) return null;
+    final sub = source.routeChanges.listen((route) {
+      if (route == ServerRoute.away) unawaited(_reached());
+    });
+    ref.onDispose(sub.cancel);
+    return _current();
+  }
+
+  AwayAddress? _current() {
+    final c = _source?.credentials;
+    final url = c?.awayUrl;
+    return url == null ? null : AwayAddress(url, connected: c!.awayConnected);
+  }
+
+  /// Checks [url] with the active login. Null when it answered, otherwise
+  /// what went wrong.
+  Future<String?> test(String url) =>
+      ref.read(sessionProvider.notifier).testAwayAddress(url);
+
+  /// Saves (or with null, removes) the away address. The server status
+  /// then checks which address to use.
+  Future<void> save(String? url, {bool connected = false}) async {
+    await ref
+        .read(sessionProvider.notifier)
+        .saveAwayAddress(url, connected: connected);
+    state = _current();
+  }
+
+  Future<void> _reached() async {
+    final now = state;
+    if (now == null || now.connected) return;
+    await ref.read(sessionProvider.notifier).markAwayConnected();
+    if (ref.mounted) state = _current();
+  }
+}
+
+/// Which of the active server's addresses OAmp is using.
+final serverRouteProvider = NotifierProvider<_ServerRouteNotifier, ServerRoute>(
+  _ServerRouteNotifier.new,
+);
+
+class _ServerRouteNotifier extends Notifier<ServerRoute> {
+  @override
+  ServerRoute build() {
+    final source = ref.watch(sessionProvider).value?.source;
+    if (source == null) return ServerRoute.home;
+    final sub = source.routeChanges.listen((route) {
+      debugPrint('Server address: now using ${route.name}');
+      state = route;
+    });
+    ref.onDispose(sub.cancel);
+    return source.route;
   }
 }
 
@@ -223,18 +411,59 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
   /// How often to try again while the server cannot be reached.
   static const retryEvery = Duration(seconds: 30);
 
+  /// How often to look for the home address while using the away one, so
+  /// OAmp goes back to the local network soon after getting home.
+  static const homeCheckEvery = Duration(minutes: 1);
+
   Timer? _retry;
+  Timer? _homeCheck;
   int _generation = 0;
 
   @override
   ServerStatus build() {
     final session = ref.watch(sessionProvider).value;
     _retry?.cancel();
-    ref.onDispose(() => _retry?.cancel());
+    _homeCheck?.cancel();
+    ref.onDispose(() {
+      _retry?.cancel();
+      _homeCheck?.cancel();
+    });
     final generation = ++_generation;
     if (session == null) return ServerStatus.ok;
-    Future.microtask(() => _check(session.source, generation));
+    final source = session.source;
+    // Look for the other address when the network changes (Android), and
+    // keep looking for home while away.
+    final network = ref
+        .watch(networkMonitorProvider)
+        .anyChange
+        .listen((_) => recheckAddress());
+    final route = source.routeChanges.listen(_scheduleHomeCheck);
+    ref.onDispose(network.cancel);
+    ref.onDispose(route.cancel);
+    // An away address added, changed or removed: choose again.
+    ref.listen(awayAddressProvider, (before, after) {
+      if (before?.url != after?.url) unawaited(check());
+    });
+    Future.microtask(() => _check(source, generation));
     return const ServerStatus(ServerHealth.checking);
+  }
+
+  /// Checks again which address to use, when the server has an away
+  /// address: after a network change or when the app comes back to the
+  /// front.
+  Future<void> recheckAddress() async {
+    if (ref.read(awayAddressProvider) == null) return;
+    await check();
+  }
+
+  void _scheduleHomeCheck(ServerRoute route) {
+    _homeCheck?.cancel();
+    _homeCheck = null;
+    if (route != ServerRoute.away) return;
+    _homeCheck = Timer(homeCheckEvery, () {
+      _homeCheck = null;
+      unawaited(check());
+    });
   }
 
   /// Pings the server now, as the banner's Retry does.
@@ -254,7 +483,7 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
         state.health == ServerHealth.signedOut;
     ServerStatus next;
     try {
-      await source.ping();
+      await source.connect();
       next = ServerStatus.ok;
     } on MusicSourceException catch (e) {
       next = ServerStatus(
@@ -267,13 +496,14 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
       next = ServerStatus(ServerHealth.unreachable, '$e');
     }
     // Signed out or switched server while the ping was out.
-    if (generation != _generation) return;
+    if (!ref.mounted || generation != _generation) return;
     if (next.health != ServerHealth.ok && next.health != state.health) {
       debugPrint('Server ${next.health.name}: ${next.message}');
     } else if (next.health == ServerHealth.ok && wasDown) {
       debugPrint('Server reachable again');
     }
     state = next;
+    _scheduleHomeCheck(source.route);
     if (next.health == ServerHealth.ok) {
       // Extensions are detected once per sign-in; if that ran while the
       // server was down it fell back to the baseline, so ask again.
