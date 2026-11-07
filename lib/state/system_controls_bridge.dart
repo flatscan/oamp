@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../platform/system_controls.dart';
+import 'car_library.dart';
 import 'player.dart';
 import 'session.dart';
 
@@ -43,6 +44,13 @@ final systemControlsBridgeProvider = Provider<void>((ref) {
 
   final sub = controls.commands.listen(bridge.handle);
   ref.onDispose(sub.cancel);
+
+  // Android Auto browses and plays the library through the same session.
+  if (controls is BrowsableSystemControls) {
+    final browsable = controls as BrowsableSystemControls;
+    browsable.attachLibrary(ref.watch(carLibraryProvider));
+    ref.onDispose(() => browsable.attachLibrary(null));
+  }
 });
 
 class _Bridge {

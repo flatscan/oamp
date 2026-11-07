@@ -78,19 +78,29 @@ Future<void> main() async {
   // Wi-Fi or mobile data, for the mobile data quality on phones.
   final network = await ConnectivityNetworkMonitor.open();
 
+  final container = ProviderContainer(
+    overrides: [
+      systemControlsProvider.overrideWithValue(systemControls),
+      preferencesProvider.overrideWithValue(preferences),
+      audioDeckFactoryProvider.overrideWithValue(createDeck),
+      audioFocusProvider.overrideWithValue(audioFocus),
+      trackCacheProvider.overrideWithValue(trackCache),
+      artworkCacheProvider.overrideWithValue(artworkCache),
+      networkMonitorProvider.overrideWithValue(network),
+    ],
+  );
+  // The OS media controls (and Android Auto), play reports and the saved
+  // queue run for the app's lifetime, also when Android starts the app
+  // without a screen, such as for a car connecting while the phone is
+  // locked.
+  container
+    ..listen(systemControlsBridgeProvider, (_, _) {})
+    ..listen(playbackReporterProvider, (_, _) {})
+    ..listen(precacheProvider, (_, _) {})
+    ..listen(queueSyncProvider, (_, _) {});
+
   runApp(
-    ProviderScope(
-      overrides: [
-        systemControlsProvider.overrideWithValue(systemControls),
-        preferencesProvider.overrideWithValue(preferences),
-        audioDeckFactoryProvider.overrideWithValue(createDeck),
-        audioFocusProvider.overrideWithValue(audioFocus),
-        trackCacheProvider.overrideWithValue(trackCache),
-        artworkCacheProvider.overrideWithValue(artworkCache),
-        networkMonitorProvider.overrideWithValue(network),
-      ],
-      child: const OAmpApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const OAmpApp()),
   );
 }
 
