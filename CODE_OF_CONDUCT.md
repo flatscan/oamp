@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement by email to the project maintainer, Ed Jackson, at CONTACT_EMAIL. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement by email to the project maintainer, Ed Jackson, at <flatscan@pm.me>. To send a report encrypted, use the PGP key in [docs/maintainer-pgp-key.asc](docs/maintainer-pgp-key.asc) (fingerprint `0319 8CDD 7C5B BDC2 B598 4D1C B17C 3FA1 E253 7E34`). All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
