@@ -20,9 +20,6 @@ by a backend music server such as Navidrome. If you need such functionality,
 there are many fine player applications out there that will meet your needs
 better than OAmp.
 
-Your own data on the server, such as playlists, ratings, favourites and the
-play queue, is fine.
-
 ## Security problems
 
 Please don't report security problems in a public issue. See
