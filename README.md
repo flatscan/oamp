@@ -103,7 +103,8 @@ Alpha2 is in the works, for Windows and Android. Planned:
 After that:
 
 - **Alpha3**: more than one server, other server types such as Jellyfin and
-  Plex, and Linux and web versions
+  Plex, Linux and web versions, and smarter playlists (auto-generated
+  playlists and artist or album mixes) that work whatever server you use
 - **Alpha4**: a round of UI rework and polish, including an option for
   expanded mode to open to the left so the window can sit against the right
   edge of the screen
