@@ -21,16 +21,45 @@ import '../core/track_cache.dart';
 ///   through to the server.
 ///
 /// Separately, [prefetch] downloads upcoming tracks one at a time.
+///
+/// When the server stops answering part way through a download, the cache
+/// tries again a few times over [retryDelays], from whichever address the
+/// [CacheRequest] gives by then, and picks up from the byte it stopped at
+/// where the server allows. A move between the server's home and away
+/// addresses then doesn't interrupt playback.
 class HttpTrackCache implements TrackCache {
-  HttpTrackCache._(this._dir, this._server, this._secret, int limitBytes)
-    : _limit = limitBytes {
+  HttpTrackCache._(
+    this._dir,
+    this._server,
+    this._secret,
+    int limitBytes,
+    this.retryDelays,
+    this.stallAfter,
+  ) : _limit = limitBytes {
     _server.listen(_handle, onError: (Object e) => _log('server: $e'));
   }
+
+  /// The waits between attempts to reach the server again.
+  final List<Duration> retryDelays;
+
+  /// A download that receives nothing for this long counts as dropped.
+  final Duration stallAfter;
+
+  /// How long prefetching rests after a download could not reach the
+  /// server, so a dead network isn't retried in a tight loop.
+  static const prefetchRest = Duration(seconds: 5);
 
   /// Opens the cache in [dir], creating it if needed, and starts serving.
   static Future<HttpTrackCache> open(
     Directory dir, {
     int limitBytes = 1024 * 1024 * 1024,
+    List<Duration> retryDelays = const [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+      Duration(seconds: 8),
+    ],
+    Duration stallAfter = const Duration(seconds: 15),
   }) async {
     await dir.create(recursive: true);
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -38,7 +67,14 @@ class HttpTrackCache implements TrackCache {
     final secret = [
       for (var i = 0; i < 16; i++) rnd.nextInt(256).toRadixString(16),
     ].join();
-    final cache = HttpTrackCache._(dir, server, secret, limitBytes);
+    final cache = HttpTrackCache._(
+      dir,
+      server,
+      secret,
+      limitBytes,
+      retryDelays,
+      stallAfter,
+    );
     await cache._scan();
     return cache;
   }
@@ -64,6 +100,7 @@ class HttpTrackCache implements TrackCache {
 
   List<CacheRequest> _wanted = const [];
   _Download? _download;
+  Timer? _rest;
   final _changes = StreamController<void>.broadcast();
   bool _disposed = false;
 
@@ -141,31 +178,40 @@ class HttpTrackCache implements TrackCache {
 
   /// Starts the next wanted download if none is running.
   void _pump() {
-    if (_disposed || _download != null) return;
+    if (_disposed || _download != null || _rest != null) return;
     for (final r in _wanted) {
       final id = idFor(r.key);
       if (_index.containsKey(id) || _writing.contains(id)) continue;
       final d = _Download(id);
       _download = d;
       unawaited(
-        _fetch(r, d).whenComplete(() {
+        _fetch(r, d).then((reached) {
           _download = null;
-          _pump();
+          if (reached || d.cancelled) {
+            _pump();
+          } else {
+            _rest = Timer(prefetchRest, () {
+              _rest = null;
+              _pump();
+            });
+          }
         }),
       );
       return;
     }
   }
 
-  Future<void> _fetch(CacheRequest r, _Download d) async {
+  /// Downloads [r]. Returns false when the server could not be reached.
+  Future<bool> _fetch(CacheRequest r, _Download d) async {
     _writing.add(d.id);
     final part = _part(d.id);
     IOSink? sink;
     try {
-      final req = await _client.getUrl(r.upstream);
-      d.request = req;
-      if (d.cancelled) return;
-      final res = await req.close();
+      final res = await _open(r, d: d);
+      if (d.cancelled) {
+        unawaited(res.drain<void>().catchError((_) {}));
+        return true;
+      }
       if (res.statusCode != HttpStatus.ok || _isError(res)) {
         await res.drain<void>();
         _log('prefetch ${d.id}: HTTP ${res.statusCode}');
@@ -174,26 +220,135 @@ class HttpTrackCache implements TrackCache {
           for (final w in _wanted)
             if (idFor(w.key) != d.id) w,
         ];
-        return;
+        return true;
       }
       sink = part.openWrite();
       var n = 0;
-      await for (final chunk in res) {
-        if (d.cancelled) return;
+      await for (final chunk in _body(r, res, d: d)) {
+        if (d.cancelled) return true;
         sink.add(chunk);
         n += chunk.length;
       }
       await sink.close();
       sink = null;
-      if (res.contentLength >= 0 && n != res.contentLength) return;
+      if (res.contentLength >= 0 && n != res.contentLength) return true;
       await _commit(d.id, part, n);
+      return true;
     } catch (e) {
-      if (!d.cancelled) _log('prefetch ${d.id}: $e');
+      if (d.cancelled) return true;
+      _log('prefetch ${d.id}: $e');
+      return false;
     } finally {
       _writing.remove(d.id);
       await sink?.close().catchError((_) {});
       if (!_index.containsKey(d.id)) await _tryDelete(part);
     }
+  }
+
+  /// Connects to [r]'s upstream and returns the reply's headers. When the
+  /// server cannot be reached, tells the source (so it can check its other
+  /// address) and tries again over [retryDelays].
+  Future<HttpClientResponse> _open(
+    CacheRequest r, {
+    String? range,
+    _Download? d,
+  }) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _connect(r, range: range, d: d);
+      } catch (e) {
+        if (_disposed ||
+            (d?.cancelled ?? false) ||
+            attempt >= retryDelays.length) {
+          rethrow;
+        }
+        if (attempt == 0) {
+          _log('server not reached, trying again: $e');
+          r.onUnreachable?.call();
+        }
+        await Future<void>.delayed(retryDelays[attempt]);
+      }
+    }
+  }
+
+  Future<HttpClientResponse> _connect(
+    CacheRequest r, {
+    String? range,
+    _Download? d,
+  }) async {
+    final req = await _client.getUrl(r.upstream);
+    d?.request = req;
+    if (range != null) req.headers.set(HttpHeaders.rangeHeader, range);
+    return req.close().timeout(stallAfter);
+  }
+
+  /// [first]'s body. When the connection drops or stalls part way, asks for
+  /// the rest with a range request, from whichever address the server is at
+  /// by then, so the bytes carry on as one stream. Only a whole file the
+  /// server serves in ranges (an original quality stream) can be picked up;
+  /// anything else ends with the error, as before.
+  Stream<List<int>> _body(
+    CacheRequest r,
+    HttpClientResponse first, {
+    _Download? d,
+  }) async* {
+    final total = first.contentLength;
+    final canResume =
+        total > 0 &&
+        first.statusCode == HttpStatus.ok &&
+        first.headers.value(HttpHeaders.acceptRangesHeader) == 'bytes';
+    HttpClientResponse? res = first;
+    var n = 0;
+    var failures = 0;
+    Object? lastError;
+    while (true) {
+      if (res != null) {
+        try {
+          await for (final chunk in res.timeout(stallAfter)) {
+            n += chunk.length;
+            failures = 0;
+            yield chunk;
+          }
+          if (!canResume || n >= total) return;
+          lastError = const HttpException('Connection closed early');
+        } catch (e) {
+          if (!canResume || n >= total) rethrow;
+          lastError = e;
+        }
+      }
+      if (_disposed ||
+          (d?.cancelled ?? false) ||
+          failures >= retryDelays.length) {
+        throw lastError ?? const HttpException('Connection closed early');
+      }
+      if (failures == 0) {
+        _log('download dropped at $n of $total bytes, picking up: $lastError');
+        r.onUnreachable?.call();
+      }
+      await Future<void>.delayed(retryDelays[failures++]);
+      res = await _resume(r, n, total, d);
+    }
+  }
+
+  /// The rest of a file from byte [from], or null when the server didn't
+  /// answer with exactly that part.
+  Future<HttpClientResponse?> _resume(
+    CacheRequest r,
+    int from,
+    int total,
+    _Download? d,
+  ) async {
+    try {
+      final res = await _connect(r, range: 'bytes=$from-', d: d);
+      final range = res.headers.value(HttpHeaders.contentRangeHeader) ?? '';
+      if (res.statusCode == HttpStatus.partialContent &&
+          range.startsWith('bytes $from-') &&
+          range.endsWith('/$total')) {
+        return res;
+      }
+      unawaited(res.drain<void>().catchError((_) {}));
+    } catch (_) {}
+    return null;
   }
 
   /// A Subsonic server answers errors with HTTP 200 and an XML or JSON body.
@@ -311,9 +466,7 @@ class HttpTrackCache implements TrackCache {
     HttpResponse res, {
     required bool save,
   }) async {
-    final up = await _client.getUrl(known.upstream);
-    if (range != null) up.headers.set(HttpHeaders.rangeHeader, range);
-    final upRes = await up.close();
+    final upRes = await _open(known, range: range);
     res.statusCode = upRes.statusCode;
     for (final h in [
       HttpHeaders.contentTypeHeader,
@@ -330,7 +483,7 @@ class HttpTrackCache implements TrackCache {
         !_isError(upRes) &&
         !_writing.contains(id);
     if (!save) {
-      await res.addStream(upRes);
+      await res.addStream(_body(known, upRes));
       await res.close();
       return;
     }
@@ -341,7 +494,7 @@ class HttpTrackCache implements TrackCache {
     var ok = false;
     try {
       await res.addStream(
-        upRes.map((chunk) {
+        _body(known, upRes).map((chunk) {
           sink.add(chunk);
           n += chunk.length;
           return chunk;
@@ -379,6 +532,7 @@ class HttpTrackCache implements TrackCache {
   @override
   Future<void> dispose() async {
     _disposed = true;
+    _rest?.cancel();
     _download?.cancel();
     await _server.close(force: true);
     _client.close(force: true);

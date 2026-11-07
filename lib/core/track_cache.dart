@@ -1,9 +1,23 @@
 /// One track the cache can fetch: [key] names the bytes (server, track and
 /// stream quality), [upstream] is where they come from.
+///
+/// [upstream] is asked for each time the cache connects, so when the server
+/// moves between its home and away addresses, downloads (and a track that is
+/// part way through streaming) carry on from the new address.
 class CacheRequest {
   final String key;
-  final Uri upstream;
-  const CacheRequest(this.key, this.upstream);
+  final Uri Function() _upstream;
+
+  /// Called when [upstream] could not be reached, so the source can check
+  /// its other address.
+  final void Function()? onUnreachable;
+
+  CacheRequest(this.key, Uri upstream, {this.onUnreachable})
+    : _upstream = (() => upstream);
+
+  CacheRequest.lazy(this.key, this._upstream, {this.onUnreachable});
+
+  Uri get upstream => _upstream();
 }
 
 /// Disk usage of the playback cache.

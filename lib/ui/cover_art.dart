@@ -61,13 +61,17 @@ class CachedArtworkImage extends ImageProvider<CachedArtworkImage> {
 /// The image for [coverArtId] at [size] pixels from the active server,
 /// through the artwork cache when there is one. Null when there is no
 /// image or nobody is signed in.
-ImageProvider? coverArtImage(WidgetRef ref, String? coverArtId, int size) =>
-    coverArtImageFrom(
-      ref.watch(sessionProvider).value,
-      ref.watch(artworkCacheProvider),
-      coverArtId,
-      size,
-    );
+ImageProvider? coverArtImage(WidgetRef ref, String? coverArtId, int size) {
+  // Rebuild on a move between home and away, so a picture that failed on
+  // the old address loads from the new one.
+  ref.watch(serverRouteProvider);
+  return coverArtImageFrom(
+    ref.watch(sessionProvider).value,
+    ref.watch(artworkCacheProvider),
+    coverArtId,
+    size,
+  );
+}
 
 ImageProvider? coverArtImageFrom(
   ServerSession? session,

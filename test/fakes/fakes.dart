@@ -9,6 +9,7 @@ import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
 import 'package:oamp/core/play_queue.dart';
 import 'package:oamp/core/playback_options.dart';
+import 'package:oamp/core/server_route.dart';
 import 'package:oamp/platform/system_controls.dart';
 import 'package:oamp/state/session.dart';
 
@@ -128,6 +129,32 @@ class FakeMusicSource implements MusicSource {
   /// Thrown by [ping] while set, to fake a server that is down or signed out.
   MusicSourceException? pingError;
   int pings = 0;
+
+  @override
+  ServerRoute route = ServerRoute.home;
+
+  /// Add to it to fake a switch between home and away.
+  final routeController = StreamController<ServerRoute>.broadcast(sync: true);
+
+  @override
+  Stream<ServerRoute> get routeChanges => routeController.stream;
+
+  /// What [connect] switches to, to fake a server with an away address.
+  ServerRoute? routeOnConnect;
+
+  @override
+  Future<void> connect() async {
+    await ping();
+    final next = routeOnConnect;
+    if (next != null && next != route) {
+      route = next;
+      routeController.add(next);
+    }
+  }
+
+  int unreachableReports = 0;
+  @override
+  void reportUnreachable() => unreachableReports++;
   @override
   Future<List<Artist>> getArtists() async => artists;
   @override

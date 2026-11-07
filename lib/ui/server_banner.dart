@@ -93,6 +93,7 @@ class ServerStatusBanner extends ConsumerWidget {
           initialServerUrl: hint?.serverUrl,
           initialUsername: hint?.username,
           initialApiKey: hint?.apiKey ?? false,
+          initialAwayUrl: hint?.awayUrl,
           onSignedIn: nav.pop,
         ),
       ),

@@ -2,6 +2,7 @@ import 'lyrics.dart';
 import 'models.dart';
 import 'play_queue.dart';
 import 'playback_options.dart';
+import 'server_route.dart';
 
 /// Features a backend may or may not support. The UI switches features on
 /// from these instead of checking which backend it is talking to.
@@ -92,6 +93,23 @@ abstract class MusicSource {
 
   /// Checks the server is reachable and the credentials work.
   Future<void> ping();
+
+  /// Which of the server's addresses requests go to. Always
+  /// [ServerRoute.home] unless the server has an away address and home
+  /// cannot be reached.
+  ServerRoute get route;
+
+  /// Fires when [route] changes.
+  Stream<ServerRoute> get routeChanges;
+
+  /// Like [ping], but first chooses the address: home when it answers,
+  /// otherwise the away address. Throws as [ping] does when neither works.
+  Future<void> connect();
+
+  /// Tells the source that a download it does not make itself, such as a
+  /// stream or an image, could not reach the server, so it can check
+  /// whether its other address works.
+  void reportUnreachable();
 
   Future<List<Artist>> getArtists();
   Future<ArtistDetail> getArtist(String id);

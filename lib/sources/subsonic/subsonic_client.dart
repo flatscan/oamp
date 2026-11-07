@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import '../../core/music_source.dart';
+import '../../core/server_route.dart';
 
 /// Credentials in the form the Subsonic API wants them.
 ///
@@ -19,11 +20,21 @@ import '../../core/music_source.dart';
 /// an API key ([apiKey]) in place of all three, which is the only way in for
 /// accounts that cannot use token auth, such as LDAP ones.
 class SubsonicCredentials {
+  /// The address the user signed in with (home). The server's identity
+  /// ([serverId]) comes from it, so adding or changing [awayUrl] keeps the
+  /// saved queue and caches.
   final Uri baseUrl;
   final String username;
   final String token;
   final String salt;
   final String? apiKey;
+
+  /// An optional second address, used when [baseUrl] cannot be reached.
+  final Uri? awayUrl;
+
+  /// Whether OAmp has reached the server at [awayUrl] at least once, so
+  /// settings can warn about an away address that has never worked.
+  final bool awayConnected;
 
   const SubsonicCredentials({
     required this.baseUrl,
@@ -31,7 +42,21 @@ class SubsonicCredentials {
     required this.token,
     required this.salt,
     this.apiKey,
+    this.awayUrl,
+    this.awayConnected = false,
   });
+
+  /// The same login with a different (or no) away address.
+  SubsonicCredentials withAwayUrl(Uri? url, {bool connected = false}) =>
+      SubsonicCredentials(
+        baseUrl: baseUrl,
+        username: username,
+        token: token,
+        salt: salt,
+        apiKey: apiKey,
+        awayUrl: url,
+        awayConnected: url != null && connected,
+      );
 
   /// Signs in with an API key. [username] is optional and only for display;
   /// the server knows the account from the key.
@@ -86,6 +111,8 @@ class SubsonicCredentials {
     'token': token,
     'salt': salt,
     'apiKey': ?apiKey,
+    'awayUrl': ?awayUrl?.toString(),
+    if (awayConnected) 'awayConnected': true,
   };
 
   factory SubsonicCredentials.fromJson(Map<String, dynamic> j) =>
@@ -95,6 +122,11 @@ class SubsonicCredentials {
         token: (j['token'] as String?) ?? '',
         salt: (j['salt'] as String?) ?? '',
         apiKey: j['apiKey'] as String?,
+        awayUrl: switch (j['awayUrl']) {
+          final String u => Uri.tryParse(u),
+          _ => null,
+        },
+        awayConnected: j['awayConnected'] == true,
       );
 }
 
@@ -105,11 +137,46 @@ class SubsonicClient {
   static const apiVersion = '1.16.1';
   static const clientName = 'OAmp';
 
-  final SubsonicCredentials credentials;
+  SubsonicCredentials _credentials;
   final http.Client _http;
+  final AddressPicker picker;
 
-  SubsonicClient(this.credentials, {http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  SubsonicClient(
+    SubsonicCredentials credentials, {
+    http.Client? httpClient,
+    AddressPicker? picker,
+  }) : _credentials = credentials,
+       _http = httpClient ?? http.Client(),
+       picker =
+           picker ??
+           AddressPicker(credentials.baseUrl, away: credentials.awayUrl);
+
+  SubsonicCredentials get credentials => _credentials;
+
+  /// Where requests go now: the home address, or the away address while
+  /// home cannot be reached.
+  Uri get baseUrl => picker.active;
+
+  /// Sets or clears the away address, with whether it has been reached.
+  /// Requests go home until the next [connect] finds home unreachable.
+  void setAwayUrl(Uri? url, {bool connected = false}) {
+    _credentials = _credentials.withAwayUrl(url, connected: connected);
+    picker.away = url;
+  }
+
+  /// Notes that the away address has worked, for [SubsonicCredentials.
+  /// awayConnected].
+  void markAwayConnected() => _credentials = _credentials.withAwayUrl(
+    _credentials.awayUrl,
+    connected: true,
+  );
+
+  /// Chooses the address (home when it answers) and checks the login.
+  Future<void> connect() => picker.pick(probe);
+
+  /// Pings [base] with this login, giving up after [timeout].
+  Future<void> probe(Uri base, Duration timeout) =>
+      _sendTo(base, 'ping', const {}, post: false, timeout: timeout);
 
   /// Normalises what the user typed into a base URL: adds `https://` when no
   /// scheme is given and strips a trailing slash.
@@ -138,8 +205,12 @@ class SubsonicClient {
   /// Builds `<base>/rest/<endpoint>` with auth and extra query parameters.
   /// A parameter's value is a `String`, or a `List<String>` to repeat it
   /// (such as several `songId`s).
-  Uri endpointUri(String endpoint, [Map<String, Object> params = const {}]) {
-    final base = credentials.baseUrl;
+  Uri endpointUri(
+    String endpoint, [
+    Map<String, Object> params = const {},
+    Uri? base,
+  ]) {
+    base ??= baseUrl;
     return base.replace(
       path: '${base.path}/rest/$endpoint',
       queryParameters: {..._authParams, ...params},
@@ -159,16 +230,38 @@ class SubsonicClient {
     Map<String, Object> params = const {},
   ]) => _send(endpoint, params, post: true);
 
+  /// Sends to the active address. When that cannot be reached and the
+  /// server has another address that does answer, sends again there, so a
+  /// move between home and away doesn't show up as a failed page.
   Future<Map<String, dynamic>> _send(
     String endpoint,
     Map<String, Object> params, {
     required bool post,
   }) async {
+    final base = baseUrl;
+    try {
+      return await _sendTo(base, endpoint, params, post: post);
+    } on MusicSourceException catch (e) {
+      if (e.kind != MusicSourceErrorKind.unreachable ||
+          picker.away == null ||
+          !await picker.recover(probe, base)) {
+        rethrow;
+      }
+      return _sendTo(baseUrl, endpoint, params, post: post);
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendTo(
+    Uri base,
+    String endpoint,
+    Map<String, Object> params, {
+    required bool post,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final http.Response res;
     try {
       final Future<http.Response> request;
       if (post) {
-        final base = credentials.baseUrl;
         final body = Uri(queryParameters: {..._authParams, ...params}).query;
         request = _http.post(
           Uri(
@@ -182,11 +275,11 @@ class SubsonicClient {
           body: body,
         );
       } else {
-        request = _http.get(endpointUri(endpoint, params));
+        request = _http.get(endpointUri(endpoint, params, base));
       }
-      res = await request.timeout(const Duration(seconds: 20));
+      res = await request.timeout(timeout);
     } catch (e) {
-      throw transportError(e, credentials.baseUrl);
+      throw transportError(e, base, timeout: timeout);
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw MusicSourceException(
@@ -196,14 +289,14 @@ class SubsonicClient {
     }
     if (res.statusCode >= 500) {
       throw MusicSourceException(
-        '${credentials.baseUrl.host} had a problem (HTTP ${res.statusCode}). '
+        '${base.host} had a problem (HTTP ${res.statusCode}). '
         'Try again in a moment.',
         kind: MusicSourceErrorKind.server,
       );
     }
     if (res.statusCode != 200) {
       throw MusicSourceException(
-        'No music server answered at ${credentials.baseUrl} '
+        'No music server answered at $base '
         '(HTTP ${res.statusCode}). Check the address.',
         kind: MusicSourceErrorKind.notAServer,
       );
@@ -221,9 +314,9 @@ class SubsonicClient {
           (body as Map<String, dynamic>)['subsonic-response']
               as Map<String, dynamic>?;
     } catch (_) {
-      throw _notSubsonic();
+      throw _notSubsonic(base);
     }
-    if (resp == null) throw _notSubsonic();
+    if (resp == null) throw _notSubsonic(base);
     if (resp['status'] != 'ok') {
       final err = resp['error'] as Map<String, dynamic>?;
       throw serverError(err?['code'] as int?, err?['message'] as String?);
@@ -231,15 +324,18 @@ class SubsonicClient {
     return resp;
   }
 
-  void close() => _http.close();
+  void close() {
+    _http.close();
+    picker.close();
+  }
 
   /// Replies bigger than this are decoded off the UI thread.
   static const backgroundDecodeBytes = 256 * 1024;
 
   static Object? _decodeJson(Uint8List bytes) => jsonDecode(utf8.decode(bytes));
 
-  MusicSourceException _notSubsonic() => MusicSourceException(
-    'The server at ${credentials.baseUrl} is not a Subsonic or Navidrome '
+  MusicSourceException _notSubsonic(Uri base) => MusicSourceException(
+    'The server at $base is not a Subsonic or Navidrome '
     'server. Check the address: it is the one you open Navidrome with in a '
     'browser.',
     kind: MusicSourceErrorKind.notAServer,
@@ -248,13 +344,18 @@ class SubsonicClient {
   /// A failure to get any reply, in words. Matches on the error's text
   /// because the types (`SocketException`, `HandshakeException`) live in
   /// dart:io, which this layer keeps out of so a web build stays possible.
-  static MusicSourceException transportError(Object e, Uri baseUrl) {
+  static MusicSourceException transportError(
+    Object e,
+    Uri baseUrl, {
+    Duration timeout = const Duration(seconds: 20),
+  }) {
     final host = baseUrl.host;
     final text = e.toString();
     final String message;
     if (e is TimeoutException) {
       message =
-          '$host did not answer within 20 seconds. Check that the '
+          '$host did not answer within ${timeout.inSeconds} seconds. '
+          'Check that the '
           'server is running and reachable from this computer.';
     } else if (text.contains('Handshake') ||
         text.contains('CERTIFICATE') ||
