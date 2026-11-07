@@ -126,7 +126,7 @@ class AlbumCard extends ConsumerWidget {
         final detail = await ref.read(albumDetailProvider(album.id).future);
         await ref
             .read(playerProvider.notifier)
-            .playTracks(detail.tracks, from: detail.album.name);
+            .playTracks(detail.tracks, from: detail.album.name, album: true);
       } catch (e) {
         if (context.mounted) toast(context, 'Could not play album: $e');
       }
@@ -1051,6 +1051,7 @@ Future<void> showAlbumMenu(
         tracks,
         shuffle: action == _AlbumAction.shuffle,
         from: album.name,
+        album: true,
       );
     case _AlbumAction.playNext:
       await player.playNext(tracks);

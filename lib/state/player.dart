@@ -38,8 +38,19 @@ class PlayerState {
   /// engine then counts from zero and [positionProvider] adds this back.
   final Duration offset;
 
+  /// Whether the queue was started by playing a whole album in order. Such
+  /// queues can carry on with the artist's next album (see
+  /// endless_play.dart), and have their own endless play default.
+  final bool albumQueue;
+
+  /// Queue entries that endless play added, marked in the queue. Compared
+  /// by identity, so the same track queued by hand is not marked.
+  final Set<Track> endless;
+
   const PlayerState({
     this.from,
+    this.albumQueue = false,
+    this.endless = const {},
     this.offset = Duration.zero,
     this.shuffled = false,
     this.queue = const [],
@@ -65,6 +76,9 @@ class PlayerState {
       currentIndex != null &&
       (currentIndex! < queue.length - 1 || repeat == PlaybackRepeat.all);
 
+  /// Whether endless play added this queue entry.
+  bool isEndless(Track entry) => endless.contains(entry);
+
   /// Tracks after the current one.
   List<Track> get upcoming =>
       currentIndex == null ? queue : queue.sublist(currentIndex! + 1);
@@ -80,7 +94,11 @@ class PlayerState {
     String? Function()? from,
     Duration? offset,
     bool? shuffled,
+    bool? albumQueue,
+    Set<Track>? endless,
   }) => PlayerState(
+    albumQueue: albumQueue ?? this.albumQueue,
+    endless: endless ?? this.endless,
     shuffled: shuffled ?? this.shuffled,
     from: from != null ? from() : this.from,
     offset: offset ?? this.offset,
@@ -327,12 +345,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       Future.wait([for (final t in tracks) _resolver.resolve(t)]);
 
   /// Replaces the queue with [tracks] and starts at [startIndex], or at a
-  /// random order when [shuffle] is set.
+  /// random order when [shuffle] is set. [album] says [tracks] are a whole
+  /// album; played in order, that makes it an album queue
+  /// ([PlayerState.albumQueue]).
   Future<void> playTracks(
     List<Track> tracks, {
     int startIndex = 0,
     bool shuffle = false,
     String? from,
+    bool album = false,
   }) async {
     if (!_signedIn || tracks.isEmpty) return;
     _unshuffled = shuffle ? List.of(tracks) : const [];
@@ -351,6 +372,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       from: () => from,
       offset: Duration.zero,
       shuffled: shuffle,
+      albumQueue: album && !shuffle,
+      endless: _marks(const []),
     );
     await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
     await _engine.play();
@@ -388,6 +411,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       playing: false,
       offset: reopen == null ? Duration.zero : _whole(position),
       shuffled: false,
+      albumQueue: saved.albumQueue,
+      endless: _marks([
+        for (final i in saved.endless)
+          if (i >= 0 && i < tracks.length) tracks[i],
+      ]),
     );
     _stale = {for (final t in tracks) t.id};
     await _engine.setQueue(
@@ -428,7 +456,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       if (i >= 0) _reopened = after[i];
     }
     _unshuffled = [for (final t in _unshuffled) swap(t)];
-    state = state.copyWith(queue: List.unmodifiable(after));
+    final marks = [
+      for (var i = 0; i < before.length; i++)
+        if (state.isEndless(before[i])) after[i],
+    ];
+    state = state.copyWith(
+      queue: List.unmodifiable(after),
+      endless: _marks(marks),
+    );
     await _engine.refreshGain();
   }
 
@@ -440,10 +475,30 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         ? Duration.zero
         : (_restoredAt ?? _engine.position + state.offset),
     from: state.from,
+    albumQueue: state.albumQueue,
+    endless: {
+      for (var i = 0; i < state.queue.length; i++)
+        if (state.isEndless(state.queue[i])) i,
+    },
   );
 
+  static Set<Track> _marks(Iterable<Track> entries) =>
+      Set<Track>.unmodifiable(Set<Track>.identity()..addAll(entries));
+
   /// Adds [tracks] to the end of the queue.
-  Future<void> enqueue(List<Track> tracks) async {
+  Future<void> enqueue(List<Track> tracks) => _append(tracks);
+
+  /// Adds tracks endless play picked to the end of the queue, marked as
+  /// such. Does nothing when the queue is empty: endless play only carries
+  /// on from something.
+  Future<void> addEndless(List<Track> tracks) async {
+    if (state.queue.isEmpty) return;
+    // Separate entries, so a track that is also queued by hand is not
+    // marked there.
+    await _append([for (final t in tracks) t.copy()], marked: true);
+  }
+
+  Future<void> _append(List<Track> tracks, {bool marked = false}) async {
     if (!_signedIn || tracks.isEmpty) return;
     if (state.queue.isEmpty) return playTracks(tracks);
     state = state.copyWith(
@@ -452,6 +507,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         ...state.qualities,
         ..._qualitiesFor(tracks.length),
       ]),
+      endless: marked ? _marks([...state.endless, ...tracks]) : null,
     );
     await _engine.addAll(await _uris(tracks));
   }

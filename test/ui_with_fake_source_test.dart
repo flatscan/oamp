@@ -60,7 +60,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // The player resolved both tracks through the source and started at 0.
-    expect(engine.queue.map((u) => u.toString()), [
+    // Endless play then carries on with the artist's next album (here the
+    // same one, as Air has only one).
+    expect(engine.queue.take(2).map((u) => u.toString()), [
       'fake://stream/t1',
       'fake://stream/t2',
     ]);
@@ -173,7 +175,10 @@ void main() {
     await tester.tap(play);
     await tester.pumpAndSettle();
 
-    expect(engine.queue, hasLength(2));
+    expect(engine.queue.take(2).map((u) => u.toString()), [
+      'fake://stream/t1',
+      'fake://stream/t2',
+    ]);
     expect(engine.playing, isTrue);
     // Played in place: still on Home, not the album page.
     expect(find.text('Recently added'), findsOneWidget);

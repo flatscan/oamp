@@ -384,6 +384,7 @@ class CarLibrary implements MediaLibrary {
             d.tracks,
             startIndex: _index(index, d.tracks.length),
             from: d.album.name,
+            album: true,
           );
         case ['play', 'playlist', final playlistId, final index]:
           final d = await source.getPlaylist(playlistId);
@@ -423,7 +424,7 @@ class CarLibrary implements MediaLibrary {
 
   Future<void> _playAlbum(MusicSource source, String albumId) async {
     final d = await source.getAlbum(albumId);
-    await _player.playTracks(d.tracks, from: d.album.name);
+    await _player.playTracks(d.tracks, from: d.album.name, album: true);
   }
 
   /// The track, then more like it, so a single song asked for in the car

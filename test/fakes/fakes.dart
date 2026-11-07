@@ -194,7 +194,10 @@ class FakeMusicSource implements MusicSource {
   }) async => albums.skip(offset).take(size).toList();
   @override
   Future<AlbumDetail> getAlbum(String id) async =>
-      const AlbumDetail(moonSafari, tracks);
+      albumDetails[id] ?? const AlbumDetail(moonSafari, tracks);
+
+  /// What getAlbum returns by id, falling back to Moon Safari.
+  Map<String, AlbumDetail> albumDetails = {};
 
   /// What getTrack returns by id, falling back to [tracks].
   Map<String, Track> trackDetails = {};
@@ -299,7 +302,10 @@ class FakeMusicSource implements MusicSource {
   }
 
   @override
-  Future<List<Track>> getLikedTracks() async => [];
+  Future<List<Track>> getLikedTracks() async => likedTracks;
+
+  /// What getLikedTracks returns.
+  List<Track> likedTracks = [];
   @override
   Future<List<Artist>> getLikedArtists() async => [
     for (final a in artists)
