@@ -159,6 +159,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// The queue's order before it was shuffled, while [PlayerState.shuffled].
   List<Track> _unshuffled = const [];
 
+  /// Ids of queued tracks whose details came from a saved queue and may be
+  /// out of date, such as ReplayGain added since by retagging the files.
+  /// The current and next ones are fetched again as playback reaches them.
+  Set<String> _stale = {};
+
   /// Playback was paused for a call or another app, and plays again when
   /// that is over. Anything the listener does meanwhile clears it.
   bool _resumeAfterInterruption = false;
@@ -201,6 +206,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         buffering: s.buffering,
         offset: left ? Duration.zero : null,
       );
+      if (s.currentIndex != before && s.currentIndex != null) {
+        unawaited(_refreshAround(s.currentIndex!));
+      }
       // The track that was reopened part way in is behind us; put its
       // ordinary stream back so it plays from the top next time.
       if (left) {
@@ -335,6 +343,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     _restoredAt = null;
     _reopened = null;
     _resumeAfterInterruption = false;
+    _stale = {};
     state = state.copyWith(
       queue: List.unmodifiable(tracks),
       qualities: List.unmodifiable(_qualitiesFor(tracks.length)),
@@ -380,11 +389,47 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       offset: reopen == null ? Duration.zero : _whole(position),
       shuffled: false,
     );
+    _stale = {for (final t in tracks) t.id};
     await _engine.setQueue(
       uris,
       initialIndex: index,
       initialPosition: reopen == null ? position : Duration.zero,
     );
+    await _refreshAround(index);
+  }
+
+  /// Fetches fresh details for the tracks at [index] and the one after it
+  /// when they came from a saved queue, so their ReplayGain, rating and so
+  /// on match the server now rather than when they were queued.
+  Future<void> _refreshAround(int index) async {
+    if (_stale.isEmpty || !_signedIn) return;
+    final q = state.queue;
+    final ids = <String>{
+      for (final i in [index, index + 1])
+        if (i >= 0 && i < q.length && _stale.contains(q[i].id)) q[i].id,
+    };
+    if (ids.isEmpty) return;
+    _stale.removeAll(ids);
+    final source = ref.read(musicSourceProvider);
+    final fresh = <String, Track>{};
+    await Future.wait([
+      for (final id in ids)
+        source.getTrack(id).then((t) {
+          if (t.id == id) fresh[id] = t;
+        }, onError: (Object e) {}),
+    ]);
+    if (fresh.isEmpty || !ref.mounted) return;
+    Track swap(Track t) => fresh[t.id] ?? t;
+    final before = state.queue;
+    final after = [for (final t in before) swap(t)];
+    final reopened = _reopened;
+    if (reopened != null) {
+      final i = before.indexWhere((t) => identical(t, reopened));
+      if (i >= 0) _reopened = after[i];
+    }
+    _unshuffled = [for (final t in _unshuffled) swap(t)];
+    state = state.copyWith(queue: List.unmodifiable(after));
+    await _engine.refreshGain();
   }
 
   /// The queue as it stands now, for saving.
@@ -560,6 +605,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     _resumeAfterInterruption = false;
     _restoredAt = null;
     _reopened = null;
+    _stale = {};
     state = PlayerState(repeat: state.repeat, volume: state.volume);
     await _engine.clear();
   }

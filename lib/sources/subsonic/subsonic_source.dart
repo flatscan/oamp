@@ -220,6 +220,12 @@ class SubsonicSource implements MusicSource {
   }
 
   @override
+  Future<Track> getTrack(String id) async {
+    final r = await client.get('getSong', {'id': id});
+    return _track(r['song'] as Map<String, dynamic>);
+  }
+
+  @override
   Future<SearchResults> search(String query, {int limit = 20}) async {
     final r = await client.get('search3', {
       'query': query,

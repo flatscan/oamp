@@ -168,6 +168,19 @@ class FakeMusicSource implements MusicSource {
   @override
   Future<AlbumDetail> getAlbum(String id) async =>
       const AlbumDetail(moonSafari, tracks);
+
+  /// What getTrack returns by id, falling back to [tracks].
+  Map<String, Track> trackDetails = {};
+
+  /// Ids getTrack was asked for, in order.
+  final List<String> trackRequests = [];
+
+  @override
+  Future<Track> getTrack(String id) async {
+    trackRequests.add(id);
+    return trackDetails[id] ?? tracks.firstWhere((t) => t.id == id);
+  }
+
   static const mixtape = Playlist(id: 'pl1', name: 'Mixtape', songCount: 2);
 
   /// Calls made to the server's write endpoints, for assertions.

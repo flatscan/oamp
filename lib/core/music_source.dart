@@ -113,6 +113,9 @@ abstract class MusicSource {
   });
   Future<AlbumDetail> getAlbum(String id);
 
+  /// One track's current details, such as after the files were retagged.
+  Future<Track> getTrack(String id);
+
   /// Artists, albums and tracks matching [query].
   Future<SearchResults> search(String query, {int limit = 20});
 

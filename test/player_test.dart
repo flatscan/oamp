@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart';
+import 'package:oamp/core/play_queue.dart';
 import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/state/library.dart';
 import 'package:oamp/state/playback_reporter.dart';
@@ -187,6 +188,40 @@ void main() {
       expect(state().currentQuality, opus128);
     },
   );
+
+  test('a restored queue fetches fresh details as playback reaches each '
+      'track', () async {
+    // Saved before the files were tagged, so no ReplayGain.
+    source.trackDetails = {
+      for (final t in many)
+        t.id: Track(
+          id: t.id,
+          title: t.title,
+          duration: t.duration,
+          replayGain: const ReplayGain(trackGain: -10.14, albumGain: -9.76),
+        ),
+    };
+    await player().restore(SavedQueue(tracks: many, currentIndex: 1));
+    await settle();
+    // The current track and the next one, not the whole queue.
+    expect(source.trackRequests, ['m1', 'm2']);
+    expect(state().queue[1].replayGain?.trackGain, -10.14);
+    expect(state().queue[2].replayGain?.trackGain, -10.14);
+    expect(state().queue[3].replayGain, isNull);
+    expect(engine.gainRefreshes, greaterThan(0));
+
+    await player().next();
+    await settle();
+    expect(source.trackRequests, ['m1', 'm2', 'm3']);
+    expect(state().queue[3].replayGain?.trackGain, -10.14);
+
+    // Tracks queued fresh are already up to date.
+    await player().playTracks(many);
+    await settle();
+    await player().next();
+    await settle();
+    expect(source.trackRequests, ['m1', 'm2', 'm3']);
+  });
 
   test('qualityLabel and replayGainDebugLabel format display strings', () {
     const flac = Track(
