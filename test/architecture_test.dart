@@ -49,4 +49,15 @@ void main() {
     ];
     expect(bad, isEmpty);
   });
+
+  test('network discovery stays behind DeviceDiscovery', () {
+    // Sockets and protocol code live in lib/outputs; the rest of the app
+    // sees OutputDevice and DeviceDiscovery from lib/core only.
+    final bad = [
+      for (final dir in ['lib/core', 'lib/state', 'lib/ui', 'lib/sources'])
+        for (final (path, line) in imports(dir))
+          if (line.contains('/outputs/')) '$path: $line',
+    ];
+    expect(bad, isEmpty);
+  });
 }

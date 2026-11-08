@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../core/models.dart';
+import '../core/output_device.dart';
+import '../core/remote_player.dart';
 
 /// Snapshot of what the engine is doing, independent of the backend.
 class EngineState {
@@ -37,6 +39,10 @@ abstract class QueueInfo {
   /// never raises). A deck that cannot play louder than normal turns every
   /// track down by this much instead, so quiet tracks still match loud ones.
   double get boostHeadroom;
+
+  /// The entry at [index] as a speaker or TV speaking [protocol] should
+  /// fetch and show it, for casting. Null when there is no such entry.
+  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol);
 }
 
 /// The only interface the rest of the app uses to make sound.
