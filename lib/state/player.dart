@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audio/audio_engine.dart';
 import '../audio/audio_focus.dart';
 import '../audio/just_audio_deck.dart';
+import '../audio/output_switcher.dart';
 import '../core/models.dart';
+import '../core/output_device.dart';
+import '../core/remote_player.dart';
 import '../core/play_queue.dart';
 import '../core/playback_options.dart';
 import '../core/track_resolver.dart';
@@ -122,17 +125,26 @@ final audioDeckFactoryProvider = Provider<AudioDeck Function()>(
 /// Windows and in tests nothing interrupts playback.
 final audioFocusProvider = Provider<AudioFocus>((_) => const NoAudioFocus());
 
+/// This device's own playback.
 final audioEngineProvider = Provider<AudioEngine>((ref) {
   final engine = MixingEngine(ref.watch(audioDeckFactoryProvider));
   ref.onDispose(engine.dispose);
   return engine;
 });
 
+/// What the player plays through: this device, or a speaker or TV while
+/// casting (see state/outputs.dart).
+final outputSwitcherProvider = Provider<OutputSwitcher>((ref) {
+  final switcher = OutputSwitcher(ref.watch(audioEngineProvider));
+  ref.onDispose(switcher.dispose);
+  return switcher;
+});
+
 /// Where the current track is, counted from its start even when its
 /// stream was reopened part way in (see [PlayerState.offset]).
 final positionProvider = StreamProvider<Duration>((ref) {
   final offset = ref.watch(playerProvider.select((s) => s.offset));
-  final positions = ref.watch(audioEngineProvider).positionStream;
+  final positions = ref.watch(outputSwitcherProvider).positionStream;
   return offset == Duration.zero ? positions : positions.map((p) => p + offset);
 });
 
@@ -143,7 +155,7 @@ final durationProvider = StreamProvider<Duration?>((ref) {
   if (offset != Duration.zero) {
     return Stream.value(ref.read(playerProvider).current?.duration);
   }
-  return ref.watch(audioEngineProvider).durationStream;
+  return ref.watch(outputSwitcherProvider).durationStream;
 });
 
 final playerProvider = NotifierProvider<PlayerController, PlayerState>(
@@ -158,7 +170,7 @@ final playerProvider = NotifierProvider<PlayerController, PlayerState>(
 /// without the queue moving. Tracks become playable URIs through the
 /// [TrackResolver], which is where v2 offline downloads plug in.
 class PlayerController extends Notifier<PlayerState> implements QueueInfo {
-  late AudioEngine _engine;
+  late OutputSwitcher _engine;
 
   /// Where [restore] left the current track, until playback moves on. The
   /// engine may not report it until the track has loaded.
@@ -200,7 +212,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   @override
   PlayerState build() {
-    _engine = ref.watch(audioEngineProvider);
+    _engine = ref.watch(outputSwitcherProvider);
     final sub = _engine.stateStream.listen((s) {
       if (_swapping) {
         state = state.copyWith(buffering: s.buffering);
@@ -268,6 +280,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// losing the audio to another player or the headphones going away
   /// pauses for good.
   void _onFocus(FocusChange change) {
+    // Calls and other apps on the phone don't stop the speaker or TV.
+    if (_engine.isRemote) return;
     switch (change) {
       case FocusChange.interrupted:
         if (state.playing) {
@@ -313,6 +327,13 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   @override
   double get boostHeadroom => _options.boostHeadroom;
+
+  @override
+  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) {
+    final q = state.queue;
+    if (index < 0 || index >= q.length || !_signedIn) return null;
+    return remoteMediaFor(q[index], ref.read(musicSourceProvider), protocol);
+  }
 
   @override
   Duration? durationAt(int index) {
@@ -398,7 +419,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     final uris = await _uris(tracks);
     // A transcoded stream that is not cached cannot be seeked to where the
     // queue was left, so open it there instead.
-    final reopen = position > Duration.zero
+    final reopen = position > Duration.zero && !_engine.isRemote
         ? _resolver.resolveFrom(tracks[index], _whole(position))
         : null;
     if (reopen != null) uris[index] = reopen;
@@ -698,8 +719,12 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     final i = state.currentIndex;
     final track = state.current;
     if (i == null || track == null) return _engine.seek(d);
+    // A speaker or TV is sent its own stream (see remoteMediaFor), so this
+    // device's transcoding doesn't apply while casting.
     final reopen =
-        state.currentQuality.isOriginal || d < const Duration(seconds: 1)
+        state.currentQuality.isOriginal ||
+            d < const Duration(seconds: 1) ||
+            _engine.isRemote
         ? null
         : _resolver.resolveFrom(track, _whole(d));
     if (reopen == null && state.offset == Duration.zero) {

@@ -18,6 +18,7 @@ import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
 import 'platform/preferences.dart';
 import 'outputs/network_discovery.dart';
+import 'outputs/remote_connector.dart';
 import 'platform/window_geometry.dart';
 import 'state/app_updates.dart';
 import 'state/diagnostics.dart';
@@ -116,8 +117,10 @@ Future<void> main() async {
       // Speakers and TVs to cast to, on Windows and Android.
       if (!kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.windows ||
-              defaultTargetPlatform == TargetPlatform.android))
+              defaultTargetPlatform == TargetPlatform.android)) ...[
         deviceDiscoveryProvider.overrideWithValue(NetworkDeviceDiscovery()),
+        remoteConnectorProvider.overrideWithValue(connectToDevice),
+      ],
     ],
   );
   // The OS media controls (and Android Auto), play reports and the saved

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/audio/audio_engine.dart';
+import 'package:oamp/core/output_device.dart';
+import 'package:oamp/core/remote_player.dart';
 import 'package:oamp/core/models.dart';
 
 /// A deck whose position the test moves by hand.
@@ -151,6 +153,8 @@ class Info implements QueueInfo {
   double headroom = 1;
   @override
   double get boostHeadroom => headroom;
+  @override
+  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) => null;
 }
 
 void main() {
