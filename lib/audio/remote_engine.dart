@@ -76,10 +76,13 @@ class RemoteEngine implements AudioEngine {
     final s = _status.state;
     _state.add(
       EngineState(
-        playing: _completed
-            ? false
-            : s == RemoteState.playing ||
-                  (_wantPlay && s == RemoteState.buffering),
+        // While the listener wants it playing, a device between tracks
+        // (idle or buffering for a moment) still counts as playing, so the
+        // app and the OS media controls don't flicker to paused. On
+        // Android that flicker drops the media service out of the
+        // foreground, and it can't come back while the app is in the
+        // background.
+        playing: !_completed && (_wantPlay || s == RemoteState.playing),
         buffering: s == RemoteState.buffering,
         completed: _completed,
         currentIndex: _index,
@@ -88,10 +91,18 @@ class RemoteEngine implements AudioEngine {
   }
 
   void _onStatus(RemoteStatus s) {
+    final before = _status.state;
     _status = s;
     if (s.ended) {
       _completed = true;
       _wantPlay = false;
+    } else if (s.state != before) {
+      // Paused or resumed with the device's own buttons or remote.
+      if (s.state == RemoteState.paused && before == RemoteState.playing) {
+        _wantPlay = false;
+      } else if (s.state == RemoteState.playing) {
+        _wantPlay = true;
+      }
     }
     _position.add(s.position);
     _duration.add(s.duration ?? _info?.durationAt(_index ?? -1));
@@ -278,13 +289,14 @@ class RemoteEngine implements AudioEngine {
   @override
   Future<void> setCrossfade(Duration duration) async {}
 
+  /// Doesn't wait for listeners to finish: a paused one would hold it up.
   @override
   Future<void> dispose() async {
     for (final s in _subs) {
-      await s.cancel();
+      unawaited(s.cancel());
     }
-    await _state.close();
-    await _position.close();
-    await _duration.close();
+    unawaited(_state.close());
+    unawaited(_position.close());
+    unawaited(_duration.close());
   }
 }

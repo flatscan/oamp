@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models.dart';
 import '../platform/system_controls.dart';
 import 'library.dart';
+import 'outputs.dart';
 import 'car_library.dart';
 import 'player.dart';
 import 'session.dart';
@@ -45,6 +46,7 @@ final systemControlsBridgeProvider = Provider<void>((ref) {
   ref.listen(playerProvider, (_, _) => bridge.push(), fireImmediately: true);
   ref.listen(durationProvider, (_, _) => bridge.push());
   ref.listen(positionProvider, (_, _) => bridge.pushPosition());
+  ref.listen(outputProvider, (_, _) => bridge.push());
 
   final sub = controls.commands.listen(bridge.handle);
   ref.onDispose(sub.cancel);
@@ -86,6 +88,10 @@ class _Bridge {
       CycleRepeatCommand() => _player.cycleRepeat(),
       ToggleLikeCommand() => _toggleLike(),
       JumpToCommand(:final index) => _player.jumpTo(index),
+      SetCastVolumeCommand(:final volume) =>
+        ref.read(outputProvider.notifier).setVolume(volume),
+      StepCastVolumeCommand(:final steps) =>
+        ref.read(outputProvider.notifier).stepVolume(steps),
     });
   }
 
@@ -213,6 +219,13 @@ class _Bridge {
       repeat: s.repeat,
       queue: _entries(s.queue),
       queueIndex: s.currentIndex,
+      castVolume: _castVolume(),
     );
+  }
+
+  double? _castVolume() {
+    final output = ref.read(outputProvider);
+    if (!output.isConnected) return null;
+    return output.volume ?? 0.5;
   }
 }

@@ -31,6 +31,11 @@ class NowPlayingInfo {
   final List<QueueEntry> queue;
   final int? queueIndex;
 
+  /// While playing on a speaker or TV: its volume from 0 to 1, so the
+  /// phone's volume keys and the OS volume panel control the device.
+  /// Null for this device's own playback.
+  final double? castVolume;
+
   const NowPlayingInfo({
     required this.title,
     this.artist,
@@ -46,6 +51,7 @@ class NowPlayingInfo {
     this.repeat = PlaybackRepeat.off,
     this.queue = const [],
     this.queueIndex,
+    this.castVolume,
   });
 
   NowPlayingInfo withArt(Uri? artUri) => NowPlayingInfo(
@@ -63,6 +69,7 @@ class NowPlayingInfo {
     repeat: repeat,
     queue: queue,
     queueIndex: queueIndex,
+    castVolume: castVolume,
   );
 
   /// Same track and metadata, ignoring transport state.
@@ -131,6 +138,19 @@ class ToggleLikeCommand extends MediaCommand {
 class JumpToCommand extends MediaCommand {
   final int index;
   const JumpToCommand(this.index);
+}
+
+/// Set the speaker or TV's volume while casting (the OS volume panel).
+class SetCastVolumeCommand extends MediaCommand {
+  final double volume;
+  const SetCastVolumeCommand(this.volume);
+}
+
+/// Turn the speaker or TV up or down while casting (volume keys): +1 for
+/// a step up, -1 for a step down.
+class StepCastVolumeCommand extends MediaCommand {
+  final int steps;
+  const StepCastVolumeCommand(this.steps);
 }
 
 class SeekCommand extends MediaCommand {

@@ -181,6 +181,44 @@ void main() {
     ]);
   });
 
+  test(
+    'while casting, volume keys turn the speaker or TV up and down',
+    () async {
+      final got = <MediaCommand>[];
+      final sub = controls.commands.listen(got.add);
+      addTearDown(sub.cancel);
+
+      await controls.update(info());
+      expect(
+        handler.androidPlaybackInfo.value,
+        isA<LocalAndroidPlaybackInfo>(),
+      );
+
+      await controls.update(
+        NowPlayingInfo(title: 'Track', playing: true, castVolume: 0.4),
+      );
+      final remote =
+          handler.androidPlaybackInfo.value as RemoteAndroidPlaybackInfo;
+      expect(remote.volumeControlType, AndroidVolumeControlType.absolute);
+      expect(remote.volume / remote.maxVolume, 0.4);
+
+      await handler.androidAdjustRemoteVolume(AndroidVolumeDirection.raise);
+      await handler.androidAdjustRemoteVolume(AndroidVolumeDirection.same);
+      await handler.androidSetRemoteVolume(remote.maxVolume ~/ 2);
+      await pumpEventQueue();
+      expect((got[0] as StepCastVolumeCommand).steps, 1);
+      expect((got[1] as SetCastVolumeCommand).volume, 0.5);
+      expect(got, hasLength(2));
+
+      // Back to this device's own volume when casting ends.
+      await controls.update(info());
+      expect(
+        handler.androidPlaybackInfo.value,
+        isA<LocalAndroidPlaybackInfo>(),
+      );
+    },
+  );
+
   test('removing the app from recents stops only when paused', () async {
     final got = <MediaCommand>[];
     final sub = controls.commands.listen(got.add);

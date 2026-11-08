@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/music_source.dart';
 import '../../core/playback_options.dart';
 import '../../core/track_cache.dart';
+import '../../state/outputs.dart';
 import '../../state/precache.dart';
 import '../../state/session.dart';
 import '../../state/settings.dart';
@@ -127,6 +128,15 @@ class SettingsPage extends ConsumerWidget {
                     setPlayback(playback.copyWith(preventClipping: v)),
               ),
             ],
+            if (ref.watch(castingAvailableProvider))
+              const Padding(
+                padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
+                child: Text(
+                  'Speakers and TVs play tracks at their own loudness: '
+                  'ReplayGain and crossfade only apply on this device.',
+                  style: TextStyle(color: OAmpColors.textMuted, fontSize: 13),
+                ),
+              ),
             SwitchListTile(
               secondary: const Icon(Icons.bug_report_outlined),
               title: const Text('Show ReplayGain on Now Playing'),

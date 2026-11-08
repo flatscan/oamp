@@ -114,6 +114,11 @@ Uri? ssdpLocation(String reply) {
   return location;
 }
 
+final _screen = RegExp(
+  r'\btv\b|television|bravia|webos|tizen|kodi',
+  caseSensitive: false,
+);
+
 /// Reads a UPnP device description. Null unless it is a media renderer
 /// with an AVTransport service, which is what OAmp needs to play to it.
 OutputDevice? dlnaDeviceFrom(String xml, Uri location) {
@@ -144,11 +149,21 @@ OutputDevice? dlnaDeviceFrom(String xml, Uri location) {
     final make = text(device, 'manufacturer');
     final model = text(device, 'modelName');
     final described = [?make, ?model].join(' ');
+    final name = text(device, 'friendlyName') ?? model ?? 'Media renderer';
+    // DLNA doesn't say whether a renderer has a screen; TVs and media
+    // centres name themselves as such.
+    final about = [
+      name,
+      ?model,
+      ?text(device, 'modelDescription'),
+      ?text(device, 'modelNumber'),
+    ].join(' ');
     return OutputDevice(
       id: udn.replaceFirst(RegExp('^uuid:', caseSensitive: false), ''),
       protocol: OutputProtocol.dlna,
-      name: text(device, 'friendlyName') ?? model ?? 'Media renderer',
+      name: name,
       model: described.isEmpty ? null : described,
+      hasScreen: _screen.hasMatch(about),
       host: location.host,
       port: location.port,
       descriptionUrl: location,

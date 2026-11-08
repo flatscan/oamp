@@ -153,6 +153,37 @@ void main() {
       expect(states.last.playing, isTrue);
     });
 
+    test('stays playing while the device changes track', () async {
+      await engine.setQueue(_uris(2));
+      await engine.play();
+      for (final s in [
+        RemoteState.playing,
+        RemoteState.idle,
+        RemoteState.buffering,
+        RemoteState.playing,
+      ]) {
+        device.report(RemoteStatus(state: s));
+        await settle();
+        expect(states.last.playing, isTrue, reason: '$s');
+      }
+    });
+
+    test('follows pause and play from the device itself', () async {
+      await engine.setQueue(_uris(2));
+      await engine.play();
+      device.report(const RemoteStatus(state: RemoteState.playing));
+      await settle();
+      device.report(const RemoteStatus(state: RemoteState.paused));
+      await settle();
+      expect(states.last.playing, isFalse);
+      device.report(const RemoteStatus(state: RemoteState.idle));
+      await settle();
+      expect(states.last.playing, isFalse);
+      device.report(const RemoteStatus(state: RemoteState.playing));
+      await settle();
+      expect(states.last.playing, isTrue);
+    });
+
     test('clear stops the device', () async {
       await engine.setQueue(_uris(2));
       await engine.clear();
@@ -212,16 +243,16 @@ void main() {
       expect(local.playing, isFalse);
     });
 
-    test('volume while casting goes to the device only', () async {
+    test('this device keeps its own volume while casting', () async {
       await switcher.setVolume(0.8);
       await switcher.setQueue(_uris(1));
       await settle();
       await switcher.switchTo(engine);
       await switcher.setVolume(0.3);
-      expect(device.volume, 0.3);
+      expect(device.volume, isNull, reason: 'the device is set separately');
       expect(local.volume, 0.8);
       await switcher.switchTo(null);
-      expect(local.volume, 0.8);
+      expect(local.volume, 0.3);
     });
 
     test('streams follow the active output', () async {

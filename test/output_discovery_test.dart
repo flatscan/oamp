@@ -250,6 +250,26 @@ void main() {
       expect(d.model, 'XBMC Foundation Kodi');
       expect(d.host, '192.168.1.30');
       expect(d.port, 1528);
+      expect(d.hasScreen, isTrue, reason: 'Kodi drives a screen');
+    });
+
+    test('tells TVs from speakers by how they describe themselves', () {
+      String describe(String name, String model) =>
+          '<root xmlns="urn:schemas-upnp-org:device-1-0"><device>'
+          '<deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>'
+          '<friendlyName>$name</friendlyName><modelName>$model</modelName>'
+          '<serviceList><service><serviceType>'
+          'urn:schemas-upnp-org:service:AVTransport:1</serviceType>'
+          '</service></serviceList></device></root>';
+      final at = Uri.parse('http://h/d.xml');
+      expect(
+        dlnaDeviceFrom(describe('[TV] Living room', 'QE55Q70'), at)!.hasScreen,
+        isTrue,
+      );
+      expect(
+        dlnaDeviceFrom(describe('Kitchen', 'Speaker One'), at)!.hasScreen,
+        isFalse,
+      );
     });
 
     test('skips renderers without AVTransport, and bad XML', () {

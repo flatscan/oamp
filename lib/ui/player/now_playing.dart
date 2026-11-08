@@ -20,6 +20,7 @@ import '../glyphs.dart';
 import '../mode_switch.dart';
 import '../rating_stars.dart';
 import 'art_colors.dart';
+import 'cast_button.dart';
 import 'controls.dart';
 import 'lyrics_view.dart';
 import 'queue_list.dart';
@@ -220,6 +221,13 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
             left: 8,
             right: 8,
             child: _ArtOverlayBar(onClose: onClose),
+          )
+        else
+          // Phones: the same spot as on the desktop, top left.
+          Positioned(
+            top: 8 + topInset,
+            left: 8,
+            child: const CastButton(overArt: true),
           ),
       ],
     );
@@ -306,8 +314,9 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
   }
 }
 
-/// Buttons over the top of the artwork: close in the middle (when shown
-/// full-screen) and the mode switch at the top right. On Windows the
+/// Buttons over the top of the artwork: the cast button at the top left,
+/// close in the middle (when shown full-screen) and the mode switch at the
+/// top right. On Windows the
 /// strip also moves the window, for when the title bar is hidden.
 class _ArtOverlayBar extends StatelessWidget {
   final VoidCallback? onClose;
@@ -319,7 +328,7 @@ class _ArtOverlayBar extends StatelessWidget {
       height: ModeSwitchButton.size,
       child: Row(
         children: [
-          const SizedBox(width: ModeSwitchButton.size),
+          const CastButton(overArt: true),
           Expanded(
             child: Center(
               child: onClose == null
