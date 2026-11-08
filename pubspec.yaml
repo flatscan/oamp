@@ -64,6 +64,8 @@ dependencies:
   share_plus: ^13.3.1
   # OS version and phone model for diagnostics (lib/platform/device_details.dart).
   device_info_plus: ^13.3.0
+  # DLNA device descriptions and control replies (lib/outputs/dlna_discovery.dart).
+  xml: ^7.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_updates.dart';
 import '../../state/app_updates.dart';
 import '../../state/diagnostics.dart';
+import '../browser.dart';
+import '../nearby_devices_page.dart';
 import '../widgets.dart';
 
 /// The bottom of Settings: the version, the update check, and diagnostics
@@ -33,6 +35,8 @@ class AboutSection extends ConsumerWidget {
           leading: const Icon(Icons.info_outline_rounded),
           title: const Text('OAmp'),
           subtitle: Text(build.label),
+          // Hidden test page for casting discovery.
+          onLongPress: () => openPage(const NearbyDevicesPage()),
         ),
         SwitchListTile(
           secondary: const Icon(Icons.update_rounded),
