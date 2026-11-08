@@ -170,7 +170,12 @@ class DlnaPlayer implements RemotePlayer {
     });
     if (play || position > Duration.zero) {
       await _transportCall('Play', {'Speed': '1'});
-      if (position > const Duration(seconds: 1)) await _seek(position);
+      if (position > const Duration(seconds: 1)) {
+        // Many renderers (Samsung TVs among them) refuse a seek until the
+        // track is actually playing.
+        await _untilPlaying();
+        await _trySeek(position);
+      }
       if (!play) await _transportCall('Pause');
     }
     _state = play ? RemoteState.playing : RemoteState.paused;
@@ -212,7 +217,37 @@ class DlnaPlayer implements RemotePlayer {
   });
 
   @override
-  Future<void> seek(Duration position) => _command(() => _seek(position));
+  Future<void> seek(Duration position) => _command(() => _trySeek(position));
+
+  /// Waits, up to a few seconds, for the renderer to report playing.
+  Future<void> _untilPlaying() async {
+    for (var i = 0; i < 20; i++) {
+      try {
+        final info = await _transportCall('GetTransportInfo');
+        if (_text(info, 'CurrentTransportState') == 'PLAYING') return;
+      } on DlnaFault {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  /// Seeks, trying once more after a moment if the renderer refuses. A
+  /// renderer that still won't seek carries on from where it is.
+  Future<void> _trySeek(Duration position) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await _seek(position);
+        return;
+      } on DlnaFault catch (e) {
+        if (attempt > 0) {
+          debugPrint('DLNA: the renderer would not seek ($e)');
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+  }
 
   Future<void> _seek(Duration position) async {
     _position = position;

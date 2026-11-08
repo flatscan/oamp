@@ -32,6 +32,11 @@ class FakeCastDevice {
   double currentTime = 0;
   bool stopped = false;
 
+  /// The media session, new with every load. It starts at an old session
+  /// left over from before, as a device that played earlier reports.
+  int session = 1;
+  final rejected = <String>[];
+
   int get port => _server.port;
 
   Future<void> start() async {
@@ -84,7 +89,7 @@ class FakeCastDevice {
   };
 
   Map<String, dynamic> mediaStatus() => {
-    'mediaSessionId': 7,
+    'mediaSessionId': session,
     'playerState': playerState,
     if (playerState == 'IDLE') 'idleReason': 'FINISHED',
     'currentTime': currentTime,
@@ -137,8 +142,19 @@ class FakeCastDevice {
     }
     if (m.namespace != CastChannel.mediaNs) return;
     final p = m.payload;
+    final sent = p['mediaSessionId'];
+    if (sent != null && sent != session) {
+      rejected.add(m.type!);
+      send(CastChannel.mediaNs, {
+        'type': 'INVALID_REQUEST',
+        'requestId': id,
+        'reason': 'INVALID_MEDIA_SESSION_ID',
+      });
+      return;
+    }
     switch (m.type) {
       case 'QUEUE_LOAD':
+        session++;
         items = [for (final _ in p['items'] as List) _nextItemId++];
         currentItem = items.first;
         currentTime = (p['currentTime'] as num).toDouble();
@@ -194,6 +210,7 @@ void main() {
   });
 
   tearDown(() async {
+    expect(fake.rejected, isEmpty, reason: 'requests with an old session');
     await player.close();
     await fake.close();
   });

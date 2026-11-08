@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_service_platform_interface/audio_service_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -198,14 +199,22 @@ class OampAudioHandler extends BaseAudioHandler {
   }
 
   static void _notifyRootChanged() {
-    try {
-      // The handler-level replacement (subscribeToChildren) only reaches
-      // folders a car has already loaded once through the handler.
-      // ignore: deprecated_member_use
-      unawaited(AudioServiceBackground.notifyChildrenChanged());
-    } catch (e) {
-      debugPrint('Could not refresh Android Auto: $e');
-    }
+    // The handler-level replacement (subscribeToChildren) only reaches
+    // folders a car has already loaded once through the handler, and the
+    // old AudioServiceBackground call sends no options, which the Android
+    // side refuses. Ask the platform directly, with empty options.
+    unawaited(
+      AudioServicePlatform.instance
+          .notifyChildrenChanged(
+            const NotifyChildrenChangedRequest(
+              parentMediaId: AudioService.browsableRootId,
+              options: {},
+            ),
+          )
+          .catchError((Object e) {
+            debugPrint('Could not refresh Android Auto: $e');
+          }),
+    );
   }
 
   /// Cover art for Android Auto, asked for by ArtworkProvider (Kotlin) on

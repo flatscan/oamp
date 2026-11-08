@@ -34,9 +34,14 @@ const _description = '''<?xml version="1.0"?>
 
 /// A renderer answering SOAP calls from memory.
 class FakeRenderer {
-  FakeRenderer({this.supportsNext = true});
+  FakeRenderer({this.supportsNext = true, this.slowStart = false});
 
   final bool supportsNext;
+
+  /// Takes a moment to start playing, and refuses to seek until it has,
+  /// as Samsung TVs do.
+  final bool slowStart;
+  int _starting = 0;
   final calls = <String>[];
   final args = <String, Map<String, String>>{};
   String? uri;
@@ -69,14 +74,23 @@ class FakeRenderer {
         if (!supportsNext) return http.Response('<fault/>', 500);
         nextUri = a['NextURI'];
       case 'Play':
-        state = 'PLAYING';
+        if (slowStart && state != 'PAUSED_PLAYBACK') {
+          state = 'TRANSITIONING';
+          _starting = 2;
+        } else {
+          state = 'PLAYING';
+        }
       case 'Pause':
         state = 'PAUSED_PLAYBACK';
       case 'Stop':
         state = 'STOPPED';
       case 'Seek':
+        if (slowStart && state != 'PLAYING') {
+          return http.Response('<fault/>', 500);
+        }
         relTime = a['Target']!;
       case 'GetTransportInfo':
+        if (state == 'TRANSITIONING' && --_starting <= 0) state = 'PLAYING';
         out = '<CurrentTransportState>$state</CurrentTransportState>';
       case 'GetPositionInfo':
         out =
@@ -175,6 +189,35 @@ void main() {
     expect(r.state, 'PAUSED_PLAYBACK');
     expect(r.relTime, '0:00:05');
   });
+
+  test('waits for a slow renderer to start before seeking', () async {
+    final r = FakeRenderer(slowStart: true);
+    final player = await DlnaPlayer.connect(_device, client: r.client);
+    addTearDown(player.close);
+    await player.load(_m(0), position: const Duration(seconds: 4));
+    expect(r.relTime, '0:00:04');
+    expect(r.state, 'PLAYING');
+
+    await player.load(_m(1), position: const Duration(seconds: 6), play: false);
+    expect(r.relTime, '0:00:06');
+    expect(r.state, 'PAUSED_PLAYBACK');
+  });
+
+  test('a renderer that never seeks still plays', () async {
+    final r = FakeRenderer(slowStart: true);
+    final client = MockClient((req) async {
+      if (req.body.contains('u:GetTransportInfo')) {
+        // Never reports playing, so every seek is refused.
+        r.state = 'TRANSITIONING';
+      }
+      return r.handle(req);
+    });
+    final player = await DlnaPlayer.connect(_device, client: client);
+    addTearDown(player.close);
+    await player.load(_m(0), position: const Duration(seconds: 4));
+    expect(r.uri, _m(0).url.toString());
+    await player.seek(const Duration(seconds: 8));
+  }, timeout: const Timeout(Duration(seconds: 20)));
 
   test(
     'starts the next track itself when the renderer cannot line it up',

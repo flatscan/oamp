@@ -310,6 +310,14 @@ class CastPlayer implements RemotePlayer {
       if (reply.type != 'MEDIA_STATUS') {
         throw StateError('The device refused the track (${reply.type})');
       }
+      // The reply carries the new media session. Take it now: the same
+      // message reaches the status listener only after this resumes, and
+      // the next request would still carry the old session's id.
+      final list = reply.payload['status'];
+      if (list is List && list.isNotEmpty && list.first is Map) {
+        final id = ((list.first as Map)['mediaSessionId'] as num?)?.toInt();
+        if (id != null) _mediaSessionId = id;
+      }
       await _refreshItems();
     } finally {
       if (identical(_loading, loading)) _loading = null;
