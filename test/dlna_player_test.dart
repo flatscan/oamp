@@ -153,7 +153,11 @@ void main() {
     );
     final res = doc.findAllElements('res').single;
     expect(res.innerText, 'http://server/stream/1?a=1&b=2');
-    expect(res.getAttribute('protocolInfo'), 'http-get:*:audio/flac:*');
+    expect(
+      res.getAttribute('protocolInfo'),
+      'http-get:*:audio/flac:DLNA.ORG_OP=01;DLNA.ORG_CI=0;'
+      'DLNA.ORG_FLAGS=01700000000000000000000000000000',
+    );
     expect(res.getAttribute('duration'), '0:00:10.000');
   });
 
@@ -188,6 +192,16 @@ void main() {
     await player.load(_m(0), position: const Duration(seconds: 5), play: false);
     expect(r.state, 'PAUSED_PLAYBACK');
     expect(r.relTime, '0:00:05');
+  });
+
+  test('transcoded streams are not offered as seekable', () {
+    final m = RemoteMedia(
+      url: Uri.parse('http://server/stream/1'),
+      contentType: 'audio/mpeg',
+      title: 'T',
+      transcoded: true,
+    );
+    expect(protocolInfo(m), contains('DLNA.ORG_OP=00;DLNA.ORG_CI=1'));
   });
 
   test('waits for a slow renderer to start before seeking', () async {

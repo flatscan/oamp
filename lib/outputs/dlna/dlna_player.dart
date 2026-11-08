@@ -452,9 +452,22 @@ String didl(RemoteMedia m) {
       '${m.album == null ? '' : '<upnp:album>${e(m.album!)}</upnp:album>'}'
       '$art'
       '<upnp:class>object.item.audioItem.musicTrack</upnp:class>'
-      '<res protocolInfo="http-get:*:${m.contentType}:*"$duration>'
+      '<res protocolInfo="${protocolInfo(m)}"$duration>'
       '${e(m.url.toString())}</res>'
       '</item></DIDL-Lite>';
+}
+
+/// How a renderer may fetch [m]. Without the DLNA.ORG_OP flags many
+/// renderers (Samsung TVs among them) assume the server can't seek and
+/// refuse every seek. Original files are served with byte ranges;
+/// transcoded streams are not.
+String protocolInfo(RemoteMedia m) {
+  final op = m.transcoded ? '00' : '01';
+  final ci = m.transcoded ? '1' : '0';
+  // Streaming transfer mode, background transfer, DLNA 1.5.
+  const flags = '01700000000000000000000000000000';
+  return 'http-get:*:${m.contentType}:'
+      'DLNA.ORG_OP=$op;DLNA.ORG_CI=$ci;DLNA.ORG_FLAGS=$flags';
 }
 
 String _escape(String s) => s

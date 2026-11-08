@@ -26,6 +26,9 @@ class RemoteMedia {
   final Uri? artwork;
   final Duration? duration;
 
+  /// Transcoded by the server, so the stream usually can't be seeked.
+  final bool transcoded;
+
   const RemoteMedia({
     required this.url,
     required this.contentType,
@@ -34,6 +37,7 @@ class RemoteMedia {
     this.album,
     this.artwork,
     this.duration,
+    this.transcoded = false,
   });
 
   @override
@@ -67,7 +71,9 @@ const _castFormats = {
 
 const _dlnaFormats = {
   'mp3': 'audio/mpeg',
-  'flac': 'audio/flac',
+  // The type DLNA renderers list for FLAC; some (Samsung TVs) don't list
+  // audio/flac at all.
+  'flac': 'audio/x-flac',
   'm4a': 'audio/mp4',
   'aac': 'audio/aac',
   'wav': 'audio/wav',
@@ -101,6 +107,7 @@ RemoteMedia remoteMediaFor(
     album: track.album,
     artwork: source.coverArtUrl(track.coverArt, size: 600),
     duration: track.duration,
+    transcoded: type == null,
   );
 }
 

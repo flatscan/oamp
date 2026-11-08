@@ -69,6 +69,8 @@ void main() {
     // A format the device can't play comes transcoded from the server.
     expect(d.next!.url, source.streamUrl('t1', quality: remoteTranscode));
     expect(d.next!.contentType, 'audio/mpeg');
+    expect(d.next!.transcoded, isTrue);
+    expect(d.current!.transcoded, isFalse);
     expect(local.queue, isEmpty);
   });
 
@@ -144,5 +146,7 @@ void main() {
     expect(devices.first.closedWithStop, isTrue);
     expect(output().device, tv);
     expect(devices.last.current!.url, source.streamUrl('t0'));
+    // The FLAC type DLNA renderers list.
+    expect(devices.last.current!.contentType, 'audio/x-flac');
   });
 }
