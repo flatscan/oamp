@@ -78,6 +78,12 @@ class DlnaPlayer implements RemotePlayer {
   double? _volume;
   bool _ended = false;
   bool _wasPlaying = false;
+
+  /// A track loaded but not started, and where to start it. Renderers
+  /// differ on what they allow before playing (Samsung TVs refuse Pause
+  /// unless playing), so a paused load only sets the track and the seek
+  /// waits for [play].
+  Duration? _holdAt;
   final _sinceLoad = Stopwatch();
   bool _polling = false;
   int _failures = 0;
@@ -151,6 +157,7 @@ class DlnaPlayer implements RemotePlayer {
     _next = null;
     _ended = false;
     _wasPlaying = false;
+    _holdAt = null;
     _sinceLoad
       ..reset()
       ..start();
@@ -168,18 +175,12 @@ class DlnaPlayer implements RemotePlayer {
       'CurrentURI': current.url.toString(),
       'CurrentURIMetaData': didl(current),
     });
-    if (play || position > Duration.zero) {
-      await _transportCall('Play', {'Speed': '1'});
-      if (position > const Duration(seconds: 1)) {
-        // Many renderers (Samsung TVs among them) refuse a seek until the
-        // track is actually playing.
-        await _untilPlaying();
-        await _trySeek(position);
-      }
-      if (!play) await _transportCall('Pause');
+    if (play) {
+      await _start(position);
+    } else {
+      _holdAt = position;
+      _state = RemoteState.paused;
     }
-    _state = play ? RemoteState.playing : RemoteState.paused;
-    _wasPlaying = play;
     await _lineUp(next);
   });
 
@@ -200,8 +201,25 @@ class DlnaPlayer implements RemotePlayer {
     }
   }
 
+  /// Plays the loaded track from [from].
+  Future<void> _start(Duration from) async {
+    _holdAt = null;
+    await _transportCall('Play', {'Speed': '1'});
+    if (from > const Duration(seconds: 1)) {
+      // Many renderers (Samsung TVs among them) refuse a seek until the
+      // track is actually playing.
+      await _untilPlaying();
+      await _trySeek(from);
+    }
+    _state = RemoteState.playing;
+    _wasPlaying = true;
+    _publish();
+  }
+
   @override
   Future<void> play() => _command(() async {
+    final hold = _holdAt;
+    if (hold != null) return _start(hold);
     await _transportCall('Play', {'Speed': '1'});
     _state = RemoteState.playing;
     _wasPlaying = true;
@@ -210,14 +228,29 @@ class DlnaPlayer implements RemotePlayer {
 
   @override
   Future<void> pause() => _command(() async {
-    await _transportCall('Pause');
+    if (_holdAt == null) {
+      try {
+        await _transportCall('Pause');
+      } on DlnaFault catch (e) {
+        // Not playing, so there was nothing to pause.
+        debugPrint('DLNA: the renderer would not pause ($e)');
+      }
+    }
     _state = RemoteState.paused;
     _wasPlaying = false;
     _publish();
   });
 
   @override
-  Future<void> seek(Duration position) => _command(() => _trySeek(position));
+  Future<void> seek(Duration position) => _command(() async {
+    if (_holdAt != null) {
+      _holdAt = position;
+      _position = position;
+      _publish();
+      return;
+    }
+    await _trySeek(position);
+  });
 
   /// Waits, up to a few seconds, for the renderer to report playing.
   Future<void> _untilPlaying() async {
@@ -328,6 +361,14 @@ class DlnaPlayer implements RemotePlayer {
         'TRANSITIONING' => RemoteState.buffering,
         _ => RemoteState.idle,
       };
+      final hold = _holdAt;
+      if (hold != null && _state != RemoteState.playing) {
+        // Loaded and waiting for play: the renderer reports stopped at 0.
+        _state = RemoteState.paused;
+        _position = hold;
+      } else if (hold != null) {
+        _holdAt = null; // started from the renderer's own remote
+      }
       if (_state == RemoteState.playing) {
         _wasPlaying = true;
         _ended = false;

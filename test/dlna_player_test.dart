@@ -38,8 +38,8 @@ class FakeRenderer {
 
   final bool supportsNext;
 
-  /// Takes a moment to start playing, and refuses to seek until it has,
-  /// as Samsung TVs do.
+  /// Takes a moment to start playing, and refuses to seek or pause until
+  /// it has, as Samsung TVs do.
   final bool slowStart;
   int _starting = 0;
   final calls = <String>[];
@@ -81,6 +81,9 @@ class FakeRenderer {
           state = 'PLAYING';
         }
       case 'Pause':
+        if (slowStart && state != 'PLAYING') {
+          return http.Response('<fault/>', 500);
+        }
         state = 'PAUSED_PLAYBACK';
       case 'Stop':
         state = 'STOPPED';
@@ -185,13 +188,43 @@ void main() {
     expect(r.calls.last, 'Stop');
   });
 
-  test('loading paused at a spot leaves the renderer paused there', () async {
-    final r = FakeRenderer();
+  test('loading paused holds the track, and play starts it there', () async {
+    final r = FakeRenderer(slowStart: true);
     final player = await DlnaPlayer.connect(_device, client: r.client);
     addTearDown(player.close);
+    final paused = player.status.firstWhere(
+      (s) => s.state == RemoteState.paused,
+    );
     await player.load(_m(0), position: const Duration(seconds: 5), play: false);
+    expect(r.uri, _m(0).url.toString());
+    expect(r.state, 'STOPPED');
+    expect(r.calls, isNot(contains('Pause')));
+    expect((await paused).position, const Duration(seconds: 5));
+
+    // Moving while held only changes where it will start.
+    await player.seek(const Duration(seconds: 7));
+    expect(r.calls, isNot(contains('Seek')));
+    // Polling doesn't take the stopped renderer as the end, or as 0.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final held = await player.status.first;
+    expect(held.state, RemoteState.paused);
+    expect(held.ended, isFalse);
+    expect(held.position, const Duration(seconds: 7));
+
+    await player.play();
+    expect(r.state, 'PLAYING');
+    expect(r.relTime, '0:00:07');
+    await player.pause();
     expect(r.state, 'PAUSED_PLAYBACK');
-    expect(r.relTime, '0:00:05');
+  });
+
+  test('a refused pause does not fail', () async {
+    final r = FakeRenderer(slowStart: true);
+    final player = await DlnaPlayer.connect(_device, client: r.client);
+    addTearDown(player.close);
+    await player.load(_m(0));
+    r.state = 'STOPPED';
+    await player.pause();
   });
 
   test('transcoded streams are not offered as seekable', () {
@@ -211,10 +244,6 @@ void main() {
     await player.load(_m(0), position: const Duration(seconds: 4));
     expect(r.relTime, '0:00:04');
     expect(r.state, 'PLAYING');
-
-    await player.load(_m(1), position: const Duration(seconds: 6), play: false);
-    expect(r.relTime, '0:00:06');
-    expect(r.state, 'PAUSED_PLAYBACK');
   });
 
   test('a renderer that never seeks still plays', () async {
