@@ -34,7 +34,15 @@ jobs:
       - run: flutter pub get
       # The run number as the version code, so each CI build installs over
       # the previous one. OAMP_CI_RUN names it "Test build #N" in Settings.
-      - run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=OAMP_CI_RUN=${{ github.run_number }}
+      - name: Build APK (retry on transient network failures)
+        run: |
+          for attempt in 1 2 3; do
+            flutter build apk --release --build-number=${{ github.run_number }} --dart-define=OAMP_CI_RUN=${{ github.run_number }} && break
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep 15
+          done
       - name: Name the APK
         run: |
           mkdir -p build/apk
