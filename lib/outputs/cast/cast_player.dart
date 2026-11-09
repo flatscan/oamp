@@ -142,13 +142,15 @@ class CastPlayer implements RemotePlayer {
     }
   }
 
-  Future<CastMessage> _mediaRequest(Map<String, dynamic> body) =>
-      _channel.request(_transportId!, CastChannel.mediaNs, {
-        ...body,
-        if (_mediaSessionId != null &&
-            !const {'LOAD', 'QUEUE_LOAD', 'GET_STATUS'}.contains(body['type']))
-          'mediaSessionId': _mediaSessionId,
-      });
+  Future<CastMessage> _mediaRequest(
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 10),
+  }) => _channel.request(_transportId!, CastChannel.mediaNs, {
+    ...body,
+    if (_mediaSessionId != null &&
+        !const {'LOAD', 'QUEUE_LOAD', 'GET_STATUS'}.contains(body['type']))
+      'mediaSessionId': _mediaSessionId,
+  }, timeout: timeout);
 
   void _onMessage(CastMessage m) {
     if (m.namespace == CastChannel.receiverNs && m.type == 'RECEIVER_STATUS') {
@@ -333,7 +335,9 @@ class CastPlayer implements RemotePlayer {
           'startIndex': 0,
           'currentTime': position.inMilliseconds / 1000,
           'repeatMode': 'REPEAT_OFF',
-        }),
+          // A device that can't fetch the file says so with an error
+          // status (ending this early), often only after ten seconds.
+        }, timeout: const Duration(seconds: 30)),
         failed.future,
       ]);
       if (reply.type != 'MEDIA_STATUS') {
