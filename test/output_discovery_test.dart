@@ -544,4 +544,63 @@ void main() {
     expect(found.single.host, '192.168.69.56');
     expect(found.single.port, 8009);
   });
+
+  group('MulticastListener', () {
+    test(
+      'keeps its socket open between scans and closes it when idle',
+      () async {
+        final listener = MulticastListener(
+          group: InternetAddress('224.0.0.251'),
+          port: 0,
+          interfaces: () async => const [],
+          idleTimeout: const Duration(milliseconds: 300),
+        );
+        addTearDown(listener.dispose);
+        final query = buildPtrQuery(CastFinder.service);
+
+        expect(listener.isOpen, isFalse);
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        // Still joined after the scan, so the next one hears at once.
+        expect(listener.isOpen, isTrue);
+
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        expect(listener.isOpen, isTrue);
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(listener.isOpen, isFalse);
+
+        // And it opens again for the next scan.
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        expect(listener.isOpen, isTrue);
+      },
+    );
+
+    test('dispose closes the socket and ends later scans quietly', () async {
+      final listener = MulticastListener(
+        group: InternetAddress('224.0.0.251'),
+        port: 0,
+        interfaces: () async => const [],
+      );
+      final query = buildPtrQuery(CastFinder.service);
+      await listener
+          .listen(query, listenFor: const Duration(milliseconds: 50))
+          .toList();
+      expect(listener.isOpen, isTrue);
+      await listener.dispose();
+      expect(listener.isOpen, isFalse);
+      expect(
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 50))
+            .toList(),
+        isEmpty,
+      );
+      expect(listener.isOpen, isFalse);
+    });
+  });
 }

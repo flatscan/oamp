@@ -98,6 +98,7 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
   Future<void> dispose() async {
     _disposed = true;
     _dlna.dispose();
+    await _cast.dispose();
     await _out.close();
   }
 }

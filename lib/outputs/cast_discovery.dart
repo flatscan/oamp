@@ -29,6 +29,10 @@ class CastFinder {
   final UdpQuery _query;
   final MulticastListener? _listener;
 
+  /// Closes the shared-port socket, which otherwise stays open a while
+  /// after the last scan.
+  Future<void> dispose() async => _listener?.dispose();
+
   /// Each device as it answers. A device may answer more than once.
   Stream<OutputDevice> find({Duration listenFor = const Duration(seconds: 3)}) {
     final question = buildPtrQuery(service);
