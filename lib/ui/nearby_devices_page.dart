@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/output_device.dart';
 import '../state/outputs.dart';
+import 'player/cast_button.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// A test page listing the speakers and TVs OAmp can find, opened by a
-/// long press on the version in Settings. It is there to check discovery
-/// on real networks before casting itself is built.
+/// A diagnostics page listing the speakers and TVs OAmp can find, with
+/// their protocol, model and address, opened by a long press on the
+/// version in Settings. The cast button is the everyday way to cast.
 class NearbyDevicesPage extends ConsumerStatefulWidget {
   const NearbyDevicesPage({super.key});
 
@@ -61,8 +62,7 @@ class _NearbyDevicesPageState extends ConsumerState<NearbyDevicesPage> {
                   ? 'Nothing found. Check this device is on the same network '
                         'as your speakers and TVs.'
                   : 'Found ${devices.length}. Tap one to play there; tap '
-                        'it again to bring playback back here. A test page '
-                        'until the cast button arrives.',
+                        'it again to bring playback back here.',
               style: const TextStyle(color: OAmpColors.textMuted),
             ),
           ),
@@ -103,14 +103,7 @@ class _DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = device.isGroup
-        ? Icons.speaker_group_rounded
-        : device.hasScreen
-        ? Icons.tv_rounded
-        : switch (device.protocol) {
-            OutputProtocol.cast => Icons.cast_rounded,
-            OutputProtocol.dlna => Icons.speaker_rounded,
-          };
+    final icon = deviceIcon(device);
     return ListTile(
       leading: Icon(icon, color: phase == null ? null : oampAccent),
       onTap: onTap,

@@ -55,6 +55,14 @@ void main() {
     expect(calls().where((c) => c.startsWith('playing:')), isEmpty);
   });
 
+  test('a report the server can\'t take fails quietly', () async {
+    source.reportsFail = true;
+    await player().playTracks(tracks);
+    await settle();
+    await settle();
+    expect(calls(), ['state:starting:a:0', 'state:playing:a:0']);
+  });
+
   test('a seek is reported at once', () async {
     await player().playTracks(tracks);
     await settle();

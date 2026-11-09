@@ -148,13 +148,34 @@ class OampAudioHandler extends BaseAudioHandler {
     }
     if (!identical(previous?.queue, info.queue)) _showQueue(info);
     playbackState.add(stateFor(info, queueStart: _queueStart));
+    final volume = playbackInfoFor(info);
+    if (volume != androidPlaybackInfo.valueOrNull) {
+      androidPlaybackInfo.add(volume);
+    }
   }
+
+  /// While casting, the session reports remote playback, so the volume
+  /// keys and the volume panel turn the speaker or TV up and down instead
+  /// of the phone.
+  @visibleForTesting
+  static AndroidPlaybackInfo playbackInfoFor(NowPlayingInfo info) {
+    final cast = info.castVolume;
+    if (cast == null) return LocalAndroidPlaybackInfo();
+    return RemoteAndroidPlaybackInfo(
+      volumeControlType: AndroidVolumeControlType.absolute,
+      maxVolume: _volumeSteps,
+      volume: (cast.clamp(0.0, 1.0) * _volumeSteps).round(),
+    );
+  }
+
+  static const _volumeSteps = 20;
 
   /// Nothing is loaded: an idle session stops the service and removes the
   /// notification.
   void hide() {
     last = null;
     _queueStart = 0;
+    androidPlaybackInfo.add(LocalAndroidPlaybackInfo());
     queue.add(const []);
     playbackState.add(
       PlaybackState(processingState: AudioProcessingState.idle),
@@ -464,6 +485,17 @@ class OampAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> seek(Duration position) async => _send(SeekCommand(position));
+
+  @override
+  Future<void> androidSetRemoteVolume(int volumeIndex) async =>
+      _send(SetCastVolumeCommand(volumeIndex / _volumeSteps));
+
+  @override
+  Future<void> androidAdjustRemoteVolume(
+    AndroidVolumeDirection direction,
+  ) async {
+    if (direction.index != 0) _send(StepCastVolumeCommand(direction.index));
+  }
 
   @override
   Future<dynamic> customAction(

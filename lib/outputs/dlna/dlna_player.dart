@@ -171,10 +171,15 @@ class DlnaPlayer implements RemotePlayer {
     } on Object {
       // Nothing was playing.
     }
-    await _transportCall('SetAVTransportURI', {
-      'CurrentURI': current.url.toString(),
-      'CurrentURIMetaData': didl(current),
-    });
+    try {
+      await _transportCall('SetAVTransportURI', {
+        'CurrentURI': current.url.toString(),
+        'CurrentURIMetaData': didl(current),
+      });
+    } on DlnaFault catch (e) {
+      // Renderers answer a format they can't play with a fault here.
+      throw RemoteMediaError('$e');
+    }
     if (play) {
       await _start(position);
     } else {
@@ -231,9 +236,15 @@ class DlnaPlayer implements RemotePlayer {
     if (_holdAt == null) {
       try {
         await _transportCall('Pause');
-      } on DlnaFault catch (e) {
-        // Not playing, so there was nothing to pause.
-        debugPrint('DLNA: the renderer would not pause ($e)');
+      } on DlnaFault {
+        // Still starting the track (Samsung TVs refuse Pause until they
+        // play): try once more in a moment.
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        try {
+          await _transportCall('Pause');
+        } on DlnaFault catch (e) {
+          debugPrint('DLNA: the renderer would not pause ($e)');
+        }
       }
     }
     _state = RemoteState.paused;

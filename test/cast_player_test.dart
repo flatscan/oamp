@@ -37,6 +37,11 @@ class FakeCastDevice {
   int session = 1;
   final rejected = <String>[];
 
+  /// Content types the speaker can't play: it reports an error a moment
+  /// after loading and never answers the load, as a Nest Mini did.
+  Set<String> refuses = {};
+  final List<String> types = [];
+
   int get port => _server.port;
 
   Future<void> start() async {
@@ -98,6 +103,8 @@ class FakeCastDevice {
       for (final i in items) {'itemId': i},
     ],
     'media': {'duration': 180},
+    // Real receivers report the stream's own level here, not the speaker's.
+    'volume': {'level': 1.0, 'muted': false},
   };
 
   /// Pretends the current track finished and the next began.
@@ -151,6 +158,24 @@ class FakeCastDevice {
         'reason': 'INVALID_MEDIA_SESSION_ID',
       });
       return;
+    }
+    if (m.type == 'QUEUE_LOAD') {
+      final type =
+          ((p['items'] as List).first['media'] as Map)['contentType'] as String;
+      if (refuses.contains(type)) {
+        session++;
+        Timer(const Duration(milliseconds: 50), () {
+          playerState = 'IDLE';
+          send(CastChannel.mediaNs, {
+            'type': 'MEDIA_STATUS',
+            'requestId': 0,
+            'status': [
+              {...mediaStatus(), 'idleReason': 'ERROR'},
+            ],
+          });
+        });
+        return;
+      }
     }
     switch (m.type) {
       case 'QUEUE_LOAD':
@@ -226,6 +251,17 @@ void main() {
     expect((await status).volume, 0.5);
   });
 
+  test(
+    "the stream's volume in media status isn't taken as the speaker's",
+    () async {
+      await player.load(_m(0));
+      await settle();
+      expect(fake.received.map((m) => m.type), contains('QUEUE_LOAD'));
+      final last = await player.status.first;
+      expect(last.volume, 0.5);
+    },
+  );
+
   test('loads two tracks and lines up the next when it moves on', () async {
     await player.load(
       _m(0),
@@ -276,6 +312,38 @@ void main() {
     final volume = fake.next('SET_VOLUME');
     await player.setVolume(0.25);
     expect(((await volume).payload['volume'] as Map)['level'], 0.25);
+  });
+
+  test('a file the speaker can\'t play fails the load at once', () async {
+    fake.refuses = {'audio/flac'};
+    final watch = Stopwatch()..start();
+    await expectLater(player.load(_m(0)), throwsA(isA<RemoteMediaError>()));
+    expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+    // A file it can play loads fine after.
+    await player.load(
+      RemoteMedia(
+        url: Uri.parse('http://server/stream/0?format=mp3'),
+        contentType: 'audio/mpeg',
+        title: 'Track 0',
+      ),
+    );
+    expect(fake.playerState, 'PLAYING');
+  });
+
+  test('a lined-up track the speaker can\'t play is reported', () async {
+    await player.load(_m(0), next: _m(1));
+    final failed = player.status.firstWhere((s) => s.failed);
+    fake
+      ..moveOn()
+      ..playerState = 'IDLE'
+      ..send(CastChannel.mediaNs, {
+        'type': 'MEDIA_STATUS',
+        'requestId': 0,
+        'status': [
+          {...fake.mediaStatus(), 'idleReason': 'ERROR'},
+        ],
+      });
+    await failed.timeout(const Duration(seconds: 2));
   });
 
   test('closing stops the receiver app', () async {

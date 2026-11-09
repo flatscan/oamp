@@ -62,6 +62,17 @@ class CastPlayer implements RemotePlayer {
   /// The last load, so a status for an older one is not taken as news.
   Completer<void>? _loading;
 
+  /// Fails the load in progress as soon as the device says it can't play
+  /// the track, rather than waiting for its late LOAD_FAILED reply.
+  Completer<CastMessage>? _loadFailed;
+
+  /// Something this app loaded is on the device, so an error status is
+  /// about it (and not left over from before the app connected).
+  bool _hasMedia = false;
+
+  /// The device couldn't play a track it moved on to; reported once.
+  bool _failed = false;
+
   @override
   Stream<RemoteStatus> get status => _status.stream;
   @override
@@ -131,13 +142,15 @@ class CastPlayer implements RemotePlayer {
     }
   }
 
-  Future<CastMessage> _mediaRequest(Map<String, dynamic> body) =>
-      _channel.request(_transportId!, CastChannel.mediaNs, {
-        ...body,
-        if (_mediaSessionId != null &&
-            !const {'LOAD', 'QUEUE_LOAD', 'GET_STATUS'}.contains(body['type']))
-          'mediaSessionId': _mediaSessionId,
-      });
+  Future<CastMessage> _mediaRequest(
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 10),
+  }) => _channel.request(_transportId!, CastChannel.mediaNs, {
+    ...body,
+    if (_mediaSessionId != null &&
+        !const {'LOAD', 'QUEUE_LOAD', 'GET_STATUS'}.contains(body['type']))
+      'mediaSessionId': _mediaSessionId,
+  }, timeout: timeout);
 
   void _onMessage(CastMessage m) {
     if (m.namespace == CastChannel.receiverNs && m.type == 'RECEIVER_STATUS') {
@@ -228,12 +241,24 @@ class CastPlayer implements RemotePlayer {
         _ended = true;
       } else if (reason == 'ERROR') {
         debugPrint('Cast: the device could not play the track');
+        final failed = _loadFailed;
+        if (_loading != null && failed != null && !failed.isCompleted) {
+          failed.completeError(const RemoteMediaError('IDLE/ERROR'));
+        } else if (_hasMedia && _loading == null) {
+          _failed = true;
+        }
+        // The receiver ends the media session with the error.
+        _hasMedia = false;
+        _mediaSessionId = null;
+        _currentItem = null;
+        _nextItem = null;
       }
     } else {
       _ended = false;
     }
-    final volume = s['volume'];
-    if (volume is Map) _readVolume({'volume': volume});
+    // MEDIA_STATUS also carries a volume, but that is the stream's own
+    // level (nearly always 1.0), not the speaker's. Only RECEIVER_STATUS
+    // says how loud the device is.
     _publish();
   }
 
@@ -254,8 +279,10 @@ class CastPlayer implements RemotePlayer {
         duration: _duration,
         ended: _ended,
         volume: _volume,
+        failed: _failed,
       ),
     );
+    _failed = false;
   }
 
   static Map<String, dynamic> _item(RemoteMedia m, {bool autoplay = true}) => {
@@ -289,6 +316,8 @@ class CastPlayer implements RemotePlayer {
     bool play = true,
   }) async {
     final loading = _loading = Completer<void>();
+    final failed = _loadFailed = Completer<CastMessage>();
+    _hasMedia = false;
     _ended = false;
     _state = RemoteState.buffering;
     _position = position;
@@ -297,19 +326,26 @@ class CastPlayer implements RemotePlayer {
     _nextItem = null;
     _publish();
     try {
-      final reply = await _mediaRequest({
-        'type': 'QUEUE_LOAD',
-        'items': [
-          _item(current, autoplay: play),
-          if (next != null) _item(next),
-        ],
-        'startIndex': 0,
-        'currentTime': position.inMilliseconds / 1000,
-        'repeatMode': 'REPEAT_OFF',
-      });
+      final reply = await Future.any([
+        _mediaRequest({
+          'type': 'QUEUE_LOAD',
+          'items': [
+            _item(current, autoplay: play),
+            if (next != null) _item(next),
+          ],
+          'startIndex': 0,
+          'currentTime': position.inMilliseconds / 1000,
+          'repeatMode': 'REPEAT_OFF',
+          // A device that can't fetch the file says so with an error
+          // status (ending this early), often only after ten seconds.
+        }, timeout: const Duration(seconds: 30)),
+        failed.future,
+      ]);
       if (reply.type != 'MEDIA_STATUS') {
-        throw StateError('The device refused the track (${reply.type})');
+        // LOAD_FAILED or LOAD_CANCELLED.
+        throw RemoteMediaError(reply.type ?? 'refused');
       }
+      _hasMedia = true;
       // The reply carries the new media session. Take it now: the same
       // message reaches the status listener only after this resumes, and
       // the next request would still carry the old session's id.
@@ -321,6 +357,7 @@ class CastPlayer implements RemotePlayer {
       await _refreshItems();
     } finally {
       if (identical(_loading, loading)) _loading = null;
+      if (identical(_loadFailed, failed)) _loadFailed = null;
     }
   }
 
@@ -384,6 +421,7 @@ class CastPlayer implements RemotePlayer {
 
   @override
   Future<void> stop() async {
+    _hasMedia = false;
     await _command('STOP');
     _mediaSessionId = null;
     _currentItem = null;

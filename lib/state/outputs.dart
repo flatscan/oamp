@@ -19,6 +19,10 @@ final nearbyDevicesProvider = StreamProvider<List<OutputDevice>>(
   (ref) => ref.watch(deviceDiscoveryProvider).devices,
 );
 
+/// Whether this platform can cast at all: main.dart turns it on for
+/// Windows and Android. Hides the cast button elsewhere.
+final castingAvailableProvider = Provider<bool>((_) => false);
+
 /// Opens a connection to a device. main.dart plugs in Cast and DLNA.
 final remoteConnectorProvider = Provider<RemoteConnector>(
   (_) =>
@@ -37,13 +41,21 @@ class OutputState {
   /// Why the last connection failed or ended, for the listener.
   final String? message;
 
+  /// The device's own volume from 0 to 1, once it has said.
+  final double? volume;
+
   const OutputState({
     this.phase = OutputPhase.local,
     this.device,
     this.message,
+    this.volume,
   });
 
   bool get isRemote => phase != OutputPhase.local;
+  bool get isConnected => phase == OutputPhase.connected;
+
+  OutputState withVolume(double? v) =>
+      OutputState(phase: phase, device: device, message: message, volume: v);
 }
 
 final outputProvider = NotifierProvider<OutputController, OutputState>(
@@ -59,6 +71,29 @@ final outputProvider = NotifierProvider<OutputController, OutputState>(
 class OutputController extends Notifier<OutputState> {
   RemotePlayer? _player;
   RemoteEngine? _engine;
+  StreamSubscription<RemoteStatus>? _volumeSub;
+
+  /// When the listener last moved the volume, so the device's reports
+  /// (which lag) don't pull the slider back while it is being dragged.
+  final _sinceVolumeSet = Stopwatch();
+
+  Timer? _clearMessage;
+
+  /// A message stays a little while, then goes.
+  @override
+  set state(OutputState value) {
+    super.state = value;
+    _clearMessage?.cancel();
+    if (value.message != null) {
+      _clearMessage = Timer(messageTime, () {
+        if (ref.mounted && identical(state, value)) {
+          super.state = OutputState(phase: value.phase, device: value.device);
+        }
+      });
+    }
+  }
+
+  static const messageTime = Duration(seconds: 10);
 
   /// Bumped on every change, so a slow connection that is no longer
   /// wanted is closed instead of taking over.
@@ -66,7 +101,10 @@ class OutputController extends Notifier<OutputState> {
 
   @override
   OutputState build() {
-    ref.onDispose(() => unawaited(_release(stopPlayback: false)));
+    ref.onDispose(() {
+      _clearMessage?.cancel();
+      unawaited(_release(stopPlayback: false));
+    });
     return const OutputState();
   }
 
@@ -103,6 +141,15 @@ class OutputController extends Notifier<OutputState> {
       '(${device.model ?? 'unknown model'})',
     );
     state = OutputState(phase: OutputPhase.connected, device: device);
+    _volumeSub = player.status.listen((s) {
+      final v = s.volume;
+      if (v == null || v == state.volume || !state.isConnected) return;
+      if (_sinceVolumeSet.isRunning &&
+          _sinceVolumeSet.elapsed < const Duration(seconds: 2)) {
+        return;
+      }
+      state = state.withVolume(v);
+    });
     try {
       await ref.read(outputSwitcherProvider).switchTo(engine);
     } on Object catch (e) {
@@ -111,6 +158,28 @@ class OutputController extends Notifier<OutputState> {
       state = OutputState(message: '${device.name} couldn’t play this');
     }
   }
+
+  /// Sets the speaker or TV's own volume, from 0 to 1.
+  Future<void> setVolume(double volume) async {
+    final engine = _engine;
+    if (engine == null || !state.isConnected) return;
+    final v = volume.clamp(0.0, 1.0);
+    _sinceVolumeSet
+      ..reset()
+      ..start();
+    state = state.withVolume(v);
+    try {
+      await engine.setVolume(v);
+    } on Object catch (e) {
+      debugPrint('Casting: setting the volume failed ($e)');
+    }
+  }
+
+  /// Turns the device up or down a step, as volume keys do.
+  Future<void> stepVolume(int steps) =>
+      setVolume((state.volume ?? 0.5) + steps * volumeStep);
+
+  static const volumeStep = 0.05;
 
   /// Brings playback back to this device, paused where the speaker or TV
   /// was, and stops the device.
@@ -146,7 +215,10 @@ class OutputController extends Notifier<OutputState> {
     final engine = _engine;
     _player = null;
     _engine = null;
-    await engine?.dispose();
+    unawaited(_volumeSub?.cancel());
+    _volumeSub = null;
+    // The device first: stopping it matters more than tidying up here.
     await player?.close(stopPlayback: stopPlayback);
+    await engine?.dispose();
   }
 }

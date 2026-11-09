@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/models.dart';
 import '../core/remote_player.dart';
 import 'audio_engine.dart';
@@ -46,6 +48,26 @@ class RemoteEngine implements AudioEngine {
   /// device is told again when a track has to be loaded.
   bool _wantPlay = false;
 
+  /// The device turned an original file down, so for the rest of the
+  /// session it gets the server's MP3 instead.
+  bool _transcode = false;
+
+  /// The first load (starting playback on the device) reports failure to
+  /// whoever connected; later ones only log it.
+  bool _started = false;
+  bool _recovering = false;
+
+  /// Runs a device command for the listener: a device that doesn't answer
+  /// is logged, never an uncaught error. (A device that has gone away is
+  /// noticed by its connection closing.)
+  Future<void> _quietly(Future<void> Function() command, String what) async {
+    try {
+      await command();
+    } on Object catch (e) {
+      debugPrint('Casting: $what failed ($e)');
+    }
+  }
+
   @override
   Stream<EngineState> get stateStream => _state.stream;
   @override
@@ -61,8 +83,12 @@ class RemoteEngine implements AudioEngine {
   @override
   set queueInfo(QueueInfo? info) => _info = info;
 
-  RemoteMedia? _media(int? i) =>
-      i == null ? null : _info?.remoteMediaAt(i, player.device.protocol);
+  RemoteMedia? _media(int? i) {
+    final m = i == null
+        ? null
+        : _info?.remoteMediaAt(i, player.device.protocol);
+    return _transcode ? (m?.fallback ?? m) : m;
+  }
 
   int? _nextIndex(int? from) {
     if (from == null || _length == 0) return null;
@@ -76,10 +102,13 @@ class RemoteEngine implements AudioEngine {
     final s = _status.state;
     _state.add(
       EngineState(
-        playing: _completed
-            ? false
-            : s == RemoteState.playing ||
-                  (_wantPlay && s == RemoteState.buffering),
+        // While the listener wants it playing, a device between tracks
+        // (idle or buffering for a moment) still counts as playing, so the
+        // app and the OS media controls don't flicker to paused. On
+        // Android that flicker drops the media service out of the
+        // foreground, and it can't come back while the app is in the
+        // background.
+        playing: !_completed && (_wantPlay || s == RemoteState.playing),
         buffering: s == RemoteState.buffering,
         completed: _completed,
         currentIndex: _index,
@@ -88,10 +117,23 @@ class RemoteEngine implements AudioEngine {
   }
 
   void _onStatus(RemoteStatus s) {
+    final before = _status.state;
     _status = s;
+    if (s.failed) {
+      // A track the device moved on to by itself was turned down.
+      unawaited(_recover(s.position));
+      return;
+    }
     if (s.ended) {
       _completed = true;
       _wantPlay = false;
+    } else if (s.state != before) {
+      // Paused or resumed with the device's own buttons or remote.
+      if (s.state == RemoteState.paused && before == RemoteState.playing) {
+        _wantPlay = false;
+      } else if (s.state == RemoteState.playing) {
+        _wantPlay = true;
+      }
     }
     _position.add(s.position);
     _duration.add(s.duration ?? _info?.durationAt(_index ?? -1));
@@ -111,11 +153,61 @@ class RemoteEngine implements AudioEngine {
     final next = _nextIndex(_index);
     if (next == _lined) return;
     _lined = next;
-    await player.setNext(_media(next));
+    await _quietly(() => player.setNext(_media(next)), 'lining up a track');
   }
 
-  /// Loads the entry at [index] on the device.
+  /// After the device couldn't play the current track: try the MP3, or
+  /// stop there if that was the MP3 already.
+  Future<void> _recover(Duration position) async {
+    final i = _index;
+    if (i == null || _recovering) return;
+    if (_transcode ||
+        _info?.remoteMediaAt(i, player.device.protocol)?.fallback == null) {
+      debugPrint('Casting: the device could not play the track');
+      _wantPlay = false;
+      _emit();
+      return;
+    }
+    _transcode = true;
+    debugPrint('Casting: the device turned the file down; sending MP3');
+    _recovering = true;
+    try {
+      await _tryLoad(i, position: position);
+    } finally {
+      _recovering = false;
+    }
+  }
+
+  /// [_load] for the listener's own actions: a failure is logged and
+  /// leaves playback paused, rather than surfacing as an uncaught error.
+  Future<void> _tryLoad(int index, {Duration position = Duration.zero}) async {
+    try {
+      await _load(index, position: position);
+    } on Object catch (e) {
+      debugPrint('Casting: loading a track failed ($e)');
+      _wantPlay = false;
+      _emit();
+    }
+  }
+
+  /// Loads the entry at [index] on the device. When the device turns the
+  /// original file down, tries the server's MP3 once.
   Future<void> _load(int index, {Duration position = Duration.zero}) async {
+    try {
+      await _loadOnce(index, position: position);
+    } on RemoteMediaError {
+      if (_transcode ||
+          _info?.remoteMediaAt(index, player.device.protocol)?.fallback ==
+              null) {
+        rethrow;
+      }
+      _transcode = true;
+      debugPrint('Casting: the device turned the file down; sending MP3');
+      await _loadOnce(index, position: position);
+    }
+  }
+
+  Future<void> _loadOnce(int index, {Duration position = Duration.zero}) async {
     final media = _media(index);
     if (media == null) return;
     _index = index;
@@ -142,7 +234,10 @@ class RemoteEngine implements AudioEngine {
     _length = uris.length;
     _wantPlay = false;
     if (_length == 0) return clear();
-    await _load(initialIndex.clamp(0, _length - 1), position: initialPosition);
+    final index = initialIndex.clamp(0, _length - 1);
+    if (_started) return _tryLoad(index, position: initialPosition);
+    _started = true;
+    await _load(index, position: initialPosition);
   }
 
   @override
@@ -176,7 +271,7 @@ class RemoteEngine implements AudioEngine {
     } else if (index == cur) {
       if (_length == 0) return clear();
       // The next entry slides into this place and plays as it was.
-      await _load(cur < _length ? cur : 0);
+      await _tryLoad(cur < _length ? cur : 0);
       return;
     }
     await _lineUp();
@@ -204,7 +299,7 @@ class RemoteEngine implements AudioEngine {
     _wantPlay = false;
     _completed = false;
     _emit();
-    await player.stop();
+    await _quietly(player.stop, 'stopping');
   }
 
   @override
@@ -214,13 +309,13 @@ class RemoteEngine implements AudioEngine {
     if (i == null) return;
     if (_completed || _status.state == RemoteState.idle) {
       // Finished, or the device dropped the track: start it again.
-      await _load(
+      await _tryLoad(
         _completed ? 0 : i,
         position: _completed ? Duration.zero : _status.position,
       );
     } else {
       _emit();
-      await player.play();
+      await _quietly(player.play, 'play');
     }
   }
 
@@ -228,17 +323,19 @@ class RemoteEngine implements AudioEngine {
   Future<void> pause() async {
     _wantPlay = false;
     _emit();
-    await player.pause();
+    await _quietly(player.pause, 'pause');
   }
 
   @override
   Future<void> seek(Duration position, {int? index}) async {
     if (index != null && index != _index) {
       if (index < 0 || index >= _length) return;
-      return _load(index, position: position);
+      return _tryLoad(index, position: position);
     }
-    if (_completed && _index != null) return _load(_index!, position: position);
-    await player.seek(position);
+    if (_completed && _index != null) {
+      return _tryLoad(_index!, position: position);
+    }
+    await _quietly(() => player.seek(position), 'seeking');
   }
 
   @override
@@ -248,14 +345,14 @@ class RemoteEngine implements AudioEngine {
     final n = cur + 1 < _length
         ? cur + 1
         : (_repeat == PlaybackRepeat.all ? 0 : null);
-    if (n != null) await _load(n);
+    if (n != null) await _tryLoad(n);
   }
 
   @override
   Future<void> previous() async {
     final cur = _index;
     if (cur == null) return;
-    await _load(
+    await _tryLoad(
       cur > 0 ? cur - 1 : (_repeat == PlaybackRepeat.all ? _length - 1 : 0),
     );
   }
@@ -267,7 +364,8 @@ class RemoteEngine implements AudioEngine {
   }
 
   @override
-  Future<void> setVolume(double volume) => player.setVolume(volume);
+  Future<void> setVolume(double volume) =>
+      _quietly(() => player.setVolume(volume), 'setting the volume');
 
   @override
   Future<void> refreshGain() async {}
@@ -278,13 +376,14 @@ class RemoteEngine implements AudioEngine {
   @override
   Future<void> setCrossfade(Duration duration) async {}
 
+  /// Doesn't wait for listeners to finish: a paused one would hold it up.
   @override
   Future<void> dispose() async {
     for (final s in _subs) {
-      await s.cancel();
+      unawaited(s.cancel());
     }
-    await _state.close();
-    await _position.close();
-    await _duration.close();
+    unawaited(_state.close());
+    unawaited(_position.close());
+    unawaited(_duration.close());
   }
 }

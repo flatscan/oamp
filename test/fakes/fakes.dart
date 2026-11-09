@@ -333,18 +333,30 @@ class FakeMusicSource implements MusicSource {
     return lyrics[track.id] ?? Lyrics.none;
   }
 
+  /// Makes play reports fail the way the real source's do: with a future
+  /// that really carries the server's reply type, not void.
+  bool reportsFail = false;
+
+  Future<void> _report(String call) {
+    calls.add(call);
+    if (reportsFail) {
+      return Future<Map<String, dynamic>>.error(
+        Exception('Could not reach the server'),
+      );
+    }
+    return Future<void>.value();
+  }
+
   @override
-  Future<void> reportPlayback(
-    String trackId, {
-    required bool submission,
-  }) async => calls.add('${submission ? 'played' : 'playing'}:$trackId');
+  Future<void> reportPlayback(String trackId, {required bool submission}) =>
+      _report('${submission ? 'played' : 'playing'}:$trackId');
 
   @override
   Future<void> reportPlaybackState(
     String trackId,
     PlaybackPhase phase,
     Duration position,
-  ) async => calls.add('state:${phase.name}:$trackId:${position.inSeconds}');
+  ) => _report('state:${phase.name}:$trackId:${position.inSeconds}');
 
   @override
   Uri streamUrl(

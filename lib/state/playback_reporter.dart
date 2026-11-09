@@ -112,9 +112,10 @@ class PlaybackReporter {
     final source = ref.read(sessionProvider).value?.source;
     if (id == null || source == null || !_reportsState) return;
     unawaited(
-      source
-          .reportPlaybackState(id, phase, _last)
-          .catchError((Object e) => debugPrint('State report failed: $e')),
+      _quietly(
+        () => source.reportPlaybackState(id, phase, _last),
+        'State report failed',
+      ),
     );
   }
 
@@ -165,9 +166,24 @@ class PlaybackReporter {
     final source = ref.read(sessionProvider).value?.source;
     if (source == null) return;
     unawaited(
-      source
-          .reportPlayback(trackId, submission: submission)
-          .catchError((Object e) => debugPrint('Play report failed: $e')),
+      _quietly(
+        () => source.reportPlayback(trackId, submission: submission),
+        'Play report failed',
+      ),
     );
+  }
+
+  /// Runs a report and logs a failure. Not `catchError`: the source's
+  /// future may really carry the server's reply, and a handler that
+  /// returns nothing then throws an error of its own.
+  static Future<void> _quietly(
+    Future<void> Function() report,
+    String what,
+  ) async {
+    try {
+      await report();
+    } on Object catch (e) {
+      debugPrint('$what: $e');
+    }
   }
 }

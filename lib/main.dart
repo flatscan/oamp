@@ -120,6 +120,7 @@ Future<void> main() async {
               defaultTargetPlatform == TargetPlatform.android)) ...[
         deviceDiscoveryProvider.overrideWithValue(NetworkDeviceDiscovery()),
         remoteConnectorProvider.overrideWithValue(connectToDevice),
+        castingAvailableProvider.overrideWithValue(true),
       ],
     ],
   );

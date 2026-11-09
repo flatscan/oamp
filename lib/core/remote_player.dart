@@ -29,6 +29,11 @@ class RemoteMedia {
   /// Transcoded by the server, so the stream usually can't be seeked.
   final bool transcoded;
 
+  /// The same track as MP3 from the server, for a device that turns the
+  /// original file down (some speakers can't play every FLAC). Null when
+  /// this already is the transcode.
+  final RemoteMedia? fallback;
+
   const RemoteMedia({
     required this.url,
     required this.contentType,
@@ -38,6 +43,7 @@ class RemoteMedia {
     this.artwork,
     this.duration,
     this.transcoded = false,
+    this.fallback,
   });
 
   @override
@@ -97,18 +103,37 @@ RemoteMedia remoteMediaFor(
     OutputProtocol.dlna => _dlnaFormats,
   };
   final type = formats[track.format?.toLowerCase()];
-  return RemoteMedia(
-    url: type == null
-        ? source.streamUrl(track.id, quality: remoteTranscode)
-        : source.streamUrl(track.id),
-    contentType: type ?? 'audio/mpeg',
+  final artwork = source.coverArtUrl(track.coverArt, size: 600);
+  final transcode = RemoteMedia(
+    url: source.streamUrl(track.id, quality: remoteTranscode),
+    contentType: 'audio/mpeg',
     title: track.title,
     artist: track.artist,
     album: track.album,
-    artwork: source.coverArtUrl(track.coverArt, size: 600),
+    artwork: artwork,
     duration: track.duration,
-    transcoded: type == null,
+    transcoded: true,
   );
+  if (type == null) return transcode;
+  return RemoteMedia(
+    url: source.streamUrl(track.id),
+    contentType: type,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    artwork: artwork,
+    duration: track.duration,
+    fallback: transcode,
+  );
+}
+
+/// The device turned the stream down: it can't play that file.
+class RemoteMediaError implements Exception {
+  final String reason;
+  const RemoteMediaError(this.reason);
+
+  @override
+  String toString() => 'RemoteMediaError($reason)';
 }
 
 enum RemoteState { idle, buffering, playing, paused }
@@ -125,12 +150,17 @@ class RemoteStatus {
   /// The device's own volume from 0 to 1, when it says.
   final double? volume;
 
+  /// The device couldn't play the current track (a track it moved on to
+  /// by itself; a failed [RemotePlayer.load] throws instead).
+  final bool failed;
+
   const RemoteStatus({
     this.state = RemoteState.idle,
     this.position = Duration.zero,
     this.duration,
     this.ended = false,
     this.volume,
+    this.failed = false,
   });
 }
 
@@ -152,7 +182,8 @@ abstract class RemotePlayer {
   Future<void> get closed;
 
   /// Plays [current] from [position], or holds it paused there when [play]
-  /// is false, with [next] lined up to follow.
+  /// is false, with [next] lined up to follow. Throws [RemoteMediaError]
+  /// when the device can't play [current].
   Future<void> load(
     RemoteMedia current, {
     RemoteMedia? next,

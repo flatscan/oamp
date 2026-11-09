@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models.dart';
 import '../../core/playback_options.dart';
 import '../../platform/platform_info.dart';
+import '../../state/outputs.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
 import '../theme.dart';
@@ -238,12 +239,21 @@ class _VolumeControlState extends ConsumerState<VolumeControl> {
 
   @override
   Widget build(BuildContext context) {
-    final v = ref.watch(playerProvider.select((s) => s.volume));
-    final p = ref.read(playerProvider.notifier);
+    // While casting, the slider is the speaker or TV's own volume.
+    final output = ref.watch(outputProvider);
+    final casting = output.isConnected;
+    final v = casting
+        ? (output.volume ?? 0.5)
+        : ref.watch(playerProvider.select((s) => s.volume));
+    final setVolume = casting
+        ? ref.read(outputProvider.notifier).setVolume
+        : ref.read(playerProvider.notifier).setVolume;
     return Row(
       children: [
         IconButton(
-          tooltip: v == 0 ? 'Unmute' : 'Mute',
+          tooltip: casting
+              ? 'Volume on ${output.device?.name}'
+              : (v == 0 ? 'Unmute' : 'Mute'),
           icon: Icon(
             v == 0
                 ? Icons.volume_off_rounded
@@ -254,10 +264,10 @@ class _VolumeControlState extends ConsumerState<VolumeControl> {
           ),
           onPressed: () {
             if (v == 0) {
-              p.setVolume(_beforeMute == 0 ? 1 : _beforeMute);
+              setVolume(_beforeMute == 0 ? 1 : _beforeMute);
             } else {
               _beforeMute = v;
-              p.setVolume(0);
+              setVolume(0);
             }
           },
         ),
@@ -268,7 +278,7 @@ class _VolumeControlState extends ConsumerState<VolumeControl> {
               activeTrackColor: widget.accent,
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
             ),
-            child: Slider(value: v, onChanged: p.setVolume),
+            child: Slider(value: v, onChanged: setVolume),
           ),
         ),
       ],

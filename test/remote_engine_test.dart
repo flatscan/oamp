@@ -24,10 +24,29 @@ class _Info implements QueueInfo {
   Duration? durationAt(int index) => const Duration(minutes: 3);
   @override
   double get boostHeadroom => 1;
+
+  /// Originals with an MP3 to fall back on, when [withFallback].
+  bool withFallback = false;
+
   @override
-  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) =>
-      index < 0 ? null : _m(index);
+  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) {
+    if (index < 0) return null;
+    if (!withFallback) return _m(index);
+    return RemoteMedia(
+      url: _m(index).url,
+      contentType: 'audio/flac',
+      title: 'Track $index',
+      fallback: _mp3(index),
+    );
+  }
 }
+
+RemoteMedia _mp3(int i) => RemoteMedia(
+  url: Uri.parse('http://server/stream/$i?format=mp3'),
+  contentType: 'audio/mpeg',
+  title: 'Track $i',
+  transcoded: true,
+);
 
 List<Uri> _uris(int n) => [for (var i = 0; i < n; i++) Uri.parse('file:/$i')];
 
@@ -153,6 +172,78 @@ void main() {
       expect(states.last.playing, isTrue);
     });
 
+    test('stays playing while the device changes track', () async {
+      await engine.setQueue(_uris(2));
+      await engine.play();
+      for (final s in [
+        RemoteState.playing,
+        RemoteState.idle,
+        RemoteState.buffering,
+        RemoteState.playing,
+      ]) {
+        device.report(RemoteStatus(state: s));
+        await settle();
+        expect(states.last.playing, isTrue, reason: '$s');
+      }
+    });
+
+    test('follows pause and play from the device itself', () async {
+      await engine.setQueue(_uris(2));
+      await engine.play();
+      device.report(const RemoteStatus(state: RemoteState.playing));
+      await settle();
+      device.report(const RemoteStatus(state: RemoteState.paused));
+      await settle();
+      expect(states.last.playing, isFalse);
+      device.report(const RemoteStatus(state: RemoteState.idle));
+      await settle();
+      expect(states.last.playing, isFalse);
+      device.report(const RemoteStatus(state: RemoteState.playing));
+      await settle();
+      expect(states.last.playing, isTrue);
+    });
+
+    test('a refused file is sent again as MP3, and so is the rest', () async {
+      final info = _Info()..withFallback = true;
+      engine.queueInfo = info;
+      device.refuses = (m) => !m.transcoded;
+      await engine.setQueue(
+        _uris(3),
+        initialPosition: const Duration(seconds: 9),
+      );
+      expect(device.current, _mp3(0));
+      expect(device.loadedAt, const Duration(seconds: 9));
+      expect(device.next, _mp3(1));
+      await engine.next();
+      expect(device.current, _mp3(1));
+    });
+
+    test(
+      'a track the device moved on to and refused is retried as MP3',
+      () async {
+        final info = _Info()..withFallback = true;
+        engine.queueInfo = info;
+        await engine.setQueue(_uris(3));
+        await engine.play();
+        device.moveOn();
+        await settle();
+        device.report(const RemoteStatus(failed: true));
+        await settle();
+        expect(device.current, _mp3(1));
+        expect(device.playing, isTrue);
+        expect(device.next, _mp3(2));
+      },
+    );
+
+    test('a refusal with nothing to fall back on pauses, uncaught', () async {
+      await engine.setQueue(_uris(3));
+      await engine.play();
+      device.refuses = (_) => true;
+      await engine.next();
+      await settle();
+      expect(states.last.playing, isFalse);
+    });
+
     test('clear stops the device', () async {
       await engine.setQueue(_uris(2));
       await engine.clear();
@@ -212,16 +303,16 @@ void main() {
       expect(local.playing, isFalse);
     });
 
-    test('volume while casting goes to the device only', () async {
+    test('this device keeps its own volume while casting', () async {
       await switcher.setVolume(0.8);
       await switcher.setQueue(_uris(1));
       await settle();
       await switcher.switchTo(engine);
       await switcher.setVolume(0.3);
-      expect(device.volume, 0.3);
+      expect(device.volume, isNull, reason: 'the device is set separately');
       expect(local.volume, 0.8);
       await switcher.switchTo(null);
-      expect(local.volume, 0.8);
+      expect(local.volume, 0.3);
     });
 
     test('streams follow the active output', () async {

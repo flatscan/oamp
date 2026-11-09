@@ -188,12 +188,12 @@ class OutputSwitcher implements AudioEngine {
     return _active.setRepeatMode(mode);
   }
 
-  /// While casting this sets the device's volume; this device's own level
-  /// is kept for when playback comes back.
+  /// This device's own volume. While casting it is kept for when playback
+  /// comes back; the speaker or TV's volume is set through its engine.
   @override
-  Future<void> setVolume(double volume) {
-    if (!isRemote) _localVolume = volume;
-    return _active.setVolume(volume);
+  Future<void> setVolume(double volume) async {
+    _localVolume = volume;
+    if (!isRemote) await local.setVolume(volume);
   }
 
   @override

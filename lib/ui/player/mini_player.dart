@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../state/outputs.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
 import '../theme.dart';
@@ -58,12 +59,7 @@ class MiniPlayer extends ConsumerWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    Text(
-                                      track.artist ?? '',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: t.bodySmall,
-                                    ),
+                                    _Subtitle(artist: track.artist),
                                   ],
                                 ),
                               ),
@@ -84,6 +80,54 @@ class MiniPlayer extends ConsumerWidget {
               ),
             ),
     );
+  }
+}
+
+/// The artist, or where the music is playing while casting, or why
+/// casting just stopped.
+class _Subtitle extends ConsumerWidget {
+  final String? artist;
+  const _Subtitle({required this.artist});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final output = ref.watch(outputProvider);
+    final style = Theme.of(context).textTheme.bodySmall;
+    Widget line(String text, {IconData? icon, Color? color}) => Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style?.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+    final name = output.device?.name;
+    return switch (output.phase) {
+      OutputPhase.connected => line(
+        'Playing on $name',
+        icon: Icons.cast_connected_rounded,
+        color: oampAccent,
+      ),
+      OutputPhase.connecting => line(
+        'Connecting to $name…',
+        icon: Icons.cast_rounded,
+        color: oampAccent,
+      ),
+      OutputPhase.local when output.message != null => line(
+        output.message!,
+        icon: Icons.cast_rounded,
+        color: OAmpColors.textMuted,
+      ),
+      _ => line(artist ?? ''),
+    };
   }
 }
 
