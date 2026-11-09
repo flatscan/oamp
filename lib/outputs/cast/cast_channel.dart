@@ -115,6 +115,9 @@ class CastChannel {
       onError: (Object _) => _onClosed(),
       cancelOnError: true,
     );
+    // A write to a connection the device has dropped fails here, not in
+    // send(). The listener above already notices the drop.
+    unawaited(_socket.done.then<void>((_) {}, onError: (Object _) {}));
     _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
       send(receiverId, heartbeatNs, {'type': 'PING'});
       // No reply to three pings in a row: the device has gone.
