@@ -250,14 +250,21 @@ class MulticastListener {
     }
     s.multicastHops = 255;
     final joined = <NetworkInterface>[];
+    final refused = <String>[];
     for (final i in await interfaces()) {
       try {
         s.joinMulticast(group, i);
         joined.add(i);
-      } on Object {
+      } on Object catch (e) {
         // Already joined through another address, or no multicast here.
+        refused.add('${i.name} ($e)');
       }
     }
+    debugPrint(
+      'Discovery: shared port open, joined '
+      '${joined.isEmpty ? 'nothing' : joined.map((i) => i.name).join(', ')}'
+      '${refused.isEmpty ? '' : '; not ${refused.join(', ')}'}',
+    );
     s.listen((event) {
       if (event != RawSocketEvent.read) return;
       final dg = s.receive();
@@ -265,6 +272,16 @@ class MulticastListener {
     }, onError: _sendFailed);
     _socket = s;
     _joined = joined;
+  }
+
+  /// The name of the local interface [address] belongs to, if it is one
+  /// this listener joined: a packet from it is one of our own questions
+  /// coming back, which shows the question left by that interface.
+  String? localInterfaceOf(InternetAddress address) {
+    for (final i in _joined) {
+      if (i.addresses.any((a) => a.address == address.address)) return i.name;
+    }
+    return null;
   }
 
   void _ask(Uint8List query) {
@@ -282,8 +299,9 @@ class MulticastListener {
               ),
             )
             ..send(query, group, port);
-        } on Object {
-          // An interface that went away mid-scan.
+        } on Object catch (e) {
+          // An interface that went away mid-scan, usually.
+          debugPrint('Discovery: could not ask on ${i.name} ($e)');
         }
       }
     }
