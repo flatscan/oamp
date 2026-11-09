@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/output_device.dart';
@@ -41,19 +42,36 @@ class CastFinder {
     // Heard on the shared port, a packet may come from any host and carry
     // only part of a device (answers to other apps' questions), so only a
     // device that arrives complete counts.
-    final shared = listener
-        .listen(question, listenFor: listenFor)
-        .expand(
-          (reply) => castDevicesIn(
-            parseDnsResponse(reply.data),
-            reply.from,
-            senderIsDevice: false,
-          ),
-        );
-    return _merge([direct, shared]);
+    var packets = 0;
+    var aboutCast = 0;
+    var devices = 0;
+    final shared = listener.listen(question, listenFor: listenFor).expand((
+      reply,
+    ) {
+      packets++;
+      final records = parseDnsResponse(reply.data);
+      if (records.any((r) => r.name.toLowerCase().endsWith(service))) {
+        aboutCast++;
+      }
+      final found = castDevicesIn(records, reply.from, senderIsDevice: false);
+      devices += found.length;
+      return found;
+    });
+    return _merge(
+      [direct, shared],
+      // Counts only, so a quiet shared port can be told from a rejected
+      // announcement.
+      onDone: () => debugPrint(
+        'Discovery: shared port heard $packets packet(s), $aboutCast about '
+        'Cast, $devices Cast device(s)',
+      ),
+    );
   }
 
-  static Stream<T> _merge<T>(List<Stream<T>> streams) {
+  static Stream<T> _merge<T>(
+    List<Stream<T>> streams, {
+    void Function()? onDone,
+  }) {
     if (streams.length == 1) return streams.single;
     late StreamController<T> out;
     final subs = <StreamSubscription<T>>[];
@@ -66,7 +84,10 @@ class CastFinder {
               out.add,
               onError: out.addError,
               onDone: () {
-                if (--open == 0) out.close();
+                if (--open == 0) {
+                  onDone?.call();
+                  out.close();
+                }
               },
             ),
           );

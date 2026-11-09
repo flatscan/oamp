@@ -3,6 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+/// A send that failed after send() returned (the system refused it, for
+/// instance while the network is changing) reaches the socket's stream as
+/// an error. Nothing depends on one packet, so it is only logged.
+void _sendFailed(Object e) => debugPrint('Discovery: a send failed ($e)');
+
 /// A reply to a [UdpQuery]: the bytes and who sent them.
 typedef UdpReply = ({Uint8List data, InternetAddress from});
 
@@ -87,7 +92,7 @@ class UdpQuery {
           if (dg != null && !out.isClosed) {
             out.add((data: dg.data, from: dg.address));
           }
-        });
+        }, onError: _sendFailed);
         void fire() {
           try {
             socket.send(message, group, port);
@@ -219,7 +224,7 @@ class MulticastListener {
         if (dg != null && !out.isClosed) {
           out.add((data: dg.data, from: dg.address));
         }
-      });
+      }, onError: _sendFailed);
       void ask() {
         for (final i in joined) {
           for (final a in i.addresses) {

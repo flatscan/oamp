@@ -514,4 +514,34 @@ void main() {
     );
     expect(castDevicesIn(parseDnsResponse(noAddress), other), hasLength(1));
   });
+
+  test('a complete announcement with other services alongside is accepted', () {
+    // The Nest Hub answers with its Cast service and another one together.
+    const cast = 'Google-Nest-Hub-hub1.${CastFinder.service}';
+    const zone = 'hub1._googlezone._tcp.local';
+    final packet =
+        (_Response()
+              ..ptr(CastFinder.service, cast)
+              ..ptr('_googlezone._tcp.local', zone)
+              ..txt(cast, {
+                'id': 'hub1',
+                'md': 'Google Nest Hub',
+                'fn': 'Living Room display',
+                'ca': '231941',
+              })
+              ..srv(cast, 'fuchsia-hub.local', 8009)
+              ..srv(zone, 'fuchsia-hub.local', 10001)
+              ..txt(zone, {'id': 'hub1'})
+              ..a('fuchsia-hub.local', '192.168.69.56'))
+            .build();
+    final found = castDevicesIn(
+      parseDnsResponse(packet),
+      InternetAddress('192.168.69.56'),
+      senderIsDevice: false,
+    );
+    expect(found, hasLength(1));
+    expect(found.single.model, 'Google Nest Hub');
+    expect(found.single.host, '192.168.69.56');
+    expect(found.single.port, 8009);
+  });
 }
