@@ -90,7 +90,8 @@ Alpha2 is in the works, for Windows and Android. Planned:
 - Offline downloads, with playlists that stay in sync and plays that are
   counted once you're back online
 - Android Auto
-- Casting to Chromecast speakers and TVs
+- Casting to Chromecast speakers and displays, and to DLNA TVs and players
+  ([how it works and what your network needs](docs/casting.md))
 - A backup server address for when you're away from home
 - Endless play: keep going after the queue ends, with the next album by the
   same artist, similar tracks, your liked tracks or a shuffle of the same genres

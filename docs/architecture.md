@@ -21,6 +21,8 @@ lib/
     playback_options.dart   Gapless, crossfade, ReplayGain, quality, cache
     track_cache.dart        TrackCache interface: temporary playback cache
     track_resolver.dart     Track to playable URI (streams now, downloads later)
+    output_device.dart      A speaker or TV found on the network
+    remote_player.dart      RemotePlayer interface: what a cast protocol does
   sources/subsonic/         The MusicSource for Navidrome and other
                             Subsonic / OpenSubsonic servers
     subsonic_client.dart    Transport and token auth
@@ -32,6 +34,16 @@ lib/
     audio_focus.dart        Pausing and ducking for calls and other apps
     stream_cache.dart       On-disk cache served to the player over loopback
     platform_audio.dart     Picks the player and opens the cache per platform
+    output_switcher.dart    The AudioEngine the player sees; swaps between
+                            the local engine and a remote one
+    remote_engine.dart      An AudioEngine that plays the queue on a
+                            RemotePlayer
+  outputs/                  Casting: finding and driving speakers and TVs
+    network_discovery.dart  Finds Cast and DLNA devices (mDNS and SSDP,
+                            without holding port 5353)
+    cast/                   Cast V2 client for the Default Media Receiver
+    dlna/                   UPnP AVTransport client for DLNA renderers
+    remote_connector.dart   Opens the right RemotePlayer for a device
   platform/                 Platform code behind interfaces
     secure_store.dart       SecureStore (OS keychain)
     preferences.dart        Plain settings (shared_preferences)
@@ -55,6 +67,8 @@ lib/
     lyrics.dart             Lyrics for the current track
     settings.dart           Playback, quality, cache and window settings
     system_controls_bridge.dart  Mirrors the player into SystemControls
+    outputs.dart            Nearby devices and the OutputController that
+                            connects, disconnects and sets device volume
   ui/
     app_frame.dart          Window bar and keyboard shortcuts
     home_shell.dart         The single column with mini-player, and the
@@ -64,7 +78,8 @@ lib/
     browser.dart            Home, Library and Search tabs, each with history
     browse/                 Home, library, search, album, artist, playlist and
                             settings pages
-    player/                 Mini-player, now playing, queue, lyrics, controls
+    player/                 Mini-player, now playing, queue, lyrics, controls,
+                            the cast button and device picker
     widgets.dart            Shared rows, cards and the track menu
 test/
   fakes/                    FakeMusicSource, FakeAudioEngine, FakeSystemControls
@@ -87,8 +102,12 @@ Planned features plug into seams that already exist:
 - **Offline downloads:** a `TrackResolver` that returns a local file when the
   track is downloaded. The playback cache (`TrackCache`) is separate: it is
   temporary, evicted oldest first, and never counts as downloaded.
-- **Chromecast:** `PlayerController` owns the queue and sends it to an
-  `AudioEngine`, so a cast engine is another output.
+- **More cast protocols (Sendspin, AirPlay):** casting already works this
+  way. `PlayerController` sends the queue to an `AudioEngine`, and while
+  casting that engine is a `RemoteEngine` driving a `RemotePlayer`. A
+  protocol that pulls the stream from the server is a new `RemotePlayer`
+  plus discovery. One that needs OAmp to push audio would be a new engine
+  behind the same `OutputSwitcher`.
 - **Linux and web:** platform code sits behind `AudioEngine`, `SecureStore`,
   `SystemControls` and `platform_info`. `architecture_test.dart` fails if
   `lib/ui` imports the Subsonic or audio code, if core, state or UI import
