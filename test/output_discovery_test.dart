@@ -392,9 +392,13 @@ void main() {
 
       castAnswers = false;
       await discovery.scan();
+      // One quiet scan doesn't remove it: UDP drops packets.
+      expect(discovery.current.map((d) => d.protocol), [OutputProtocol.cast]);
+      await discovery.scan();
       expect(discovery.current.single.name, 'Kodi lounge');
 
       dlnaAnswers = false;
+      await discovery.scan();
       await discovery.scan();
       expect(discovery.current, isEmpty);
     });
@@ -442,7 +446,7 @@ void main() {
   });
 
   test(
-    'a repeat scan that prunes nothing keeps devices that went quiet',
+    'a device that misses one scan stays, and two in a row removes it',
     () async {
       var answers = true;
       final responder = await _responder((_) => answers ? _castReply() : null);
@@ -471,11 +475,43 @@ void main() {
       expect(discovery.current, hasLength(1));
 
       answers = false;
-      await discovery.scan(prune: false);
+      await discovery.scan();
+      expect(discovery.current, hasLength(1));
+
+      // Heard again, so the count starts over.
+      answers = true;
+      await discovery.scan();
+      answers = false;
+      await discovery.scan();
       expect(discovery.current, hasLength(1));
 
       await discovery.scan();
       expect(discovery.current, isEmpty);
     },
   );
+
+  test('devices heard on the shared port must arrive complete', () {
+    final partial =
+        (_Response()
+              ..ptr(CastFinder.service, 'Chromecast-x.${CastFinder.service}'))
+            .build();
+    final noAddress =
+        (_Response()
+              ..ptr(CastFinder.service, 'Chromecast-y.${CastFinder.service}')
+              ..txt('Chromecast-y.${CastFinder.service}', {
+                'id': 'y',
+                'fn': 'Study',
+              }))
+            .build();
+    final other = InternetAddress('10.0.0.9');
+    // Another host's announcement of only a PTR record names no device.
+    expect(castDevicesIn(parseDnsResponse(partial), other), isEmpty);
+    // Without an address record, the sender of a multicast packet may be a
+    // different host, so it isn't taken as the device.
+    expect(
+      castDevicesIn(parseDnsResponse(noAddress), other, senderIsDevice: false),
+      isEmpty,
+    );
+    expect(castDevicesIn(parseDnsResponse(noAddress), other), hasLength(1));
+  });
 }

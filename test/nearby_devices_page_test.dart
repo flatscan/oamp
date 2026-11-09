@@ -52,7 +52,7 @@ class _FakeDiscovery implements DeviceDiscovery {
   bool get scanning => false;
 
   @override
-  Future<void> scan({bool prune = true}) async => scans++;
+  Future<void> scan() async => scans++;
 
   @override
   Future<void> dispose() async {}

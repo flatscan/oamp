@@ -31,13 +31,26 @@ class CastFinder {
   /// Each device as it answers. A device may answer more than once.
   Stream<OutputDevice> find({Duration listenFor = const Duration(seconds: 3)}) {
     final question = buildPtrQuery(service);
-    final replies = [
-      _query.send(question, listenFor: listenFor),
-      ?_listener?.listen(question, listenFor: listenFor),
-    ];
-    return _merge(replies).expand(
-      (reply) => castDevicesIn(parseDnsResponse(reply.data), reply.from),
-    );
+    final direct = _query
+        .send(question, listenFor: listenFor)
+        .expand(
+          (reply) => castDevicesIn(parseDnsResponse(reply.data), reply.from),
+        );
+    final listener = _listener;
+    if (listener == null) return direct;
+    // Heard on the shared port, a packet may come from any host and carry
+    // only part of a device (answers to other apps' questions), so only a
+    // device that arrives complete counts.
+    final shared = listener
+        .listen(question, listenFor: listenFor)
+        .expand(
+          (reply) => castDevicesIn(
+            parseDnsResponse(reply.data),
+            reply.from,
+            senderIsDevice: false,
+          ),
+        );
+    return _merge([direct, shared]);
   }
 
   static Stream<T> _merge<T>(List<Stream<T>> streams) {
@@ -83,11 +96,13 @@ class CastFinder {
 ///
 /// A reply usually carries the PTR record with the TXT, SRV and A records
 /// alongside it. When the address record is missing, the reply's sender is
-/// the device.
+/// the device, if [senderIsDevice] (a direct reply to our question). A
+/// device with no TXT record has no name or model and is left out.
 List<OutputDevice> castDevicesIn(
   List<DnsRecord> records,
-  InternetAddress from,
-) {
+  InternetAddress from, {
+  bool senderIsDevice = true,
+}) {
   final instances = {
     for (final r in records)
       if (r.type == DnsType.ptr &&
@@ -110,21 +125,28 @@ List<OutputDevice> castDevicesIn(
     return null;
   }
 
-  return [for (final instance in instances) ?_device(instance, find, from)];
+  return [
+    for (final instance in instances)
+      ?_device(instance, find, senderIsDevice ? from : null),
+  ];
 }
 
 OutputDevice? _device(
   String instance,
   DnsRecord? Function(int, String) find,
-  InternetAddress from,
+  InternetAddress? from,
 ) {
   final txt = find(DnsType.txt, instance)?.txt ?? const {};
+  // Without its TXT record there is no name, model or id to show.
+  if (txt.isEmpty) return null;
   final srv = find(DnsType.srv, instance);
   // A TTL of zero says the device is leaving.
   if (srv?.ttl == 0) return null;
   final address = srv?.srvHost == null
       ? null
       : find(DnsType.a, srv!.srvHost!)?.address;
+  final host = address ?? from?.address;
+  if (host == null) return null;
   final caps = int.tryParse(txt['ca'] ?? '') ?? 0;
   final model = txt['md'];
   final isGroup = model == 'Google Cast Group' || caps & _castGroupBit != 0;
@@ -134,7 +156,7 @@ OutputDevice? _device(
     protocol: OutputProtocol.cast,
     name: txt['fn'] ?? model ?? 'Cast device',
     model: model,
-    host: address ?? from.address,
+    host: host,
     port: srv?.srvPort ?? 8009,
     isGroup: isGroup,
     hasScreen: !isGroup && caps & _videoOutBit != 0,

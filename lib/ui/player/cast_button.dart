@@ -124,10 +124,9 @@ class _CastPickerState extends ConsumerState<CastPicker> {
     _searching = Timer(CastPicker.searchTime, () {
       if (mounted) setState(() => _searched = true);
     });
-    // Repeat scans only add devices, so nothing flickers out of the list.
     _rescan = Timer.periodic(
       CastPicker.rescanEvery,
-      (_) => unawaited(discovery.scan(prune: false)),
+      (_) => unawaited(discovery.scan()),
     );
   }
 
@@ -138,8 +137,7 @@ class _CastPickerState extends ConsumerState<CastPicker> {
     super.dispose();
   }
 
-  /// The refresh button: looks again now, and forgets devices that no
-  /// longer answer.
+  /// The refresh button: looks again now.
   Future<void> _refresh() async {
     if (_refreshing) return;
     setState(() => _refreshing = true);

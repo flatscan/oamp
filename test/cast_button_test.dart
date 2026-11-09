@@ -25,7 +25,6 @@ const _tv = OutputDevice(
 
 class _Discovery implements DeviceDiscovery {
   int scans = 0;
-  int pruningScans = 0;
   @override
   List<OutputDevice> current = const [_tv];
   @override
@@ -33,10 +32,7 @@ class _Discovery implements DeviceDiscovery {
   @override
   bool get scanning => false;
   @override
-  Future<void> scan({bool prune = true}) async {
-    scans++;
-    if (prune) pruningScans++;
-  }
+  Future<void> scan() async => scans++;
 
   @override
   Future<void> dispose() async {}
@@ -113,19 +109,15 @@ void main() {
     await tester.pump();
     expect(discovery.scans, 1);
 
-    // Repeat scans only add devices.
     await tester.pump(CastPicker.rescanEvery);
     expect(discovery.scans, 2);
-    expect(discovery.pruningScans, 1);
     await tester.pump(CastPicker.rescanEvery);
     expect(discovery.scans, 3);
-    expect(discovery.pruningScans, 1);
 
-    // The button looks again and forgets devices that went quiet.
+    // The button looks again at once.
     await tester.tap(find.byTooltip('Look for speakers and TVs again'));
     await tester.pump();
     expect(discovery.scans, 4);
-    expect(discovery.pruningScans, 2);
 
     // Closing the list stops the repeats.
     await tester.tap(find.text('This device'));

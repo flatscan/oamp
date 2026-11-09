@@ -189,8 +189,9 @@ class MulticastListener {
           InternetAddress.anyIPv4,
           port,
           reuseAddress: true,
-          // Windows shares the port through reuseAddress alone.
-          reusePort: !Platform.isWindows,
+          // Windows and Android share the port through reuseAddress alone,
+          // and Dart logs an error if they are asked for reusePort.
+          reusePort: !Platform.isWindows && !Platform.isAndroid,
         );
       } on Object catch (e) {
         debugPrint('Discovery: could not share the mDNS port ($e)');
