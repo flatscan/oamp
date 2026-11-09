@@ -30,17 +30,40 @@ void main() {
   late OampAudioHandler handler;
   late AndroidSystemControls controls;
   late int permissionRequests;
+  late List<bool> keeps;
 
   setUp(() {
     handler = OampAudioHandler();
     permissionRequests = 0;
+    keeps = [];
     controls = AndroidSystemControls(
       handler,
       requestNotifications: () async {
         permissionRequests++;
         return true;
       },
+      keepForeground: (keep) async => keeps.add(keep),
     );
+  });
+
+  test('stays in the foreground while paused only when casting', () async {
+    await controls.update(info(playing: false));
+    expect(keeps, isEmpty);
+
+    const casting = NowPlayingInfo(title: 'Track', castVolume: 0.4);
+    await controls.update(casting);
+    await controls.update(casting);
+    expect(keeps, [true]);
+
+    await controls.update(info(playing: false));
+    // Released only after the session has the new state.
+    expect(keeps, [true]);
+    await Future<void>.delayed(Duration.zero);
+    expect(keeps, [true, false]);
+
+    await controls.update(casting);
+    await controls.clear();
+    expect(keeps, [true, false, true, false]);
   });
 
   test('shows the track with art, duration and a seek bar', () async {

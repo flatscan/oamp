@@ -24,13 +24,19 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   final _problem = ValueNotifier<String?>(null);
   final Future<bool> Function() _requestNotifications;
   bool _askedForNotifications = false;
+  final Future<void> Function(bool keep) _keepForeground;
+
+  /// Whether the service is being kept in the foreground while paused.
+  bool _keeping = false;
 
   @visibleForTesting
   AndroidSystemControls(
     this._handler, {
     Future<bool> Function()? requestNotifications,
+    Future<void> Function(bool keep)? keepForeground,
   }) : _requestNotifications =
-           requestNotifications ?? _requestNotificationPermission;
+           requestNotifications ?? _requestNotificationPermission,
+       _keepForeground = keepForeground ?? _keepForegroundWhilePaused;
 
   /// Starts the media session. If that fails the app still runs, with
   /// [NoSystemControls] reporting why.
@@ -82,6 +88,27 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   static Future<bool> _requestNotificationPermission() async =>
       await _notifications.invokeMethod<bool>('requestPermission') ?? false;
 
+  /// While a speaker or TV plays, the media service stays in the
+  /// foreground even when paused, as cast apps do. Otherwise Android may
+  /// not let it come back when playback resumes from the device's own
+  /// buttons or remote while OAmp is in the background, and may close the
+  /// app, dropping the connection. MainActivity answers on
+  /// `oamp/notifications`.
+  static Future<void> _keepForegroundWhilePaused(bool keep) =>
+      _notifications.invokeMethod<void>('keepForegroundWhilePaused', keep);
+
+  void _setKeeping(bool keep) {
+    if (keep == _keeping) return;
+    _keeping = keep;
+    unawaited(
+      _keepForeground(keep).then(
+        (_) {},
+        onError: (Object e) =>
+            debugPrint('Keeping the media service in front failed: $e'),
+      ),
+    );
+  }
+
   @override
   ValueListenable<String?> get problem => _problem;
 
@@ -105,8 +132,17 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
         ),
       );
     }
+    final casting = info.castVolume != null;
+    // Turned on before the session hears of a pause, and off only after it
+    // has heard of the change, so the service never drops out in between.
+    if (casting) _setKeeping(true);
     try {
       _handler.show(info);
+      if (!casting && _keeping) {
+        Timer.run(() {
+          if (_handler.last?.castVolume == null) _setKeeping(false);
+        });
+      }
     } catch (e) {
       debugPrint('Updating the Android media session failed: $e');
       _problem.value ??= 'Updating the Android media session failed: $e';
@@ -114,7 +150,10 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   }
 
   @override
-  Future<void> clear() async => _handler.hide();
+  Future<void> clear() async {
+    _handler.hide();
+    _setKeeping(false);
+  }
 
   @override
   void attachLibrary(MediaLibrary? library) => _handler.attachLibrary(library);

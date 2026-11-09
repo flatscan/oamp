@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import com.ryanheise.audioservice.AudioServiceActivity
+import com.ryanheise.audioservice.OampForeground
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -19,10 +20,13 @@ class MainActivity : AudioServiceActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/notifications")
             .setMethodCallHandler { call, result ->
-                if (call.method == "requestPermission") {
-                    requestNotificationPermission(result)
-                } else {
-                    result.notImplemented()
+                when (call.method) {
+                    "requestPermission" -> requestNotificationPermission(result)
+                    "keepForegroundWhilePaused" -> {
+                        OampForeground.setKeepWhilePaused(call.arguments == true)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
                 }
             }
     }
