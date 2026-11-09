@@ -103,6 +103,8 @@ class FakeCastDevice {
       for (final i in items) {'itemId': i},
     ],
     'media': {'duration': 180},
+    // Real receivers report the stream's own level here, not the speaker's.
+    'volume': {'level': 1.0, 'muted': false},
   };
 
   /// Pretends the current track finished and the next began.
@@ -248,6 +250,17 @@ void main() {
     await player.load(_m(0), play: false);
     expect((await status).volume, 0.5);
   });
+
+  test(
+    "the stream's volume in media status isn't taken as the speaker's",
+    () async {
+      await player.load(_m(0));
+      await settle();
+      expect(fake.received.map((m) => m.type), contains('QUEUE_LOAD'));
+      final last = await player.status.first;
+      expect(last.volume, 0.5);
+    },
+  );
 
   test('loads two tracks and lines up the next when it moves on', () async {
     await player.load(

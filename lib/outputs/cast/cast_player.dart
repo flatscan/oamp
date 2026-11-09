@@ -256,8 +256,9 @@ class CastPlayer implements RemotePlayer {
     } else {
       _ended = false;
     }
-    final volume = s['volume'];
-    if (volume is Map) _readVolume({'volume': volume});
+    // MEDIA_STATUS also carries a volume, but that is the stream's own
+    // level (nearly always 1.0), not the speaker's. Only RECEIVER_STATUS
+    // says how loud the device is.
     _publish();
   }
 
