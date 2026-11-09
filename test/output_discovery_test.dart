@@ -128,6 +128,25 @@ const _kodiDescription = '''<?xml version="1.0"?>
   </device>
 </root>''';
 
+/// Hands back canned multicast replies, as the shared mDNS port would.
+class _FakeListener extends MulticastListener {
+  _FakeListener(this.replies)
+    : super(group: InternetAddress('224.0.0.251'), port: 5353);
+
+  final List<UdpReply> replies;
+  final asked = <Uint8List>[];
+
+  @override
+  Stream<UdpReply> listen(
+    Uint8List query, {
+    Duration listenFor = const Duration(seconds: 3),
+    Duration repeatAfter = const Duration(milliseconds: 700),
+  }) {
+    asked.add(query);
+    return Stream.fromIterable(replies);
+  }
+}
+
 final _loopback = InternetAddress.loopbackIPv4;
 Future<List<InternetAddress>> _loopbackOnly() async => [_loopback];
 
@@ -373,11 +392,215 @@ void main() {
 
       castAnswers = false;
       await discovery.scan();
+      // One quiet scan doesn't remove it: UDP drops packets.
+      expect(discovery.current.map((d) => d.protocol), [OutputProtocol.cast]);
+      await discovery.scan();
       expect(discovery.current.single.name, 'Kodi lounge');
 
       dlnaAnswers = false;
       await discovery.scan();
+      await discovery.scan();
       expect(discovery.current, isEmpty);
+    });
+  });
+
+  test('devices heard only on the shared mDNS port are found too', () async {
+    // Answers the direct question, as a speaker does.
+    final responder = await _responder(
+      (_) => _castReply(fn: 'Kitchen speaker', md: 'Google Nest Mini'),
+    );
+    addTearDown(responder.close);
+    // A display whose direct reply a reflector dropped, heard by multicast.
+    final listener = _FakeListener([
+      (
+        data: _castReply(
+          fn: 'Living room display',
+          md: 'Google Nest Hub',
+          id: 'hub1',
+          ca: 231941,
+          address: '192.168.69.56',
+        ),
+        from: InternetAddress('192.168.69.56'),
+      ),
+    ]);
+    final finder = CastFinder(
+      query: UdpQuery(
+        group: _loopback,
+        port: responder.port,
+        interfaces: _loopbackOnly,
+      ),
+      listener: listener,
+    );
+
+    final found = await finder
+        .find(listenFor: const Duration(milliseconds: 300))
+        .toList();
+    expect(found.map((d) => d.model).toSet(), {
+      'Google Nest Mini',
+      'Google Nest Hub',
+    });
+    final hub = found.firstWhere((d) => d.model == 'Google Nest Hub');
+    expect(hub.host, '192.168.69.56');
+    expect(hub.hasScreen, isTrue);
+    expect(parseDnsResponse(listener.asked.single), isEmpty);
+  });
+
+  test(
+    'a device that misses one scan stays, and two in a row removes it',
+    () async {
+      var answers = true;
+      final responder = await _responder((_) => answers ? _castReply() : null);
+      addTearDown(responder.close);
+      final discovery = NetworkDeviceDiscovery(
+        listenFor: const Duration(milliseconds: 300),
+        cast: CastFinder(
+          query: UdpQuery(
+            group: _loopback,
+            port: responder.port,
+            interfaces: _loopbackOnly,
+          ),
+          listener: _FakeListener(const []),
+        ),
+        dlna: DlnaFinder(
+          query: UdpQuery(
+            group: _loopback,
+            port: 1,
+            interfaces: () async => const [],
+          ),
+        ),
+      );
+      addTearDown(discovery.dispose);
+
+      await discovery.scan();
+      expect(discovery.current, hasLength(1));
+
+      answers = false;
+      await discovery.scan();
+      expect(discovery.current, hasLength(1));
+
+      // Heard again, so the count starts over.
+      answers = true;
+      await discovery.scan();
+      answers = false;
+      await discovery.scan();
+      expect(discovery.current, hasLength(1));
+
+      await discovery.scan();
+      expect(discovery.current, isEmpty);
+    },
+  );
+
+  test('devices heard on the shared port must arrive complete', () {
+    final partial =
+        (_Response()
+              ..ptr(CastFinder.service, 'Chromecast-x.${CastFinder.service}'))
+            .build();
+    final noAddress =
+        (_Response()
+              ..ptr(CastFinder.service, 'Chromecast-y.${CastFinder.service}')
+              ..txt('Chromecast-y.${CastFinder.service}', {
+                'id': 'y',
+                'fn': 'Study',
+              }))
+            .build();
+    final other = InternetAddress('10.0.0.9');
+    // Another host's announcement of only a PTR record names no device.
+    expect(castDevicesIn(parseDnsResponse(partial), other), isEmpty);
+    // Without an address record, the sender of a multicast packet may be a
+    // different host, so it isn't taken as the device.
+    expect(
+      castDevicesIn(parseDnsResponse(noAddress), other, senderIsDevice: false),
+      isEmpty,
+    );
+    expect(castDevicesIn(parseDnsResponse(noAddress), other), hasLength(1));
+  });
+
+  test('a complete announcement with other services alongside is accepted', () {
+    // The Nest Hub answers with its Cast service and another one together.
+    const cast = 'Google-Nest-Hub-hub1.${CastFinder.service}';
+    const zone = 'hub1._googlezone._tcp.local';
+    final packet =
+        (_Response()
+              ..ptr(CastFinder.service, cast)
+              ..ptr('_googlezone._tcp.local', zone)
+              ..txt(cast, {
+                'id': 'hub1',
+                'md': 'Google Nest Hub',
+                'fn': 'Living Room display',
+                'ca': '231941',
+              })
+              ..srv(cast, 'fuchsia-hub.local', 8009)
+              ..srv(zone, 'fuchsia-hub.local', 10001)
+              ..txt(zone, {'id': 'hub1'})
+              ..a('fuchsia-hub.local', '192.168.69.56'))
+            .build();
+    final found = castDevicesIn(
+      parseDnsResponse(packet),
+      InternetAddress('192.168.69.56'),
+      senderIsDevice: false,
+    );
+    expect(found, hasLength(1));
+    expect(found.single.model, 'Google Nest Hub');
+    expect(found.single.host, '192.168.69.56');
+    expect(found.single.port, 8009);
+  });
+
+  group('MulticastListener', () {
+    test(
+      'keeps its socket open between scans and closes it when idle',
+      () async {
+        final listener = MulticastListener(
+          group: InternetAddress('224.0.0.251'),
+          port: 0,
+          interfaces: () async => const [],
+          idleTimeout: const Duration(milliseconds: 300),
+        );
+        addTearDown(listener.dispose);
+        final query = buildPtrQuery(CastFinder.service);
+
+        expect(listener.isOpen, isFalse);
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        // Still joined after the scan, so the next one hears at once.
+        expect(listener.isOpen, isTrue);
+
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        expect(listener.isOpen, isTrue);
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(listener.isOpen, isFalse);
+
+        // And it opens again for the next scan.
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 100))
+            .toList();
+        expect(listener.isOpen, isTrue);
+      },
+    );
+
+    test('dispose closes the socket and ends later scans quietly', () async {
+      final listener = MulticastListener(
+        group: InternetAddress('224.0.0.251'),
+        port: 0,
+        interfaces: () async => const [],
+      );
+      final query = buildPtrQuery(CastFinder.service);
+      await listener
+          .listen(query, listenFor: const Duration(milliseconds: 50))
+          .toList();
+      expect(listener.isOpen, isTrue);
+      await listener.dispose();
+      expect(listener.isOpen, isFalse);
+      expect(
+        await listener
+            .listen(query, listenFor: const Duration(milliseconds: 50))
+            .toList(),
+        isEmpty,
+      );
+      expect(listener.isOpen, isFalse);
     });
   });
 }

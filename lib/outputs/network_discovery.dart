@@ -22,6 +22,12 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
 
   final _out = StreamController<List<OutputDevice>>.broadcast();
   final Map<String, OutputDevice> _known = {};
+
+  /// How many scans in a row each known device has stayed silent.
+  final Map<String, int> _missed = {};
+
+  /// Scans in a row a device may stay silent before it is forgotten.
+  static const missesToForget = 2;
   List<OutputDevice> _current = const [];
   Future<void>? _scan;
   bool _disposed = false;
@@ -60,7 +66,16 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
       _cast.find(listenFor: listenFor).forEach(add).catchError(_failed),
       _dlna.find(listenFor: listenFor).forEach(add).catchError(_failed),
     ]);
-    _known.removeWhere((key, _) => !heard.contains(key));
+    // UDP drops packets, so one quiet scan isn't enough to say a device
+    // has gone.
+    for (final key in _known.keys.toList()) {
+      if (heard.contains(key)) {
+        _missed.remove(key);
+      } else if ((_missed[key] = (_missed[key] ?? 0) + 1) >= missesToForget) {
+        _known.remove(key);
+        _missed.remove(key);
+      }
+    }
     // Models only: device names can identify people.
     final models = _known.values
         .map((d) => '${d.protocol.label} ${d.model ?? '?'}')
@@ -83,6 +98,7 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
   Future<void> dispose() async {
     _disposed = true;
     _dlna.dispose();
+    await _cast.dispose();
     await _out.close();
   }
 }

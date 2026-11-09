@@ -2,6 +2,8 @@
     <!-- Streams from the Navidrome server. Plain http:// is allowed
          (usesCleartextTraffic) for servers on the home network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Hearing speakers and TVs that answer discovery only by multicast. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- Background playback: the media service runs in the foreground while
          music plays, and holds a wake lock so it keeps going with the screen
          off. -->

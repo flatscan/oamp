@@ -98,13 +98,21 @@ class CastPicker extends ConsumerStatefulWidget {
   /// How long to look before saying nothing was found.
   static const searchTime = Duration(seconds: 8);
 
+  /// How often the list looks again while it is open, so a speaker that
+  /// was slow to answer, or a scan that was blocked until the firewall
+  /// prompt was answered, shows up without reopening it.
+  static const rescanEvery = Duration(seconds: 6);
+
   @override
   ConsumerState<CastPicker> createState() => _CastPickerState();
 }
 
-class _CastPickerState extends ConsumerState<CastPicker> {
+class _CastPickerState extends ConsumerState<CastPicker>
+    with WidgetsBindingObserver {
   Timer? _searching;
+  Timer? _rescan;
   bool _searched = false;
+  bool _refreshing = false;
 
   /// The device picked here, so the sheet closes once it is playing.
   String? _picked;
@@ -112,16 +120,54 @@ class _CastPickerState extends ConsumerState<CastPicker> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(ref.read(deviceDiscoveryProvider).scan());
     _searching = Timer(CastPicker.searchTime, () {
       if (mounted) setState(() => _searched = true);
     });
+    _startRescans();
+  }
+
+  void _startRescans() {
+    _rescan?.cancel();
+    _rescan = Timer.periodic(
+      CastPicker.rescanEvery,
+      (_) => unawaited(ref.read(deviceDiscoveryProvider).scan()),
+    );
+  }
+
+  /// Looking again with the app in the background does nothing useful:
+  /// Android refuses the sends once the screen is off, every scan comes
+  /// back empty and the list would clear. So rescans wait until the app is
+  /// back, and then look at once.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(deviceDiscoveryProvider).scan());
+      _startRescans();
+    } else {
+      _rescan?.cancel();
+      _rescan = null;
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searching?.cancel();
+    _rescan?.cancel();
     super.dispose();
+  }
+
+  /// The refresh button: looks again now.
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await ref.read(deviceDiscoveryProvider).scan();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   void _pick(OutputDevice device) {
@@ -161,8 +207,27 @@ class _CastPickerState extends ConsumerState<CastPicker> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text('Play on', style: t.titleLarge),
+              padding: const EdgeInsets.fromLTRB(24, 0, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Play on', style: t.titleLarge)),
+                  if (_refreshing)
+                    const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'Look for speakers and TVs again',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: OAmpColors.textMuted,
+                      onPressed: _refresh,
+                    ),
+                ],
+              ),
             ),
             if (output.message != null)
               Padding(

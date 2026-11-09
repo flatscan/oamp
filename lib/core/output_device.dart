@@ -124,8 +124,9 @@ abstract class DeviceDiscovery {
   /// Whether a scan is running.
   bool get scanning;
 
-  /// Asks the network who is there. Devices that answered last time and
-  /// stay silent this time are dropped when the scan ends.
+  /// Asks the network who is there. A device that stays silent for
+  /// several scans in a row is dropped when the scan ends; one missed
+  /// reply doesn't remove it.
   Future<void> scan();
 
   Future<void> dispose();
