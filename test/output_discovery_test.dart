@@ -440,4 +440,42 @@ void main() {
     expect(hub.hasScreen, isTrue);
     expect(parseDnsResponse(listener.asked.single), isEmpty);
   });
+
+  test(
+    'a repeat scan that prunes nothing keeps devices that went quiet',
+    () async {
+      var answers = true;
+      final responder = await _responder((_) => answers ? _castReply() : null);
+      addTearDown(responder.close);
+      final discovery = NetworkDeviceDiscovery(
+        listenFor: const Duration(milliseconds: 300),
+        cast: CastFinder(
+          query: UdpQuery(
+            group: _loopback,
+            port: responder.port,
+            interfaces: _loopbackOnly,
+          ),
+          listener: _FakeListener(const []),
+        ),
+        dlna: DlnaFinder(
+          query: UdpQuery(
+            group: _loopback,
+            port: 1,
+            interfaces: () async => const [],
+          ),
+        ),
+      );
+      addTearDown(discovery.dispose);
+
+      await discovery.scan();
+      expect(discovery.current, hasLength(1));
+
+      answers = false;
+      await discovery.scan(prune: false);
+      expect(discovery.current, hasLength(1));
+
+      await discovery.scan();
+      expect(discovery.current, isEmpty);
+    },
+  );
 }

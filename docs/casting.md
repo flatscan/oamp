@@ -29,6 +29,13 @@ it, OAmp asks again for a 320 kbps MP3 transcoded by the server.
 
 ## Troubleshooting
 
+**On Windows, the first time you open the cast list, Windows asks whether
+OAmp may use the network.** Allow it on private networks. OAmp listens for
+speakers announcing themselves, which Windows treats as incoming traffic.
+The list looks again every few seconds while it is open, so devices
+appear once you've answered. The refresh button at the top of the list
+looks again at once.
+
 **A Google speaker connects, then stops and goes back to the start, while
 other devices work.** The speaker probably can't resolve or reach your
 server. Google speakers often ignore the DNS server your router hands out

@@ -39,12 +39,13 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
   bool get scanning => _scan != null;
 
   @override
-  Future<void> scan() => _scan ??= _run().whenComplete(() {
-    _scan = null;
-    _publish();
-  });
+  Future<void> scan({bool prune = true}) =>
+      _scan ??= _run(prune).whenComplete(() {
+        _scan = null;
+        _publish();
+      });
 
-  Future<void> _run() async {
+  Future<void> _run(bool prune) async {
     final watch = Stopwatch()..start();
     final heard = <String>{};
     void add(OutputDevice d) {
@@ -60,7 +61,7 @@ class NetworkDeviceDiscovery implements DeviceDiscovery {
       _cast.find(listenFor: listenFor).forEach(add).catchError(_failed),
       _dlna.find(listenFor: listenFor).forEach(add).catchError(_failed),
     ]);
-    _known.removeWhere((key, _) => !heard.contains(key));
+    if (prune) _known.removeWhere((key, _) => !heard.contains(key));
     // Models only: device names can identify people.
     final models = _known.values
         .map((d) => '${d.protocol.label} ${d.model ?? '?'}')

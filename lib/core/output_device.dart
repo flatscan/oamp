@@ -125,8 +125,10 @@ abstract class DeviceDiscovery {
   bool get scanning;
 
   /// Asks the network who is there. Devices that answered last time and
-  /// stay silent this time are dropped when the scan ends.
-  Future<void> scan();
+  /// stay silent this time are dropped when the scan ends, unless [prune]
+  /// is false: a repeat scan then only adds, so a device that happens to
+  /// miss one round doesn't flicker out of a list on screen.
+  Future<void> scan({bool prune = true});
 
   Future<void> dispose();
 }
@@ -145,7 +147,7 @@ class NoDeviceDiscovery implements DeviceDiscovery {
   bool get scanning => false;
 
   @override
-  Future<void> scan() async {}
+  Future<void> scan({bool prune = true}) async {}
 
   @override
   Future<void> dispose() async {}

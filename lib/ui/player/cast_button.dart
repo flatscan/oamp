@@ -98,13 +98,20 @@ class CastPicker extends ConsumerStatefulWidget {
   /// How long to look before saying nothing was found.
   static const searchTime = Duration(seconds: 8);
 
+  /// How often the list looks again while it is open, so a speaker that
+  /// was slow to answer, or a scan that was blocked until the firewall
+  /// prompt was answered, shows up without reopening it.
+  static const rescanEvery = Duration(seconds: 6);
+
   @override
   ConsumerState<CastPicker> createState() => _CastPickerState();
 }
 
 class _CastPickerState extends ConsumerState<CastPicker> {
   Timer? _searching;
+  Timer? _rescan;
   bool _searched = false;
+  bool _refreshing = false;
 
   /// The device picked here, so the sheet closes once it is playing.
   String? _picked;
@@ -112,16 +119,35 @@ class _CastPickerState extends ConsumerState<CastPicker> {
   @override
   void initState() {
     super.initState();
-    unawaited(ref.read(deviceDiscoveryProvider).scan());
+    final discovery = ref.read(deviceDiscoveryProvider);
+    unawaited(discovery.scan());
     _searching = Timer(CastPicker.searchTime, () {
       if (mounted) setState(() => _searched = true);
     });
+    // Repeat scans only add devices, so nothing flickers out of the list.
+    _rescan = Timer.periodic(
+      CastPicker.rescanEvery,
+      (_) => unawaited(discovery.scan(prune: false)),
+    );
   }
 
   @override
   void dispose() {
     _searching?.cancel();
+    _rescan?.cancel();
     super.dispose();
+  }
+
+  /// The refresh button: looks again now, and forgets devices that no
+  /// longer answer.
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await ref.read(deviceDiscoveryProvider).scan();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   void _pick(OutputDevice device) {
@@ -161,8 +187,27 @@ class _CastPickerState extends ConsumerState<CastPicker> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text('Play on', style: t.titleLarge),
+              padding: const EdgeInsets.fromLTRB(24, 0, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Play on', style: t.titleLarge)),
+                  if (_refreshing)
+                    const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'Look for speakers and TVs again',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: OAmpColors.textMuted,
+                      onPressed: _refresh,
+                    ),
+                ],
+              ),
             ),
             if (output.message != null)
               Padding(
