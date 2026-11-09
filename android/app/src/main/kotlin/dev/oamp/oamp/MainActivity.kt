@@ -2,6 +2,7 @@ package dev.oamp.oamp
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import com.ryanheise.audioservice.AudioServiceActivity
 import com.ryanheise.audioservice.OampForeground
@@ -15,6 +16,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : AudioServiceActivity() {
     private var pendingPermission: MethodChannel.Result? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,7 +31,29 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // Wi-Fi drops multicast unless an app holds a lock, so it is held
+        // while OAmp looks for speakers and TVs.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/network")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "acquireMulticastLock" -> {
+                        multicastLock().acquire()
+                        result.success(null)
+                    }
+                    "releaseMulticastLock" -> {
+                        multicastLock?.takeIf { it.isHeld }?.release()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
+
+    private fun multicastLock(): WifiManager.MulticastLock =
+        multicastLock ?: (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
+            .createMulticastLock("oamp-discovery")
+            .apply { setReferenceCounted(true) }
+            .also { multicastLock = it }
 
     /** Android 13+ asks before an app may post notifications; older versions just allow it. */
     private fun requestNotificationPermission(result: MethodChannel.Result) {

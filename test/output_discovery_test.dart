@@ -128,6 +128,25 @@ const _kodiDescription = '''<?xml version="1.0"?>
   </device>
 </root>''';
 
+/// Hands back canned multicast replies, as the shared mDNS port would.
+class _FakeListener extends MulticastListener {
+  _FakeListener(this.replies)
+    : super(group: InternetAddress('224.0.0.251'), port: 5353);
+
+  final List<UdpReply> replies;
+  final asked = <Uint8List>[];
+
+  @override
+  Stream<UdpReply> listen(
+    Uint8List query, {
+    Duration listenFor = const Duration(seconds: 3),
+    Duration repeatAfter = const Duration(milliseconds: 700),
+  }) {
+    asked.add(query);
+    return Stream.fromIterable(replies);
+  }
+}
+
 final _loopback = InternetAddress.loopbackIPv4;
 Future<List<InternetAddress>> _loopbackOnly() async => [_loopback];
 
@@ -379,5 +398,46 @@ void main() {
       await discovery.scan();
       expect(discovery.current, isEmpty);
     });
+  });
+
+  test('devices heard only on the shared mDNS port are found too', () async {
+    // Answers the direct question, as a speaker does.
+    final responder = await _responder(
+      (_) => _castReply(fn: 'Kitchen speaker', md: 'Google Nest Mini'),
+    );
+    addTearDown(responder.close);
+    // A display whose direct reply a reflector dropped, heard by multicast.
+    final listener = _FakeListener([
+      (
+        data: _castReply(
+          fn: 'Living room display',
+          md: 'Google Nest Hub',
+          id: 'hub1',
+          ca: 231941,
+          address: '192.168.69.56',
+        ),
+        from: InternetAddress('192.168.69.56'),
+      ),
+    ]);
+    final finder = CastFinder(
+      query: UdpQuery(
+        group: _loopback,
+        port: responder.port,
+        interfaces: _loopbackOnly,
+      ),
+      listener: listener,
+    );
+
+    final found = await finder
+        .find(listenFor: const Duration(milliseconds: 300))
+        .toList();
+    expect(found.map((d) => d.model).toSet(), {
+      'Google Nest Mini',
+      'Google Nest Hub',
+    });
+    final hub = found.firstWhere((d) => d.model == 'Google Nest Hub');
+    expect(hub.host, '192.168.69.56');
+    expect(hub.hasScreen, isTrue);
+    expect(parseDnsResponse(listener.asked.single), isEmpty);
   });
 }

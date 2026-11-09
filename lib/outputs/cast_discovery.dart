@@ -1,29 +1,81 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import '../core/output_device.dart';
 import 'dns_packet.dart';
 import 'udp_query.dart';
 
-/// Finds Google Cast devices with an mDNS query for `_googlecast._tcp`.
+/// Finds Google Cast devices with an mDNS query for `_googlecast._tcp`:
+/// asked from a random port for direct replies, and by default also on the
+/// shared mDNS port, for devices whose direct replies don't arrive.
 class CastFinder {
-  CastFinder({UdpQuery? query})
-    : _query =
-          query ??
-          UdpQuery(group: InternetAddress('224.0.0.251'), port: mdnsPort);
+  CastFinder({UdpQuery? query, MulticastListener? listener})
+    : _query = query ?? UdpQuery(group: _mdnsGroup, port: mdnsPort),
+      _listener = query == null && listener == null
+          ? MulticastListener(
+              group: _mdnsGroup,
+              port: mdnsPort,
+              lock: _multicastLock,
+            )
+          : listener;
 
   static const mdnsPort = 5353;
   static const service = '_googlecast._tcp.local';
+  static final _mdnsGroup = InternetAddress('224.0.0.251');
 
   final UdpQuery _query;
+  final MulticastListener? _listener;
 
   /// Each device as it answers. A device may answer more than once.
   Stream<OutputDevice> find({Duration listenFor = const Duration(seconds: 3)}) {
-    return _query
-        .send(buildPtrQuery(service), listenFor: listenFor)
-        .expand(
-          (reply) => castDevicesIn(parseDnsResponse(reply.data), reply.from),
-        );
+    final question = buildPtrQuery(service);
+    final replies = [
+      _query.send(question, listenFor: listenFor),
+      ?_listener?.listen(question, listenFor: listenFor),
+    ];
+    return _merge(replies).expand(
+      (reply) => castDevicesIn(parseDnsResponse(reply.data), reply.from),
+    );
+  }
+
+  static Stream<T> _merge<T>(List<Stream<T>> streams) {
+    if (streams.length == 1) return streams.single;
+    late StreamController<T> out;
+    final subs = <StreamSubscription<T>>[];
+    var open = streams.length;
+    out = StreamController<T>(
+      onListen: () {
+        for (final s in streams) {
+          subs.add(
+            s.listen(
+              out.add,
+              onError: out.addError,
+              onDone: () {
+                if (--open == 0) out.close();
+              },
+            ),
+          );
+        }
+      },
+      onCancel: () => Future.wait([for (final s in subs) s.cancel()]),
+    );
+    return out.stream;
+  }
+
+  static const _network = MethodChannel('oamp/network');
+
+  /// Android's Wi-Fi drops multicast unless an app holds a multicast lock.
+  /// MainActivity answers on `oamp/network`.
+  static Future<void Function()> _multicastLock() async {
+    if (!Platform.isAndroid) return () {};
+    await _network.invokeMethod<void>('acquireMulticastLock');
+    return () => unawaited(
+      _network
+          .invokeMethod<void>('releaseMulticastLock')
+          .catchError((Object _) {}),
+    );
   }
 }
 
