@@ -49,14 +49,10 @@ class CastFinder {
     var packets = 0;
     var aboutCast = 0;
     var devices = 0;
-    // Our own questions, heard coming back, by the interface they left on.
-    final own = <String, int>{};
     final shared = listener.listen(question, listenFor: listenFor).expand((
       reply,
     ) {
       packets++;
-      final via = listener.localInterfaceOf(reply.from);
-      if (via != null) own[via] = (own[via] ?? 0) + 1;
       final records = parseDnsResponse(reply.data);
       if (records.any((r) => r.name.toLowerCase().endsWith(service))) {
         aboutCast++;
@@ -71,8 +67,7 @@ class CastFinder {
       // announcement.
       onDone: () => debugPrint(
         'Discovery: shared port heard $packets packet(s), $aboutCast about '
-        'Cast, $devices Cast device(s); own questions back: '
-        '${own.isEmpty ? 'none' : own.entries.map((e) => '${e.key} ${e.value}').join(', ')}',
+        'Cast, $devices Cast device(s)',
       ),
     );
   }

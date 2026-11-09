@@ -171,7 +171,7 @@ class MulticastListener {
 
   RawDatagramSocket? _socket;
   Future<void>? _opening;
-  List<NetworkInterface> _joined = const [];
+  List<_Sender> _senders = const [];
   void Function()? _release;
   Timer? _idle;
   bool _disposed = false;
@@ -260,51 +260,102 @@ class MulticastListener {
         refused.add('${i.name} ($e)');
       }
     }
+    final senders = await _openSenders(joined);
     debugPrint(
       'Discovery: shared port open, joined '
       '${joined.isEmpty ? 'nothing' : joined.map((i) => i.name).join(', ')}'
-      '${refused.isEmpty ? '' : '; not ${refused.join(', ')}'}',
+      '${refused.isEmpty ? '' : '; not ${refused.join(', ')}'}'
+      ', asking from ${senders.length} socket(s)',
     );
     s.listen((event) {
       if (event != RawSocketEvent.read) return;
       final dg = s.receive();
-      if (dg != null) _replies.add((data: dg.data, from: dg.address));
+      if (dg != null && !_replies.isClosed) {
+        _replies.add((data: dg.data, from: dg.address));
+      }
     }, onError: _sendFailed);
-    _socket = s;
-    _joined = joined;
-  }
-
-  /// The name of the local interface [address] belongs to, if it is one
-  /// this listener joined: a packet from it is one of our own questions
-  /// coming back, which shows the question left by that interface.
-  String? localInterfaceOf(InternetAddress address) {
-    for (final i in _joined) {
-      if (i.addresses.any((a) => a.address == address.address)) return i.name;
+    if (_disposed) {
+      s.close();
+      for (final sender in senders) {
+        sender.socket.close();
+      }
+      return;
     }
-    return null;
+    _socket = s;
+    _senders = senders;
   }
 
+  /// Asks on every joined interface, each from its own socket.
+  ///
+  /// Not from the listening socket with the outgoing interface switched
+  /// between sends: on Windows a datagram socket takes one send at a time,
+  /// and send() returns 0 instead of sending while another is in flight.
+  /// The first interface's question went out and the rest were dropped
+  /// without a word, which on a PC with a VPN was the home network's.
   void _ask(Uint8List query) {
-    final s = _socket;
-    if (s == null) return;
-    for (final i in _joined) {
+    if (_socket == null) return;
+    for (final sender in _senders) {
+      _send(sender, query);
+    }
+  }
+
+  void _send(_Sender sender, Uint8List query, {bool retry = true}) {
+    try {
+      if (sender.socket.send(query, group, port) > 0) return;
+      // Busy with the last send: once more, shortly.
+      if (retry) {
+        Timer(const Duration(milliseconds: 60), () {
+          if (_senders.contains(sender)) _send(sender, query, retry: false);
+        });
+      } else {
+        debugPrint('Discovery: could not ask on ${sender.name} (busy)');
+      }
+    } on Object catch (e) {
+      // An interface that went away mid-scan, usually.
+      debugPrint('Discovery: could not ask on ${sender.name} ($e)');
+    }
+  }
+
+  /// One socket per local address, bound to it on the shared port, so each
+  /// question leaves by that interface and from the mDNS port.
+  Future<List<_Sender>> _openSenders(List<NetworkInterface> joined) async {
+    final senders = <_Sender>[];
+    for (final i in joined) {
       for (final a in i.addresses) {
         try {
-          s
-            ..setRawOption(
+          final s = await RawDatagramSocket.bind(
+            a,
+            port,
+            reuseAddress: true,
+            reusePort: !Platform.isWindows && !Platform.isAndroid,
+          );
+          s.multicastHops = 255;
+          try {
+            s.setRawOption(
               RawSocketOption(
                 RawSocketOption.levelIPv4,
                 RawSocketOption.IPv4MulticastInterface,
                 a.rawAddress,
               ),
-            )
-            ..send(query, group, port);
+            );
+          } on Object {
+            // Bound to the address, which picks the interface anyway.
+          }
+          // Anything sent straight back to it counts as a reply too.
+          s.listen((event) {
+            if (event != RawSocketEvent.read) return;
+            final dg = s.receive();
+            if (dg != null && !_replies.isClosed) {
+              _replies.add((data: dg.data, from: dg.address));
+            }
+          }, onError: _sendFailed);
+          senders.add(_Sender(i.name, s));
         } on Object catch (e) {
-          // An interface that went away mid-scan, usually.
-          debugPrint('Discovery: could not ask on ${i.name} ($e)');
+          debugPrint('Discovery: no socket to ask on ${i.name} ($e)');
         }
       }
     }
+    return senders;
   }
 
   void _closeSocket() {
@@ -312,8 +363,11 @@ class MulticastListener {
     _idle = null;
     _socket?.close();
     _socket = null;
+    for (final sender in _senders) {
+      sender.socket.close();
+    }
+    _senders = const [];
     _opening = null;
-    _joined = const [];
     _releaseLock();
   }
 
@@ -342,4 +396,11 @@ class MulticastListener {
       return const [];
     }
   }
+}
+
+/// A socket that asks on one interface.
+class _Sender {
+  _Sender(this.name, this.socket);
+  final String name;
+  final RawDatagramSocket socket;
 }
