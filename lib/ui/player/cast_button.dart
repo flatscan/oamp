@@ -107,7 +107,8 @@ class CastPicker extends ConsumerStatefulWidget {
   ConsumerState<CastPicker> createState() => _CastPickerState();
 }
 
-class _CastPickerState extends ConsumerState<CastPicker> {
+class _CastPickerState extends ConsumerState<CastPicker>
+    with WidgetsBindingObserver {
   Timer? _searching;
   Timer? _rescan;
   bool _searched = false;
@@ -119,19 +120,40 @@ class _CastPickerState extends ConsumerState<CastPicker> {
   @override
   void initState() {
     super.initState();
-    final discovery = ref.read(deviceDiscoveryProvider);
-    unawaited(discovery.scan());
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(ref.read(deviceDiscoveryProvider).scan());
     _searching = Timer(CastPicker.searchTime, () {
       if (mounted) setState(() => _searched = true);
     });
+    _startRescans();
+  }
+
+  void _startRescans() {
+    _rescan?.cancel();
     _rescan = Timer.periodic(
       CastPicker.rescanEvery,
-      (_) => unawaited(discovery.scan()),
+      (_) => unawaited(ref.read(deviceDiscoveryProvider).scan()),
     );
+  }
+
+  /// Looking again with the app in the background does nothing useful:
+  /// Android refuses the sends once the screen is off, every scan comes
+  /// back empty and the list would clear. So rescans wait until the app is
+  /// back, and then look at once.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(deviceDiscoveryProvider).scan());
+      _startRescans();
+    } else {
+      _rescan?.cancel();
+      _rescan = null;
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searching?.cancel();
     _rescan?.cancel();
     super.dispose();

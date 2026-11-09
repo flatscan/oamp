@@ -119,6 +119,24 @@ void main() {
     await tester.pump();
     expect(discovery.scans, 4);
 
+    // In the background the list stops looking, and looks again at once
+    // when the app is back.
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final asleep = discovery.scans;
+    await tester.pump(CastPicker.rescanEvery * 3);
+    expect(discovery.scans, asleep);
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(discovery.scans, asleep + 1);
+    await tester.pump(CastPicker.rescanEvery);
+    expect(discovery.scans, asleep + 2);
+
     // Closing the list stops the repeats.
     await tester.tap(find.text('This device'));
     await tester.pumpAndSettle();
