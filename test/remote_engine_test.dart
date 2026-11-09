@@ -24,10 +24,29 @@ class _Info implements QueueInfo {
   Duration? durationAt(int index) => const Duration(minutes: 3);
   @override
   double get boostHeadroom => 1;
+
+  /// Originals with an MP3 to fall back on, when [withFallback].
+  bool withFallback = false;
+
   @override
-  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) =>
-      index < 0 ? null : _m(index);
+  RemoteMedia? remoteMediaAt(int index, OutputProtocol protocol) {
+    if (index < 0) return null;
+    if (!withFallback) return _m(index);
+    return RemoteMedia(
+      url: _m(index).url,
+      contentType: 'audio/flac',
+      title: 'Track $index',
+      fallback: _mp3(index),
+    );
+  }
 }
+
+RemoteMedia _mp3(int i) => RemoteMedia(
+  url: Uri.parse('http://server/stream/$i?format=mp3'),
+  contentType: 'audio/mpeg',
+  title: 'Track $i',
+  transcoded: true,
+);
 
 List<Uri> _uris(int n) => [for (var i = 0; i < n; i++) Uri.parse('file:/$i')];
 
@@ -182,6 +201,47 @@ void main() {
       device.report(const RemoteStatus(state: RemoteState.playing));
       await settle();
       expect(states.last.playing, isTrue);
+    });
+
+    test('a refused file is sent again as MP3, and so is the rest', () async {
+      final info = _Info()..withFallback = true;
+      engine.queueInfo = info;
+      device.refuses = (m) => !m.transcoded;
+      await engine.setQueue(
+        _uris(3),
+        initialPosition: const Duration(seconds: 9),
+      );
+      expect(device.current, _mp3(0));
+      expect(device.loadedAt, const Duration(seconds: 9));
+      expect(device.next, _mp3(1));
+      await engine.next();
+      expect(device.current, _mp3(1));
+    });
+
+    test(
+      'a track the device moved on to and refused is retried as MP3',
+      () async {
+        final info = _Info()..withFallback = true;
+        engine.queueInfo = info;
+        await engine.setQueue(_uris(3));
+        await engine.play();
+        device.moveOn();
+        await settle();
+        device.report(const RemoteStatus(failed: true));
+        await settle();
+        expect(device.current, _mp3(1));
+        expect(device.playing, isTrue);
+        expect(device.next, _mp3(2));
+      },
+    );
+
+    test('a refusal with nothing to fall back on pauses, uncaught', () async {
+      await engine.setQueue(_uris(3));
+      await engine.play();
+      device.refuses = (_) => true;
+      await engine.next();
+      await settle();
+      expect(states.last.playing, isFalse);
     });
 
     test('clear stops the device', () async {

@@ -203,4 +203,24 @@ void main() {
       expect(controls.last!.playing, isTrue);
     }
   });
+  test('a speaker that turns FLAC down gets the server\'s MP3', () async {
+    await player().playTracks(tracks, startIndex: 0);
+    await settle();
+    local.currentPosition = const Duration(seconds: 20);
+    final refusing = FakeRemotePlayer()..refuses = (m) => !m.transcoded;
+    container.updateOverrides([
+      sessionProvider.overrideWith(() => FakeSessionNotifier(source)),
+      audioEngineProvider.overrideWithValue(local),
+      systemControlsProvider.overrideWithValue(controls),
+      remoteConnectorProvider.overrideWithValue((_) async => refusing),
+    ]);
+    await outputs().connect(fakeCastDevice);
+    expect(output().phase, OutputPhase.connected);
+    expect(
+      refusing.current!.url,
+      source.streamUrl('t0', quality: remoteTranscode),
+    );
+    expect(refusing.loadedAt, const Duration(seconds: 20));
+    expect(refusing.playing, isTrue);
+  });
 }

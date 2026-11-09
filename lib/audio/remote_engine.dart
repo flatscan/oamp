@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/models.dart';
 import '../core/remote_player.dart';
 import 'audio_engine.dart';
@@ -46,6 +48,10 @@ class RemoteEngine implements AudioEngine {
   /// device is told again when a track has to be loaded.
   bool _wantPlay = false;
 
+  /// The device turned an original file down, so for the rest of the
+  /// session it gets the server's MP3 instead.
+  bool _transcode = false;
+
   @override
   Stream<EngineState> get stateStream => _state.stream;
   @override
@@ -61,8 +67,12 @@ class RemoteEngine implements AudioEngine {
   @override
   set queueInfo(QueueInfo? info) => _info = info;
 
-  RemoteMedia? _media(int? i) =>
-      i == null ? null : _info?.remoteMediaAt(i, player.device.protocol);
+  RemoteMedia? _media(int? i) {
+    final m = i == null
+        ? null
+        : _info?.remoteMediaAt(i, player.device.protocol);
+    return _transcode ? (m?.fallback ?? m) : m;
+  }
 
   int? _nextIndex(int? from) {
     if (from == null || _length == 0) return null;
@@ -93,6 +103,11 @@ class RemoteEngine implements AudioEngine {
   void _onStatus(RemoteStatus s) {
     final before = _status.state;
     _status = s;
+    if (s.failed) {
+      // A track the device moved on to by itself was turned down.
+      unawaited(_recover(s.position));
+      return;
+    }
     if (s.ended) {
       _completed = true;
       _wantPlay = false;
@@ -125,8 +140,53 @@ class RemoteEngine implements AudioEngine {
     await player.setNext(_media(next));
   }
 
-  /// Loads the entry at [index] on the device.
+  /// After the device couldn't play the current track: try the MP3, or
+  /// stop there if that was the MP3 already.
+  Future<void> _recover(Duration position) async {
+    final i = _index;
+    if (i == null) return;
+    if (_transcode ||
+        _info?.remoteMediaAt(i, player.device.protocol)?.fallback == null) {
+      debugPrint('Casting: the device could not play the track');
+      _wantPlay = false;
+      _emit();
+      return;
+    }
+    _transcode = true;
+    debugPrint('Casting: the device turned the file down; sending MP3');
+    await _tryLoad(i, position: position);
+  }
+
+  /// [_load] for the listener's own actions: a failure is logged and
+  /// leaves playback paused, rather than surfacing as an uncaught error.
+  Future<void> _tryLoad(int index, {Duration position = Duration.zero}) async {
+    try {
+      await _load(index, position: position);
+    } on Object catch (e) {
+      debugPrint('Casting: loading a track failed ($e)');
+      _wantPlay = false;
+      _emit();
+    }
+  }
+
+  /// Loads the entry at [index] on the device. When the device turns the
+  /// original file down, tries the server's MP3 once.
   Future<void> _load(int index, {Duration position = Duration.zero}) async {
+    try {
+      await _loadOnce(index, position: position);
+    } on RemoteMediaError {
+      if (_transcode ||
+          _info?.remoteMediaAt(index, player.device.protocol)?.fallback ==
+              null) {
+        rethrow;
+      }
+      _transcode = true;
+      debugPrint('Casting: the device turned the file down; sending MP3');
+      await _loadOnce(index, position: position);
+    }
+  }
+
+  Future<void> _loadOnce(int index, {Duration position = Duration.zero}) async {
     final media = _media(index);
     if (media == null) return;
     _index = index;
@@ -187,7 +247,7 @@ class RemoteEngine implements AudioEngine {
     } else if (index == cur) {
       if (_length == 0) return clear();
       // The next entry slides into this place and plays as it was.
-      await _load(cur < _length ? cur : 0);
+      await _tryLoad(cur < _length ? cur : 0);
       return;
     }
     await _lineUp();
@@ -225,7 +285,7 @@ class RemoteEngine implements AudioEngine {
     if (i == null) return;
     if (_completed || _status.state == RemoteState.idle) {
       // Finished, or the device dropped the track: start it again.
-      await _load(
+      await _tryLoad(
         _completed ? 0 : i,
         position: _completed ? Duration.zero : _status.position,
       );
@@ -246,9 +306,11 @@ class RemoteEngine implements AudioEngine {
   Future<void> seek(Duration position, {int? index}) async {
     if (index != null && index != _index) {
       if (index < 0 || index >= _length) return;
-      return _load(index, position: position);
+      return _tryLoad(index, position: position);
     }
-    if (_completed && _index != null) return _load(_index!, position: position);
+    if (_completed && _index != null) {
+      return _tryLoad(_index!, position: position);
+    }
     await player.seek(position);
   }
 
@@ -259,14 +321,14 @@ class RemoteEngine implements AudioEngine {
     final n = cur + 1 < _length
         ? cur + 1
         : (_repeat == PlaybackRepeat.all ? 0 : null);
-    if (n != null) await _load(n);
+    if (n != null) await _tryLoad(n);
   }
 
   @override
   Future<void> previous() async {
     final cur = _index;
     if (cur == null) return;
-    await _load(
+    await _tryLoad(
       cur > 0 ? cur - 1 : (_repeat == PlaybackRepeat.all ? _length - 1 : 0),
     );
   }

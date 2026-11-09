@@ -171,10 +171,15 @@ class DlnaPlayer implements RemotePlayer {
     } on Object {
       // Nothing was playing.
     }
-    await _transportCall('SetAVTransportURI', {
-      'CurrentURI': current.url.toString(),
-      'CurrentURIMetaData': didl(current),
-    });
+    try {
+      await _transportCall('SetAVTransportURI', {
+        'CurrentURI': current.url.toString(),
+        'CurrentURIMetaData': didl(current),
+      });
+    } on DlnaFault catch (e) {
+      // Renderers answer a format they can't play with a fault here.
+      throw RemoteMediaError('$e');
+    }
     if (play) {
       await _start(position);
     } else {

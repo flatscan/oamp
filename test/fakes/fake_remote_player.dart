@@ -16,6 +16,10 @@ class FakeRemotePlayer implements RemotePlayer {
   FakeRemotePlayer([this.fakeDevice = fakeCastDevice]);
 
   final OutputDevice fakeDevice;
+
+  /// Files the device turns down, as a speaker does with a format it
+  /// can't play.
+  bool Function(RemoteMedia media)? refuses;
   final _status = StreamController<RemoteStatus>.broadcast();
   final _advanced = StreamController<void>.broadcast();
   final _closed = Completer<void>();
@@ -55,6 +59,9 @@ class FakeRemotePlayer implements RemotePlayer {
     bool play = true,
   }) async {
     loads++;
+    if (refuses?.call(current) ?? false) {
+      throw const RemoteMediaError('refused');
+    }
     this.current = current;
     this.next = next;
     loadedAt = position;
