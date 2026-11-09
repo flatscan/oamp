@@ -76,3 +76,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // OampForeground works with audio_service's media service, which is
+    // built on this library. Same version as audio_service uses.
+    implementation("androidx.media:media:1.7.0")
+}
