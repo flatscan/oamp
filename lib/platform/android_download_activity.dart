@@ -14,6 +14,7 @@ class AndroidDownloadActivity implements DownloadActivity {
 
   bool _asked = false;
   bool _reportedRefusal = false;
+  bool _reportedStart = false;
 
   @override
   Future<void> show({required int done, required int total}) async {
@@ -27,6 +28,10 @@ class AndroidDownloadActivity implements DownloadActivity {
       'done': done,
       'total': total,
     });
+    if (started == true && !_reportedStart) {
+      _reportedStart = true;
+      debugPrint('Download notification started');
+    }
     if (started == false && !_reportedRefusal) {
       // Shows up in the diagnostics log, so a missing notification can be
       // told apart from one Android refused to start.
