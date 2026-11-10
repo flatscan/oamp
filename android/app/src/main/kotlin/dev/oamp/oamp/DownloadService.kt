@@ -50,12 +50,21 @@ class DownloadService : Service() {
     private fun build(done: Int, total: Int): Notification {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Normal importance without sound or vibration: a low importance
+            // channel is treated as silent, which many phones hide from the
+            // lock screen, and a download that carries on with the screen off
+            // is exactly when it should be visible.
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
                     "Downloads",
-                    NotificationManager.IMPORTANCE_LOW,
-                ),
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply {
+                    setSound(null, null)
+                    enableVibration(false)
+                    setShowBadge(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                },
             )
         }
         val open = PendingIntent.getActivity(
@@ -76,13 +85,14 @@ class DownloadService : Service() {
             .setContentText(if (total > 0) "$done of $total tracks" else "Getting ready")
             .setProgress(total, done.coerceAtMost(total), total == 0)
             .setOngoing(true)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .build()
     }
 
     companion object {
-        private const val CHANNEL_ID = "oamp_downloads"
+        private const val CHANNEL_ID = "oamp_downloads_v2"
         private const val NOTIFICATION_ID = 4202
         private const val EXTRA_DONE = "done"
         private const val EXTRA_TOTAL = "total"
