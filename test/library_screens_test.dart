@@ -307,35 +307,38 @@ void main() {
     expect(container.read(recentSearchesProvider), ['air']);
   });
 
-  test('artistTracksProvider loads album details in bounded batches in order', () async {
-    final slow = _SlowAlbumSource()
-      ..artistExtras = [
-        for (var i = 2; i <= 10; i++)
-          Album(id: 'al$i', name: 'Album $i', artist: 'Air', artistId: 'ar1'),
-      ];
-    slow.albumDetails['al1'] = const AlbumDetail(
-      FakeMusicSource.moonSafari,
-      [Track(id: 't1', title: 'Track 1')],
-    );
-    for (var i = 2; i <= 10; i++) {
-      slow.albumDetails['al$i'] = AlbumDetail(
-        Album(id: 'al$i', name: 'Album $i'),
-        [Track(id: 't$i', title: 'Track $i')],
+  test(
+    'artistTracksProvider loads album details in bounded batches in order',
+    () async {
+      final slow = _SlowAlbumSource()
+        ..artistExtras = [
+          for (var i = 2; i <= 10; i++)
+            Album(id: 'al$i', name: 'Album $i', artist: 'Air', artistId: 'ar1'),
+        ];
+      slow.albumDetails['al1'] = const AlbumDetail(FakeMusicSource.moonSafari, [
+        Track(id: 't1', title: 'Track 1'),
+      ]);
+      for (var i = 2; i <= 10; i++) {
+        slow.albumDetails['al$i'] = AlbumDetail(
+          Album(id: 'al$i', name: 'Album $i'),
+          [Track(id: 't$i', title: 'Track $i')],
+        );
+      }
+
+      final container = ProviderContainer(
+        overrides: [musicSourceProvider.overrideWithValue(slow)],
       );
-    }
+      addTearDown(container.dispose);
 
-    final container = ProviderContainer(
-      overrides: [musicSourceProvider.overrideWithValue(slow)],
-    );
-    addTearDown(container.dispose);
-
-    final tracks = await container.read(artistTracksProvider('ar1').future);
-    expect([for (final t in tracks) t.id], [
-      for (var i = 1; i <= 10; i++) 't$i',
-    ]);
-    expect(slow.maxInFlight, lessThanOrEqualTo(4));
-    expect(slow.maxInFlight, greaterThan(1));
-  });
+      final tracks = await container.read(artistTracksProvider('ar1').future);
+      expect(
+        [for (final t in tracks) t.id],
+        [for (var i = 1; i <= 10; i++) 't$i'],
+      );
+      expect(slow.maxInFlight, lessThanOrEqualTo(4));
+      expect(slow.maxInFlight, greaterThan(1));
+    },
+  );
 
   testWidgets('queue can be saved as a playlist', (tester) async {
     await pumpApp(tester);

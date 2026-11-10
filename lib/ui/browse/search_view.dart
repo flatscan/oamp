@@ -372,11 +372,8 @@ class _Results extends ConsumerWidget {
             height: artistShelfHeight(context, 100),
             spacing: 16,
             itemCount: r.artists.length,
-            itemBuilder: (_, i) => ArtistBubble(
-              artist: r.artists[i],
-              size: 100,
-              onTap: onPicked,
-            ),
+            itemBuilder: (_, i) =>
+                ArtistBubble(artist: r.artists[i], size: 100, onTap: onPicked),
           ),
         if (r.albums.isNotEmpty)
           AlbumCarousel(
