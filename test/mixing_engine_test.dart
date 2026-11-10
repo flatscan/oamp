@@ -341,6 +341,24 @@ void main() {
     expect(engine.isFading, isTrue);
   });
 
+  test('removing the last remaining entry clears the engine', () async {
+    final states = <EngineState>[];
+    engine.stateStream.listen(states.add);
+    await engine.setQueue([uris.first]);
+    await engine.play();
+    await settle();
+    expect(states.last.currentIndex, 0);
+    expect(states.last.playing, isTrue);
+
+    await engine.removeAt(0);
+    await settle();
+    expect(decks[0].queue, isEmpty);
+    expect(decks[0].index, isNull);
+    expect(decks[0].playing, isFalse);
+    expect(states.last.currentIndex, isNull);
+    expect(states.last.playing, isFalse);
+  });
+
   test('settings reach the decks', () async {
     await engine.setGapless(false);
     expect(decks[0].gapless, isFalse);

@@ -588,6 +588,10 @@ class MixingEngine implements AudioEngine {
 
   @override
   Future<void> removeAt(int index) async {
+    if (_uris.length <= 1 && index == 0) {
+      await clear();
+      return;
+    }
     await _finishFade();
     _changed();
     _uris.removeAt(index);

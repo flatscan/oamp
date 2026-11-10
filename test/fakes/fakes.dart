@@ -396,6 +396,30 @@ class FakeAudioEngine implements AudioEngine {
   /// Pretends playback has reached [p].
   void emitPosition(Duration p) => _position.add(p);
 
+  /// Pretends the active stream reported [d] as its length.
+  void emitDuration(Duration? d) => _duration.add(d);
+
+  /// Pretends the current stream reached its end: with repeat off, moves
+  /// on to the next entry or completes at the end of the queue.
+  void finishTrack() {
+    final at = index;
+    if (at == null) return;
+    if (repeat == PlaybackRepeat.one) {
+      _emit();
+    } else if (at + 1 < queue.length) {
+      index = at + 1;
+      _emit();
+    } else if (repeat == PlaybackRepeat.all && queue.isNotEmpty) {
+      index = 0;
+      _emit();
+    } else {
+      playing = false;
+      _state.add(
+        EngineState(playing: false, completed: true, currentIndex: at),
+      );
+    }
+  }
+
   void _emit() =>
       _state.add(EngineState(playing: playing, currentIndex: index));
 
@@ -446,6 +470,10 @@ class FakeAudioEngine implements AudioEngine {
 
   @override
   Future<void> removeAt(int i) async {
+    if (queue.length <= 1 && i == 0) {
+      await clear();
+      return;
+    }
     queue.removeAt(i);
     final at = index;
     if (at != null && i < at) {
