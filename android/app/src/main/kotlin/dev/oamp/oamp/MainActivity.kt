@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.util.Log
 import com.ryanheise.audioservice.AudioServiceActivity
 import com.ryanheise.audioservice.OampForeground
 import io.flutter.embedding.engine.FlutterEngine
@@ -47,6 +48,7 @@ class MainActivity : AudioServiceActivity() {
                             )
                             true
                         } catch (e: RuntimeException) {
+                            Log.w("OAmp", "Download notification refused", e)
                             false
                         }
                         result.success(started)

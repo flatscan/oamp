@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/download_activity.dart';
@@ -12,6 +13,7 @@ class AndroidDownloadActivity implements DownloadActivity {
   static const _notifications = MethodChannel('oamp/notifications');
 
   bool _asked = false;
+  bool _reportedRefusal = false;
 
   @override
   Future<void> show({required int done, required int total}) async {
@@ -21,7 +23,16 @@ class AndroidDownloadActivity implements DownloadActivity {
       _asked = true;
       await _notifications.invokeMethod<bool>('requestPermission');
     }
-    await _channel.invokeMethod<void>('show', {'done': done, 'total': total});
+    final started = await _channel.invokeMethod<bool>('show', {
+      'done': done,
+      'total': total,
+    });
+    if (started == false && !_reportedRefusal) {
+      // Shows up in the diagnostics log, so a missing notification can be
+      // told apart from one Android refused to start.
+      _reportedRefusal = true;
+      debugPrint('Android would not start the download notification');
+    }
   }
 
   @override
