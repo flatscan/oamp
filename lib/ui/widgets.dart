@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
+import '../state/downloads.dart';
 import '../state/library.dart';
 import '../state/player.dart';
 import '../state/radio.dart';
@@ -783,6 +784,9 @@ class TrackTile extends ConsumerWidget {
     final liked = ref.watch(
       likesProvider(LikeTarget.track).select((m) => m[track.id] ?? track.liked),
     );
+    final downloaded = ref.watch(
+      downloadsProvider.select((s) => s.downloaded.contains(track.id)),
+    );
 
     final Widget leading = number != null
         ? SizedBox(
@@ -841,6 +845,15 @@ class TrackTile extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (downloaded)
+              const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: Icon(
+                  Icons.download_done_rounded,
+                  size: 14,
+                  color: OAmpColors.textFaint,
+                ),
+              ),
             if (liked)
               const Padding(
                 padding: EdgeInsets.only(right: 6),

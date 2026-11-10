@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/downloads.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
@@ -9,6 +10,7 @@ import '../../state/session.dart';
 import '../async_view.dart';
 import '../browser.dart';
 import '../cover_art.dart';
+import '../download_button.dart';
 import '../rating_stars.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -103,6 +105,14 @@ class ArtistPage extends ConsumerWidget {
                         id: a.id,
                         fetched: a.liked,
                         what: 'artist',
+                      ),
+                      DownloadButton(
+                        kind: PinKind.artist,
+                        itemId: a.id,
+                        name: a.name,
+                        coverArt: a.coverArt,
+                        loadTracks: () =>
+                            ref.read(artistTracksProvider(a.id).future),
                       ),
                     ],
                   ),

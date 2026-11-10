@@ -530,6 +530,9 @@ class TrackListPage extends ConsumerWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onRetry;
 
+  /// Buttons beside Play and Shuffle, such as download.
+  final Widget? trailing;
+
   const TrackListPage({
     super.key,
     required this.title,
@@ -539,6 +542,7 @@ class TrackListPage extends ConsumerWidget {
     required this.tracks,
     required this.onRefresh,
     required this.onRetry,
+    this.trailing,
   });
 
   @override
@@ -580,6 +584,7 @@ class TrackListPage extends ConsumerWidget {
                 PlayShuffleButtons(
                   onPlay: list.isEmpty ? null : () => play(),
                   onShuffle: list.isEmpty ? null : () => play(shuffle: true),
+                  trailing: trailing,
                 ),
               ],
             ),

@@ -180,6 +180,7 @@ class DownloadManager extends Notifier<DownloadsState> {
       }
     });
     ref.listen(downloadOptionsProvider, (_, _) => kick());
+    ref.listen(settingsProvider.select((s) => s.offlineMode), (_, _) => kick());
 
     unawaited(_load(store, session.serverId, generation));
     return const DownloadsState();
@@ -331,6 +332,10 @@ class DownloadManager extends Notifier<DownloadsState> {
         final track = _next();
         if (track == null) {
           _setProblem(null);
+          return;
+        }
+        if (ref.read(settingsProvider).offlineMode) {
+          _setProblem('Offline mode is on');
           return;
         }
         final options = ref.read(downloadOptionsProvider);

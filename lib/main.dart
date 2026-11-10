@@ -25,6 +25,7 @@ import 'state/app_updates.dart';
 import 'state/diagnostics.dart';
 import 'state/downloads.dart';
 import 'state/endless_play.dart';
+import 'state/offline.dart';
 import 'state/outputs.dart';
 import 'state/playback_reporter.dart';
 import 'state/player.dart';
@@ -137,6 +138,7 @@ Future<void> main() async {
     ..listen(playbackReporterProvider, (_, _) {})
     ..listen(precacheProvider, (_, _) {})
     ..listen(downloadsProvider, (_, _) {})
+    ..listen(offlineSkipProvider, (_, _) {})
     ..listen(queueSyncProvider, (_, _) {})
     ..listen(endlessPlayProvider, (_, _) {});
 
@@ -242,6 +244,7 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
     ref.watch(downloadsProvider);
+    ref.watch(offlineSkipProvider);
     ref.watch(queueSyncProvider);
     ref.watch(endlessPlayProvider);
     ref.watch(serverRouteProvider);

@@ -36,6 +36,10 @@ class AppSettings {
   /// How tracks are downloaded for offline use.
   final DownloadOptions downloads;
 
+  /// Whether the app only shows and plays downloaded music, whatever the
+  /// network is doing, so nothing uses mobile data.
+  final bool offlineMode;
+
   const AppSettings({
     this.showTitleBar = true,
     this.showReplayGainDebug = false,
@@ -45,6 +49,7 @@ class AppSettings {
     this.mobileQuality,
     this.cache = const CacheOptions(),
     this.downloads = const DownloadOptions(),
+    this.offlineMode = false,
   });
 
   /// The quality to stream at on [network].
@@ -60,6 +65,7 @@ class AppSettings {
     StreamQuality? Function()? mobileQuality,
     CacheOptions? cache,
     DownloadOptions? downloads,
+    bool? offlineMode,
   }) => AppSettings(
     showTitleBar: showTitleBar ?? this.showTitleBar,
     showReplayGainDebug: showReplayGainDebug ?? this.showReplayGainDebug,
@@ -69,6 +75,7 @@ class AppSettings {
     mobileQuality: mobileQuality == null ? this.mobileQuality : mobileQuality(),
     cache: cache ?? this.cache,
     downloads: downloads ?? this.downloads,
+    offlineMode: offlineMode ?? this.offlineMode,
   );
 }
 
@@ -143,6 +150,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _sameAsWifi = 'sameAsWifi';
   static const _precache = 'oamp.cache.precacheTracks';
   static const _cacheLimit = 'oamp.cache.limitMb';
+  static const _offlineMode = 'oamp.offline.mode';
   static const _dlFormat = 'oamp.downloads.format';
   static const _dlBitRate = 'oamp.downloads.maxBitRate';
   static const _dlWifiOnly = 'oamp.downloads.wifiOnly';
@@ -198,6 +206,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
         precacheOnMobile:
             p.getBool(_precacheMobile) ?? d.cache.precacheOnMobile,
       ),
+      offlineMode: p.getBool(_offlineMode) ?? false,
       downloads: DownloadOptions(
         quality: StreamQuality(
           format: _enum(
@@ -265,5 +274,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _prefs.setString(_dlFormat, o.quality.format.name);
     await _prefs.setInt(_dlBitRate, o.quality.bitRate);
     await _prefs.setBool(_dlWifiOnly, o.wifiOnly);
+  }
+
+  Future<void> setOfflineMode(bool on) async {
+    state = state.copyWith(offlineMode: on);
+    await _prefs.setBool(_offlineMode, on);
   }
 }

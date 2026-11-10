@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/downloads.dart';
 import '../../state/library.dart';
 import '../async_view.dart';
+import '../download_button.dart';
 import '../widgets.dart';
 import 'artists_view.dart';
 import 'playlists_view.dart';
@@ -22,6 +24,12 @@ class LikedTracksPage extends ConsumerWidget {
       tracks: tracks,
       onRefresh: () => ref.refresh(likedTracksProvider.future),
       onRetry: () => ref.invalidate(likedTracksProvider),
+      trailing: DownloadButton(
+        kind: PinKind.liked,
+        itemId: Pin.likedItemId,
+        name: 'Liked tracks',
+        loadTracks: () => ref.read(likedTracksProvider.future),
+      ),
     );
   }
 }

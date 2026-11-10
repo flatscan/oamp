@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/downloads.dart';
 import '../core/models.dart';
 import '../state/downloads.dart';
+import '../state/offline.dart';
 import '../state/session.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -20,8 +21,12 @@ class DownloadButton extends ConsumerWidget {
   final String? coverArt;
 
   /// The item's tracks, once they are known. The button is disabled until
-  /// there are some.
+  /// there are some, unless [loadTracks] can fetch them.
   final List<Track> tracks;
+
+  /// Fetches the tracks when the button is tapped, for items (an artist's
+  /// whole catalogue) that are costly to list before anyone asks.
+  final Future<List<Track>> Function()? loadTracks;
 
   const DownloadButton({
     super.key,
@@ -29,7 +34,8 @@ class DownloadButton extends ConsumerWidget {
     required this.itemId,
     required this.name,
     this.coverArt,
-    required this.tracks,
+    this.tracks = const [],
+    this.loadTracks,
   });
 
   @override
@@ -41,15 +47,30 @@ class DownloadButton extends ConsumerWidget {
       downloadsProvider.select((s) => s.statusOf(kind, itemId)),
     );
     final manager = ref.read(downloadsProvider.notifier);
+    // Nothing new can be downloaded with no server to download from.
+    if (status == null && ref.watch(offlineProvider)) {
+      return const SizedBox.shrink();
+    }
 
     Future<void> onTap() async {
       if (status == null) {
+        final List<Track> wanted;
+        try {
+          wanted = loadTracks == null ? tracks : await loadTracks!();
+        } catch (e) {
+          if (context.mounted) toast(context, 'Could not list the tracks: $e');
+          return;
+        }
+        if (wanted.isEmpty) {
+          if (context.mounted) toast(context, 'Nothing to download');
+          return;
+        }
         await manager.pin(
           kind,
           itemId,
           name: name,
           coverArt: coverArt,
-          tracks: tracks,
+          tracks: wanted,
         );
         if (context.mounted) {
           toast(context, 'Downloading "$name"');
@@ -103,7 +124,9 @@ class DownloadButton extends ConsumerWidget {
       tooltip: tooltip,
       color: OAmpColors.textMuted,
       icon: icon,
-      onPressed: status == null && tracks.isEmpty ? null : onTap,
+      onPressed: status == null && tracks.isEmpty && loadTracks == null
+          ? null
+          : onTap,
     );
   }
 }
