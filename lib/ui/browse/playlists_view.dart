@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/downloads.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
 import '../async_view.dart';
 import '../browser.dart';
 import '../cover_art.dart';
+import '../download_button.dart';
 import '../playlist_dialogs.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -345,19 +347,33 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             PlayShuffleButtons(
               onPlay: tracks.isEmpty ? null : () => play(),
               onShuffle: tracks.isEmpty ? null : () => play(shuffle: true),
-              trailing: Builder(
-                builder: (btn) => IconButton(
-                  tooltip: 'More',
-                  icon: const Icon(Icons.more_horiz_rounded),
-                  onPressed: () => showPlaylistMenu(
-                    context,
-                    ref,
-                    p,
-                    at: centreOf(btn),
-                    onEdit: tracks.isEmpty ? null : () => _startEditing(tracks),
-                    onDeleted: () => Navigator.maybePop(context),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DownloadButton(
+                    kind: PinKind.playlist,
+                    itemId: p.id,
+                    name: p.name,
+                    coverArt: p.coverArt,
+                    tracks: tracks,
                   ),
-                ),
+                  Builder(
+                    builder: (btn) => IconButton(
+                      tooltip: 'More',
+                      icon: const Icon(Icons.more_horiz_rounded),
+                      onPressed: () => showPlaylistMenu(
+                        context,
+                        ref,
+                        p,
+                        at: centreOf(btn),
+                        onEdit: tracks.isEmpty
+                            ? null
+                            : () => _startEditing(tracks),
+                        onDeleted: () => Navigator.maybePop(context),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             )
           else

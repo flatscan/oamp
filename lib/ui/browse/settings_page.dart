@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/music_source.dart';
 import '../../core/playback_options.dart';
 import '../../core/track_cache.dart';
+import '../../state/downloads.dart';
 import '../../state/outputs.dart';
 import '../../state/precache.dart';
 import '../../state/session.dart';
@@ -214,6 +215,8 @@ class SettingsPage extends ConsumerWidget {
                   ),
                 ),
             ],
+            if (ref.watch(downloadStoreProvider) != null)
+              _DownloadsSection(android: android),
             if (hasCache) ...[
               const SettingsHeading('Cache'),
               ChoiceTile<int>(
@@ -279,7 +282,7 @@ class SettingsPage extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.logout_rounded),
               title: const Text('Sign out'),
-              onTap: () => ref.read(sessionProvider.notifier).logout(),
+              onTap: () => _signOut(context, ref),
             ),
             if (windows) ...[
               const SettingsHeading('Window'),
@@ -533,5 +536,155 @@ class SliderTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Signs out, first making sure the user knows downloads for this server
+/// go with it.
+Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+  final downloads = ref.read(downloadsProvider);
+  if (downloads.pins.isNotEmpty) {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your downloads for this server will be removed from this device. '
+          'They stay on the server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(downloadsProvider.notifier).removeAll();
+  }
+  await ref.read(sessionProvider.notifier).logout();
+}
+
+/// Quality and network choices for downloads, how much space they take,
+/// and a way to remove them all.
+class _DownloadsSection extends ConsumerWidget {
+  final bool android;
+  const _DownloadsSection({required this.android});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final options = ref.watch(downloadOptionsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+    final downloads = ref.watch(downloadsProvider);
+    final bytes = ref.watch(downloadUsageProvider).value ?? 0;
+    final quality = options.quality;
+
+    final String status;
+    if (downloads.pins.isEmpty) {
+      status =
+          'Nothing downloaded yet. Use the download button on an album '
+          'or playlist.';
+    } else {
+      final left = downloads.remaining;
+      final tracks = downloads.totalTracks;
+      final kept =
+          '${_bytes(bytes)} used, $tracks '
+          '${tracks == 1 ? 'track' : 'tracks'}';
+      status =
+          downloads.problem ??
+          (left > 0 ? 'Downloading, $left to go. $kept' : kept);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SettingsHeading('Downloads'),
+        ChoiceTile<StreamFormat>(
+          icon: Icons.high_quality_outlined,
+          title: 'Download format',
+          subtitle: quality.isOriginal
+              ? 'The file as stored on the server. Applies to new downloads.'
+              : 'The server converts each track as it downloads. Applies to '
+                    'new downloads.',
+          value: quality.format,
+          choices: const {
+            StreamFormat.original: 'Original',
+            StreamFormat.opus: 'Opus',
+            StreamFormat.mp3: 'MP3',
+          },
+          onChanged: (v) => notifier.setDownloads(
+            options.copyWith(
+              quality: StreamQuality(format: v, bitRate: quality.bitRate),
+            ),
+          ),
+        ),
+        if (!quality.isOriginal)
+          ChoiceTile<int>(
+            icon: Icons.speed_rounded,
+            title: 'Maximum bit rate',
+            value: quality.bitRate,
+            choices: {for (final b in StreamQuality.bitRates) b: '$b kbps'},
+            onChanged: (v) => notifier.setDownloads(
+              options.copyWith(
+                quality: StreamQuality(format: quality.format, bitRate: v),
+              ),
+            ),
+          ),
+        if (android)
+          SwitchListTile(
+            secondary: const Icon(Icons.wifi_rounded),
+            title: const Text('Download on Wi-Fi only'),
+            subtitle: const Text(
+              'Downloads wait for Wi-Fi so they don’t use mobile data.',
+            ),
+            value: options.wifiOnly,
+            onChanged: (v) =>
+                notifier.setDownloads(options.copyWith(wifiOnly: v)),
+          ),
+        ListTile(
+          leading: const Icon(Icons.delete_outline_rounded),
+          title: const Text('Remove all downloads'),
+          subtitle: Text(status),
+          enabled: downloads.pins.isNotEmpty,
+          onTap: () async {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Remove all downloads?'),
+                content: const Text(
+                  'Everything downloaded for this server is removed from '
+                  'this device. It stays on the server.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+            );
+            if (ok != true) return;
+            await ref.read(downloadsProvider.notifier).removeAll();
+            if (context.mounted) toast(context, 'Downloads removed');
+          },
+        ),
+      ],
+    );
+  }
+
+  static String _bytes(int b) {
+    final mb = b / (1024 * 1024);
+    return mb >= 1024
+        ? '${(mb / 1024).toStringAsFixed(1)} GB'
+        : '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
   }
 }

@@ -182,6 +182,65 @@ class Track {
 
   String? get genre => genres.isEmpty ? null : genres.first;
 
+  /// The track's details as saved with a download, so it can be listed and
+  /// played with no server to ask.
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'title': title,
+    'artist': ?artist,
+    'artistId': ?artistId,
+    'album': ?album,
+    'albumId': ?albumId,
+    'track': ?track,
+    'disc': ?discNumber,
+    'durationMs': ?duration?.inMilliseconds,
+    'coverArt': ?coverArt,
+    if (liked) 'liked': true,
+    if (rating != 0) 'rating': rating,
+    'year': ?year,
+    'format': ?format,
+    'bitRate': ?bitRate,
+    'sampleRate': ?sampleRate,
+    'bitDepth': ?bitDepth,
+    if (replayGain != null) 'replayGain': replayGain!.toJson(),
+    if (genres.isNotEmpty) 'genres': genres,
+  };
+
+  static Track? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final id = raw['id'];
+    final title = raw['title'];
+    if (id is! String || title is! String) return null;
+    int? i(String k) => raw[k] is num ? (raw[k] as num).toInt() : null;
+    String? str(String k) => raw[k] is String ? raw[k] as String : null;
+    final ms = i('durationMs');
+    return Track(
+      id: id,
+      title: title,
+      artist: str('artist'),
+      artistId: str('artistId'),
+      album: str('album'),
+      albumId: str('albumId'),
+      track: i('track'),
+      discNumber: i('disc'),
+      duration: ms == null ? null : Duration(milliseconds: ms),
+      coverArt: str('coverArt'),
+      liked: raw['liked'] == true,
+      rating: i('rating') ?? 0,
+      year: i('year'),
+      format: str('format'),
+      bitRate: i('bitRate'),
+      sampleRate: i('sampleRate'),
+      bitDepth: i('bitDepth'),
+      replayGain: ReplayGain.fromJson(raw['replayGain']),
+      genres: [
+        if (raw['genres'] is List)
+          for (final g in raw['genres'] as List)
+            if (g is String) g,
+      ],
+    );
+  }
+
   /// The same track as a separate object, for queue entries that are told
   /// apart by identity.
   Track copy() => Track(
@@ -224,6 +283,24 @@ class ReplayGain {
   });
 
   bool get isEmpty => trackGain == null && albumGain == null;
+
+  Map<String, Object?> toJson() => {
+    'trackGain': ?trackGain,
+    'albumGain': ?albumGain,
+    'trackPeak': ?trackPeak,
+    'albumPeak': ?albumPeak,
+  };
+
+  static ReplayGain? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    double? d(String k) => raw[k] is num ? (raw[k] as num).toDouble() : null;
+    return ReplayGain(
+      trackGain: d('trackGain'),
+      albumGain: d('albumGain'),
+      trackPeak: d('trackPeak'),
+      albumPeak: d('albumPeak'),
+    );
+  }
 }
 
 class Playlist {
