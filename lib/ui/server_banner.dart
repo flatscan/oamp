@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/offline.dart';
 import '../state/session.dart';
+import '../state/settings.dart';
 import 'login_screen.dart';
 import 'theme.dart';
 
@@ -14,9 +16,10 @@ class ServerStatusBanner extends ConsumerWidget {
   const ServerStatusBanner({super.key});
 
   /// Whether the banner is showing.
-  static bool visibleFor(ServerStatus status) {
+  static bool visibleFor(ServerStatus status, {bool offlineMode = false}) {
     final health = status.health;
-    return health == ServerHealth.unreachable ||
+    return offlineMode ||
+        health == ServerHealth.unreachable ||
         health == ServerHealth.signedOut ||
         (health == ServerHealth.checking && status.message != null);
   }
@@ -25,7 +28,13 @@ class ServerStatusBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(serverStatusProvider);
     final health = status.health;
-    final visible = visibleFor(status);
+    // Offline mode is the user's own choice, so it says so and offers the
+    // way back, whatever the server is doing.
+    final offlineMode = ref.watch(
+      settingsProvider.select((s) => s.offlineMode),
+    );
+    final fallback = !offlineMode && ref.watch(offlineProvider);
+    final visible = visibleFor(status, offlineMode: offlineMode);
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),
       alignment: Alignment.topCenter,
@@ -43,7 +52,7 @@ class ServerStatusBanner extends ConsumerWidget {
                 child: Row(
                   children: [
                     Icon(
-                      health == ServerHealth.signedOut
+                      health == ServerHealth.signedOut && !offlineMode
                           ? Icons.lock_outline
                           : Icons.cloud_off_rounded,
                       size: 20,
@@ -52,12 +61,25 @@ class ServerStatusBanner extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        status.message ?? '',
+                        offlineMode
+                            ? 'Offline mode is on. Only downloaded music is '
+                                  'shown and played.'
+                            : fallback
+                            ? '${status.message ?? ''} Showing your downloaded '
+                                  'music.'
+                            : status.message ?? '',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (health == ServerHealth.checking)
+                    if (offlineMode)
+                      TextButton(
+                        onPressed: () => ref
+                            .read(settingsProvider.notifier)
+                            .setOfflineMode(false),
+                        child: const Text('Go online'),
+                      )
+                    else if (health == ServerHealth.checking)
                       const Padding(
                         padding: EdgeInsets.all(12),
                         child: SizedBox.square(

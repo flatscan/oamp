@@ -604,6 +604,17 @@ class _DownloadsSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SettingsHeading('Downloads'),
+        SwitchListTile(
+          secondary: const Icon(Icons.cloud_off_rounded),
+          title: const Text('Offline mode'),
+          subtitle: const Text(
+            'Only shows and plays downloaded music, so nothing uses your '
+            'data. OAmp also goes offline by itself when the server can’t '
+            'be reached.',
+          ),
+          value: ref.watch(settingsProvider.select((s) => s.offlineMode)),
+          onChanged: notifier.setOfflineMode,
+        ),
         ChoiceTile<StreamFormat>(
           icon: Icons.high_quality_outlined,
           title: 'Download format',

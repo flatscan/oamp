@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../platform/platform_info.dart';
 import '../state/app_updates.dart';
+import '../state/settings.dart';
 import '../state/session.dart';
 import 'browser.dart';
 import 'player/mini_player.dart';
@@ -144,6 +145,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     final sheet = expanded ? kAlwaysCompleteAnimation : _sheet;
     final serverBanner = ServerStatusBanner.visibleFor(
       ref.watch(serverStatusProvider),
+      offlineMode: ref.watch(settingsProvider.select((s) => s.offlineMode)),
     );
     final banner =
         serverBanner ||

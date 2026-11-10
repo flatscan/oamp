@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
 import '../../state/library.dart';
+import '../../state/session.dart';
 import '../browser.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'albums_view.dart';
 import 'artists_view.dart';
+import 'downloads_page.dart';
 import 'liked_view.dart';
 import 'playlists_view.dart';
 
@@ -47,6 +49,12 @@ class LibraryView extends ConsumerWidget {
               label: 'Liked artists',
               onTap: () => openPage(const LikedArtistsPage()),
             ),
+            if (ref.watch(downloadStoreProvider) != null)
+              _Entry(
+                icon: Icons.download_for_offline_rounded,
+                label: 'Downloads',
+                onTap: () => openPage(const DownloadsPage()),
+              ),
             AlbumCarousel(
               title: 'Recently added',
               albums: ref.watch(homeAlbumsProvider(AlbumSort.newest)),

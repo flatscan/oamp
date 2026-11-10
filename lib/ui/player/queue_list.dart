@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models.dart';
+import '../../state/downloads.dart';
 import '../../state/endless_play.dart';
+import '../../state/offline.dart';
 import '../../state/player.dart';
 import '../cover_art.dart';
 import '../playlist_dialogs.dart';
@@ -382,8 +384,15 @@ class _QueueRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context).textTheme;
+    // Offline, an entry that isn't downloaded can't play, so it is dimmed
+    // further and skipped.
+    final unavailable =
+        ref.watch(offlineProvider) &&
+        !ref.watch(
+          downloadsProvider.select((s) => s.downloaded.contains(track.id)),
+        );
     return Opacity(
-      opacity: faded ? 0.6 : 1,
+      opacity: unavailable ? 0.35 : (faded ? 0.6 : 1),
       child: GestureDetector(
         onSecondaryTapUp: (d) =>
             showTrackMenu(context, ref, track, at: d.globalPosition),

@@ -3,13 +3,14 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
+import 'offline.dart';
 import 'session.dart';
 import 'settings.dart';
 
 /// Library queries against the active [MusicSource], cached by Riverpod and
 /// dropped when the session changes. Pull-to-refresh invalidates them.
 final artistsProvider = FutureProvider<List<Artist>>(
-  (ref) => ref.watch(musicSourceProvider).getArtists(),
+  (ref) => ref.watchLibrary().getArtists(),
 );
 
 /// The artist list split by index letter, worked out once per fetch rather
@@ -74,11 +75,11 @@ class LetterGroups<T> {
 }
 
 final artistDetailProvider = FutureProvider.family<ArtistDetail, String>(
-  (ref, id) => ref.watch(musicSourceProvider).getArtist(id),
+  (ref, id) => ref.watchLibrary().getArtist(id),
 );
 
 final artistInfoProvider = FutureProvider.family<ArtistInfo, String>(
-  (ref, id) => ref.watch(musicSourceProvider).getArtistInfo(id),
+  (ref, id) => ref.watchLibrary().getArtistInfo(id),
 );
 
 /// An artist's popular tracks, keyed by `(id, name)` because Subsonic looks
@@ -87,13 +88,14 @@ final topTracksProvider =
     FutureProvider.family<List<Track>, ({String id, String name})>(
       (ref, a) async => a.name.isEmpty
           ? const <Track>[]
-          : ref
-                .watch(musicSourceProvider)
-                .getTopTracks(Artist(id: a.id, name: a.name), count: 20),
+          : ref.watchLibrary().getTopTracks(
+              Artist(id: a.id, name: a.name),
+              count: 20,
+            ),
     );
 
 final albumDetailProvider = FutureProvider.family<AlbumDetail, String>(
-  (ref, id) => ref.watch(musicSourceProvider).getAlbum(id),
+  (ref, id) => ref.watchLibrary().getAlbum(id),
 );
 
 /// Every track by an artist, album by album, for the artist page's play and
@@ -111,23 +113,23 @@ final artistTracksProvider = FutureProvider.family<List<Track>, String>((
 
 /// A short album row for the home screen, such as recently added.
 final homeAlbumsProvider = FutureProvider.family<List<Album>, AlbumSort>(
-  (ref, sort) => ref.watch(musicSourceProvider).getAlbums(sort: sort, size: 24),
+  (ref, sort) => ref.watchLibrary().getAlbums(sort: sort, size: 24),
 );
 
 final playlistsProvider = FutureProvider<List<Playlist>>(
-  (ref) => ref.watch(musicSourceProvider).getPlaylists(),
+  (ref) => ref.watchLibrary().getPlaylists(),
 );
 
 final playlistDetailProvider = FutureProvider.family<PlaylistDetail, String>(
-  (ref, id) => ref.watch(musicSourceProvider).getPlaylist(id),
+  (ref, id) => ref.watchLibrary().getPlaylist(id),
 );
 
 final likedTracksProvider = FutureProvider<List<Track>>(
-  (ref) => ref.watch(musicSourceProvider).getLikedTracks(),
+  (ref) => ref.watchLibrary().getLikedTracks(),
 );
 
 final likedArtistsProvider = FutureProvider<List<Artist>>(
-  (ref) => ref.watch(musicSourceProvider).getLikedArtists(),
+  (ref) => ref.watchLibrary().getLikedArtists(),
 );
 
 /// Search results for a query, with up to [limit] of each kind. The
@@ -136,9 +138,7 @@ final likedArtistsProvider = FutureProvider<List<Artist>>(
 final searchProvider =
     FutureProvider.family<SearchResults, ({String query, int limit})>((ref, q) {
       if (q.query.trim().isEmpty) return const SearchResults();
-      return ref
-          .watch(musicSourceProvider)
-          .search(q.query.trim(), limit: q.limit);
+      return ref.watchLibrary().search(q.query.trim(), limit: q.limit);
     });
 
 /// Searches the user ran recently on this server, newest first.
@@ -274,7 +274,7 @@ class AlbumPagesNotifier extends Notifier<AlbumPages> {
 
   @override
   AlbumPages build() {
-    ref.watch(musicSourceProvider);
+    ref.watchLibrary();
     _inflight = null;
     Future.microtask(loadMore);
     return const AlbumPages(loading: true);

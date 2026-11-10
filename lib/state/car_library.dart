@@ -58,7 +58,11 @@ class CarLibrary implements MediaLibrary {
   /// car connects before the app has finished starting.
   Future<MusicSource?> _source() async {
     try {
-      return (await ref.read(sessionProvider.future))?.source;
+      if (await ref.read(sessionProvider.future) == null) return null;
+      // Through the offline-aware source, so the car lists downloaded music
+      // when there is no server.
+      final source = ref.read(musicSourceProvider);
+      return source;
     } catch (_) {
       return null;
     }

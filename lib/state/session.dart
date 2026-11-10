@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/artwork_cache.dart';
 import '../core/downloads.dart';
 import '../core/music_source.dart';
+import '../core/offline_source.dart';
 import '../core/server_route.dart';
 import '../core/track_cache.dart';
 import '../core/track_resolver.dart';
@@ -14,6 +15,7 @@ import '../platform/secure_store.dart';
 import '../sources/subsonic/subsonic_client.dart';
 import '../sources/subsonic/subsonic_source.dart';
 import 'diagnostics.dart';
+import 'offline.dart';
 import 'settings.dart';
 
 final secureStoreProvider = Provider<SecureStore>((_) => PlatformSecureStore());
@@ -37,7 +39,12 @@ final sessionProvider = AsyncNotifierProvider<SessionNotifier, ServerSession?>(
 final musicSourceProvider = Provider<MusicSource>((ref) {
   final session = ref.watch(sessionProvider).value;
   if (session == null) throw StateError('Not signed in');
-  return session.source;
+  // Browsing answers from the downloaded music while offline.
+  return OfflineAwareSource(
+    session.source,
+    isOffline: () => ref.read(offlineProvider),
+    library: () => ref.read(offlineLibraryProvider),
+  );
 });
 
 /// What the server told us it supports, asked once per sign-in. Until the

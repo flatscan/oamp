@@ -14,7 +14,8 @@ final precacheProvider = Provider<void>((ref) {
   if (cache == null) return;
   final options = ref.watch(cacheOptionsProvider);
   cache.limitBytes = options.limitBytes;
-  if (ref.watch(sessionProvider).value == null) {
+  if (ref.watch(sessionProvider).value == null ||
+      ref.watch(settingsProvider.select((s) => s.offlineMode))) {
     cache.prefetch(const []);
     return;
   }
