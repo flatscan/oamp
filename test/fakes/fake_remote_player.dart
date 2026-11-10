@@ -28,6 +28,7 @@ class FakeRemotePlayer implements RemotePlayer {
   RemoteMedia? next;
   Duration loadedAt = Duration.zero;
   bool playing = false;
+  bool? lastLoadPlay;
   int loads = 0;
   double? volume;
   bool stopped = false;
@@ -66,6 +67,7 @@ class FakeRemotePlayer implements RemotePlayer {
     this.next = next;
     loadedAt = position;
     playing = play;
+    lastLoadPlay = play;
     stopped = false;
   }
 

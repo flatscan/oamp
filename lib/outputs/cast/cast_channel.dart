@@ -61,6 +61,7 @@ class CastMessage {
       var result = 0;
       var shift = 0;
       while (true) {
+        if (shift >= 64) throw const FormatException('varint overflow');
         final b = data[i++];
         result |= (b & 0x7f) << shift;
         if (b & 0x80 == 0) return result;
@@ -78,6 +79,7 @@ class CastMessage {
             varint();
           case 2:
             final len = varint();
+            if (len < 0 || len > data.length - i) return null;
             if (field != 7) {
               strings[field] = utf8.decode(
                 data.sublist(i, i + len),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../core/models.dart';
 import 'audio_engine.dart';
+import 'remote_engine.dart';
 
 /// The [AudioEngine] the player talks to: local playback, or a speaker or
 /// TV while casting.
@@ -99,12 +100,23 @@ class OutputSwitcher implements AudioEngine {
       _state.add(_last);
       return;
     }
-    await target.setQueue(
-      List.of(_uris),
-      initialIndex: index.clamp(0, _uris.length - 1),
-      initialPosition: position,
-    );
-    if (wasPlaying && play) await target.play();
+    final startPlaying = wasPlaying && play;
+    final startIndex = index.clamp(0, _uris.length - 1);
+    if (target is RemoteEngine) {
+      await target.setQueue(
+        List.of(_uris),
+        initialIndex: startIndex,
+        initialPosition: position,
+        play: startPlaying,
+      );
+    } else {
+      await target.setQueue(
+        List.of(_uris),
+        initialIndex: startIndex,
+        initialPosition: position,
+      );
+      if (startPlaying) await target.play();
+    }
   }
 
   @override

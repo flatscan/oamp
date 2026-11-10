@@ -230,9 +230,10 @@ class RemoteEngine implements AudioEngine {
     List<Uri> uris, {
     int initialIndex = 0,
     Duration initialPosition = Duration.zero,
+    bool play = false,
   }) async {
     _length = uris.length;
-    _wantPlay = false;
+    _wantPlay = play;
     if (_length == 0) return clear();
     final index = initialIndex.clamp(0, _length - 1);
     if (_started) return _tryLoad(index, position: initialPosition);
