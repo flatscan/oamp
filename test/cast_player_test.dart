@@ -374,7 +374,16 @@ void main() {
       // i + (-1) would loop forever.
       final negativeLen = Uint8List.fromList([
         0x12,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0x01,
       ]);
       expect(CastMessage.decode(negativeLen), isNull);
 
