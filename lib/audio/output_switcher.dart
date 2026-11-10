@@ -43,6 +43,9 @@ class OutputSwitcher implements AudioEngine {
   /// The last duration the active output reported.
   Duration? get duration => _lastDuration;
 
+  /// Drops [duration] until the active output reports one again.
+  void forgetDuration() => _lastDuration = null;
+
   void _follow(AudioEngine e) {
     for (final s in _subs) {
       unawaited(s.cancel());

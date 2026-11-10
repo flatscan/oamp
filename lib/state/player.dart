@@ -156,8 +156,12 @@ final durationProvider = StreamProvider<Duration?>((ref) {
     return Stream.value(ref.read(playerProvider).current?.duration);
   }
   final switcher = ref.watch(outputSwitcherProvider);
+  // Moving on from a reopened stream, the engine has usually reported the
+  // next track's length already. When repeat one puts the same track back,
+  // that report is forgotten, and the library's length stands in for it.
+  final known = switcher.duration ?? ref.read(playerProvider).current?.duration;
   return (() async* {
-    if (switcher.duration != null) yield switcher.duration;
+    if (known != null) yield known;
     yield* switcher.durationStream;
   })();
 });
@@ -190,10 +194,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// [PlayerState.offset] is set.
   Track? _reopened;
 
-  /// Count of manual skip commands whose engine state updates may still be
-  /// in flight, so a natural advance at the end of a reopened stream can be
-  /// told apart in [PlaybackRepeat.one].
-  int _stepping = 0;
+  /// Runs from a skip by hand until the engine reports leaving the track,
+  /// so a natural advance at the end of a reopened stream can be told apart
+  /// in [PlaybackRepeat.one]. The engine can report the new track well
+  /// after the skip's command returns (libmpv reports it from its own
+  /// thread), so this waits for that report, or [_stepWindow] at most for
+  /// a skip that doesn't move (at either end of the queue).
+  Timer? _stepping;
+  static const _stepWindow = Duration(seconds: 2);
 
   /// The queue's order before it was shuffled, while [PlayerState.shuffled].
   List<Track> _unshuffled = const [];
@@ -239,6 +247,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
             at != null && at < state.queue.length ? state.queue[at] : null,
             reopened,
           );
+      final manual = _stepping != null;
+      if (left) {
+        _stepping?.cancel();
+        _stepping = null;
+      }
       // Repeat one on a stream reopened part way in keeps the engine in
       // repeat off until the stream ends (which completes on the last
       // entry or moves on to the next one), then puts the full stream back
@@ -246,10 +259,13 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       if (state.repeat == PlaybackRepeat.one &&
           state.offset > Duration.zero &&
           reopened != null &&
-          (s.completed || (left && _stepping == 0))) {
+          (s.completed || (left && !manual))) {
         final idx = state.queue.indexWhere((t) => identical(t, reopened));
         if (idx >= 0) {
           _reopened = null;
+          // The engine's last length was what was left of the reopened
+          // stream, not the track's.
+          _engine.forgetDuration();
           state = state.copyWith(
             currentIndex: () => idx,
             playing: true,
@@ -280,6 +296,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       }
     });
     ref.onDispose(sub.cancel);
+    ref.onDispose(() => _stepping?.cancel());
     final focus = ref.watch(audioFocusProvider).changes.listen(_onFocus);
     ref.onDispose(focus.cancel);
     // Signing out (or, in v2, switching server) clears the queue, since its
@@ -597,12 +614,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   Future<void> _step(Future<void> Function() action) async {
-    _stepping++;
-    try {
-      await action();
-    } finally {
-      Future<void>.delayed(Duration.zero, () => _stepping--);
-    }
+    _stepping?.cancel();
+    _stepping = Timer(_stepWindow, () => _stepping = null);
+    await action();
   }
 
   Future<void> jumpTo(int index) async {
@@ -823,6 +837,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       );
     }
     _reopened = reopen == null ? null : track;
+    _stepping?.cancel();
+    _stepping = null;
     state = state.copyWith(offset: offset);
     await _replaceCurrent(i, uri);
     if (reopen == null && d > Duration.zero) await _engine.seek(d);

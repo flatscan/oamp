@@ -511,10 +511,19 @@ class FakeAudioEngine implements AudioEngine {
     _emit();
   }
 
+  /// How long [next] takes to report the new entry after it returns, as
+  /// libmpv does from its own thread. Null reports it straight away.
+  Duration? reportNextAfter;
+
   @override
   Future<void> next() async {
     index = (index ?? 0) + 1;
-    _emit();
+    final after = reportNextAfter;
+    if (after == null) {
+      _emit();
+    } else {
+      Timer(after, _emit);
+    }
   }
 
   @override

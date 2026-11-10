@@ -329,6 +329,57 @@ void main() {
   );
 
   test(
+    'a skip under repeat one moves on even when the engine reports it late',
+    () async {
+      await start();
+      await player().playTracks(tracks, startIndex: 0);
+      await settle();
+      await player().cycleRepeat();
+      await player().cycleRepeat();
+      await player().seek(const Duration(seconds: 30));
+      await settle();
+      expect(state().offset, const Duration(seconds: 30));
+
+      engine.reportNextAfter = const Duration(milliseconds: 50);
+      await player().next();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      for (var i = 0; i < 5; i++) {
+        await settle();
+      }
+      expect(state().currentIndex, 1);
+      expect(state().current?.id, 't1');
+      expect(state().offset, Duration.zero);
+      expect(engine.index, 1);
+    },
+  );
+
+  test(
+    'the length is the track\'s when repeat one puts a reopened track back',
+    () async {
+      await start();
+      await player().playTracks(tracks, startIndex: 0);
+      await settle();
+      await player().cycleRepeat();
+      await player().cycleRepeat();
+      await player().seek(const Duration(seconds: 120));
+      await settle();
+      // The reopened stream reports what is left of it.
+      engine.emitDuration(const Duration(seconds: 60));
+      await settle();
+
+      engine.finishTrack();
+      for (var i = 0; i < 5; i++) {
+        await settle();
+      }
+      expect(state().offset, Duration.zero);
+      expect(
+        container.read(durationProvider).value,
+        const Duration(minutes: 3),
+      );
+    },
+  );
+
+  test(
     'durationProvider keeps the active duration when offset returns to zero',
     () async {
       await start();
