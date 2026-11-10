@@ -1,0 +1,29 @@
+import 'package:flutter/services.dart';
+
+import '../core/download_activity.dart';
+
+/// [DownloadActivity] on Android: a foreground service with a low-key
+/// notification, so a long download carries on with the screen off.
+/// MainActivity hands the calls to DownloadService on `oamp/downloads`.
+class AndroidDownloadActivity implements DownloadActivity {
+  AndroidDownloadActivity();
+
+  static const _channel = MethodChannel('oamp/downloads');
+  static const _notifications = MethodChannel('oamp/notifications');
+
+  bool _asked = false;
+
+  @override
+  Future<void> show({required int done, required int total}) async {
+    if (!_asked) {
+      // Android 13+ asks before an app may post notifications; without the
+      // answer the download still runs, only unseen.
+      _asked = true;
+      await _notifications.invokeMethod<bool>('requestPermission');
+    }
+    await _channel.invokeMethod<void>('show', {'done': done, 'total': total});
+  }
+
+  @override
+  Future<void> hide() => _channel.invokeMethod<void>('hide');
+}

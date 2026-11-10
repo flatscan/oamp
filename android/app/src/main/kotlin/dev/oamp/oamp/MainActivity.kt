@@ -31,6 +31,33 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // A foreground service with a progress notification, so downloads
+        // carry on with the screen off.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/downloads")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "show" -> {
+                        // Android refuses to start a service from the
+                        // background at times; downloading goes on regardless.
+                        val started = try {
+                            DownloadService.show(
+                                applicationContext,
+                                call.argument<Int>("done") ?: 0,
+                                call.argument<Int>("total") ?: 0,
+                            )
+                            true
+                        } catch (e: RuntimeException) {
+                            false
+                        }
+                        result.success(started)
+                    }
+                    "hide" -> {
+                        DownloadService.hide(applicationContext)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         // Wi-Fi drops multicast unless an app holds a lock, so it is held
         // while OAmp looks for speakers and TVs.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/network")

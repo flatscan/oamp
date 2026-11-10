@@ -13,6 +13,7 @@ import 'platform/device_details.dart';
 import 'platform/external_actions.dart';
 import 'platform/file_log_store.dart';
 import 'platform/disk_artwork_cache.dart';
+import 'platform/android_download_activity.dart';
 import 'platform/disk_download_store.dart';
 import 'platform/network_monitor.dart';
 import 'platform/platform_info.dart';
@@ -112,6 +113,8 @@ Future<void> main() async {
       trackCacheProvider.overrideWithValue(trackCache),
       artworkCacheProvider.overrideWithValue(artworkCache),
       downloadStoreProvider.overrideWithValue(downloadStore),
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+        downloadActivityProvider.overrideWithValue(AndroidDownloadActivity()),
       networkMonitorProvider.overrideWithValue(network),
       diagnosticsLogProvider.overrideWithValue(log),
       askAboutUpdatesProvider.overrideWithValue(true),
@@ -138,6 +141,7 @@ Future<void> main() async {
     ..listen(playbackReporterProvider, (_, _) {})
     ..listen(precacheProvider, (_, _) {})
     ..listen(downloadsProvider, (_, _) {})
+    ..listen(downloadActivityBridgeProvider, (_, _) {})
     ..listen(offlineSkipProvider, (_, _) {})
     ..listen(queueSyncProvider, (_, _) {})
     ..listen(endlessPlayProvider, (_, _) {});
@@ -244,6 +248,7 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
     ref.watch(downloadsProvider);
+    ref.watch(downloadActivityBridgeProvider);
     ref.watch(offlineSkipProvider);
     ref.watch(queueSyncProvider);
     ref.watch(endlessPlayProvider);
