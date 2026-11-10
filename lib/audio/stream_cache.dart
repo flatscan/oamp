@@ -65,7 +65,8 @@ class HttpTrackCache implements TrackCache {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final rnd = Random.secure();
     final secret = [
-      for (var i = 0; i < 16; i++) rnd.nextInt(256).toRadixString(16),
+      for (var i = 0; i < 16; i++)
+        rnd.nextInt(256).toRadixString(16).padLeft(2, '0'),
     ].join();
     final cache = HttpTrackCache._(
       dir,
@@ -120,6 +121,10 @@ class HttpTrackCache implements TrackCache {
       }
       try {
         final stat = await f.stat();
+        if (stat.size <= 0) {
+          await _tryDelete(f);
+          continue;
+        }
         _index[name] = _Entry(stat.size, stat.modified);
       } catch (_) {}
     }
@@ -231,7 +236,13 @@ class HttpTrackCache implements TrackCache {
       }
       await sink.close();
       sink = null;
-      if (res.contentLength >= 0 && n != res.contentLength) return true;
+      if (n <= 0 || (res.contentLength >= 0 && n != res.contentLength)) {
+        _wanted = [
+          for (final w in _wanted)
+            if (idFor(w.key) != d.id) w,
+        ];
+        return true;
+      }
       await _commit(d.id, part, n);
       return true;
     } catch (e) {
@@ -422,6 +433,11 @@ class HttpTrackCache implements TrackCache {
     try {
       final file = _file(id);
       final size = entry.size;
+      if (size <= 0) {
+        res.statusCode = HttpStatus.notFound;
+        await res.close();
+        return;
+      }
       var start = 0, end = size - 1;
       final m = range == null
           ? null
@@ -501,7 +517,7 @@ class HttpTrackCache implements TrackCache {
         }),
       );
       await sink.close();
-      ok = upRes.contentLength < 0 || n == upRes.contentLength;
+      ok = n > 0 && (upRes.contentLength < 0 || n == upRes.contentLength);
       if (ok) await _commit(id, part, n);
       await res.close();
     } finally {

@@ -419,6 +419,37 @@ void main() {
     expect(Uri(query: req.body).queryParametersAll['songId'], ids);
   });
 
+  test('replacePlaylistTracks with an empty list removes all existing indices', () async {
+    final (c, seen) = recording({
+      'playlist': {
+        'id': 'p9',
+        'name': 'Mixtape',
+        'songCount': 3,
+        'entry': [
+          {'id': 't1', 'title': 'One'},
+          {'id': 't2', 'title': 'Two'},
+          {'id': 't3', 'title': 'Three'},
+        ],
+      },
+    });
+    await c.replacePlaylistTracks('p9', const []);
+    expect(seen, hasLength(2));
+    expect(seen[0].url.path, '/rest/getPlaylist');
+    expect(seen[0].url.queryParameters['id'], 'p9');
+    expect(seen[1].url.path, '/rest/updatePlaylist');
+    expect(seen[1].url.queryParameters['playlistId'], 'p9');
+    expect(seen[1].url.queryParametersAll['songIndexToRemove'], ['0', '1', '2']);
+  });
+
+  test('replacePlaylistTracks with an empty list is a no-op when already empty', () async {
+    final (c, seen) = recording({
+      'playlist': {'id': 'p9', 'name': 'Empty', 'songCount': 0, 'entry': []},
+    });
+    await c.replacePlaylistTracks('p9', const []);
+    expect(seen, hasLength(1));
+    expect(seen.single.url.path, '/rest/getPlaylist');
+  });
+
   test('artist info strips markup and skips artists not in the library', () {
     expect(
       SubsonicSource.plainBiography(

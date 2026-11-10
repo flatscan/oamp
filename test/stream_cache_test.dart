@@ -22,6 +22,13 @@ void main() {
       final range = req.headers.value(HttpHeaders.rangeHeader);
       hits.add('${req.uri.path}${range == null ? '' : ' $range'}');
       final body = bodies[req.uri.path];
+      if (req.uri.path == '/empty-chunked') {
+        req.response.headers
+          ..contentType = ContentType('audio', 'flac')
+          ..chunkedTransferEncoding = true;
+        await req.response.close();
+        return;
+      }
       if (body == null) {
         req.response.statusCode = 404;
       } else if (range != null) {
@@ -138,8 +145,37 @@ void main() {
 
   test('only the cache’s own addresses are served', () async {
     final url = cache.urlFor(req(0));
+    expect(RegExp(r'^[0-9a-f]{32}$').hasMatch(url.pathSegments.first), isTrue);
     final wrong = url.replace(pathSegments: ['nope', url.pathSegments.last]);
     final (code, _) = await get(wrong);
     expect(code, 404);
+  });
+
+  test('an empty stream is not committed to disk cache', () async {
+    final emptyReq = CacheRequest(
+      'srv|empty|raw',
+      Uri.parse('http://127.0.0.1:${upstream.port}/empty-chunked'),
+    );
+    final url = cache.urlFor(emptyReq);
+    final (code, bytes) = await get(url);
+    expect(code, 200);
+    expect(bytes, isEmpty);
+    expect(cache.isCached('srv|empty|raw'), isFalse);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    hits.clear();
+    cache.prefetch([emptyReq, req(0)]);
+    await until(() => cache.isCached('srv|t0|raw'));
+    expect(cache.isCached('srv|empty|raw'), isFalse);
+    expect(hits, ['/empty-chunked', '/t0']);
+    expect((await cache.usage()).files, 1);
+  });
+
+  test('a 0-byte file on disk is ignored on scan and never served', () async {
+    final id = HttpTrackCache.idFor('srv|t0|raw');
+    await File('${dir.path}${Platform.pathSeparator}$id').writeAsBytes(const []);
+    await cache.dispose();
+    cache = await HttpTrackCache.open(dir);
+    expect(cache.isCached('srv|t0|raw'), isFalse);
   });
 }
