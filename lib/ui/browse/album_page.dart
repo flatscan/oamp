@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/downloads.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
 import '../../state/player.dart';
 import '../async_view.dart';
 import '../cover_art.dart';
+import '../download_button.dart';
 import '../rating_stars.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -221,6 +223,13 @@ class _Header extends StatelessWidget {
                       id: album.id,
                       fetched: album.liked,
                       what: 'album',
+                    ),
+                    DownloadButton(
+                      kind: PinKind.album,
+                      itemId: album.id,
+                      name: album.name,
+                      coverArt: album.coverArt,
+                      tracks: tracks,
                     ),
                     Consumer(
                       builder: (context, ref, _) => IconButton(

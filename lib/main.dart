@@ -13,6 +13,7 @@ import 'platform/device_details.dart';
 import 'platform/external_actions.dart';
 import 'platform/file_log_store.dart';
 import 'platform/disk_artwork_cache.dart';
+import 'platform/disk_download_store.dart';
 import 'platform/network_monitor.dart';
 import 'platform/platform_info.dart';
 import 'platform/platform_system_controls.dart';
@@ -22,6 +23,7 @@ import 'outputs/remote_connector.dart';
 import 'platform/window_geometry.dart';
 import 'state/app_updates.dart';
 import 'state/diagnostics.dart';
+import 'state/downloads.dart';
 import 'state/endless_play.dart';
 import 'state/outputs.dart';
 import 'state/playback_reporter.dart';
@@ -96,6 +98,7 @@ Future<void> main() async {
   final audioFocus = await openAudioFocus();
   final trackCache = await openTrackCache();
   final artworkCache = await DiskArtworkCache.open();
+  final downloadStore = await DiskDownloadStore.openDefault();
   // Wi-Fi or mobile data, for the mobile data quality on phones.
   final network = await ConnectivityNetworkMonitor.open();
 
@@ -107,6 +110,7 @@ Future<void> main() async {
       audioFocusProvider.overrideWithValue(audioFocus),
       trackCacheProvider.overrideWithValue(trackCache),
       artworkCacheProvider.overrideWithValue(artworkCache),
+      downloadStoreProvider.overrideWithValue(downloadStore),
       networkMonitorProvider.overrideWithValue(network),
       diagnosticsLogProvider.overrideWithValue(log),
       askAboutUpdatesProvider.overrideWithValue(true),
@@ -132,6 +136,7 @@ Future<void> main() async {
     ..listen(systemControlsBridgeProvider, (_, _) {})
     ..listen(playbackReporterProvider, (_, _) {})
     ..listen(precacheProvider, (_, _) {})
+    ..listen(downloadsProvider, (_, _) {})
     ..listen(queueSyncProvider, (_, _) {})
     ..listen(endlessPlayProvider, (_, _) {});
 
@@ -236,6 +241,7 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(systemControlsBridgeProvider);
     ref.watch(playbackReporterProvider);
     ref.watch(precacheProvider);
+    ref.watch(downloadsProvider);
     ref.watch(queueSyncProvider);
     ref.watch(endlessPlayProvider);
     ref.watch(serverRouteProvider);

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/downloads.dart';
 import '../core/playback_options.dart';
 import '../platform/network_monitor.dart';
 import '../platform/preferences.dart';
@@ -32,6 +33,9 @@ class AppSettings {
   final StreamQuality? mobileQuality;
   final CacheOptions cache;
 
+  /// How tracks are downloaded for offline use.
+  final DownloadOptions downloads;
+
   const AppSettings({
     this.showTitleBar = true,
     this.showReplayGainDebug = false,
@@ -40,6 +44,7 @@ class AppSettings {
     this.quality = StreamQuality.original,
     this.mobileQuality,
     this.cache = const CacheOptions(),
+    this.downloads = const DownloadOptions(),
   });
 
   /// The quality to stream at on [network].
@@ -54,6 +59,7 @@ class AppSettings {
     StreamQuality? quality,
     StreamQuality? Function()? mobileQuality,
     CacheOptions? cache,
+    DownloadOptions? downloads,
   }) => AppSettings(
     showTitleBar: showTitleBar ?? this.showTitleBar,
     showReplayGainDebug: showReplayGainDebug ?? this.showReplayGainDebug,
@@ -62,6 +68,7 @@ class AppSettings {
     quality: quality ?? this.quality,
     mobileQuality: mobileQuality == null ? this.mobileQuality : mobileQuality(),
     cache: cache ?? this.cache,
+    downloads: downloads ?? this.downloads,
   );
 }
 
@@ -136,6 +143,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _sameAsWifi = 'sameAsWifi';
   static const _precache = 'oamp.cache.precacheTracks';
   static const _cacheLimit = 'oamp.cache.limitMb';
+  static const _dlFormat = 'oamp.downloads.format';
+  static const _dlBitRate = 'oamp.downloads.maxBitRate';
+  static const _dlWifiOnly = 'oamp.downloads.wifiOnly';
 
   Preferences get _prefs => ref.read(preferencesProvider);
 
@@ -188,6 +198,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
         precacheOnMobile:
             p.getBool(_precacheMobile) ?? d.cache.precacheOnMobile,
       ),
+      downloads: DownloadOptions(
+        quality: StreamQuality(
+          format: _enum(
+            StreamFormat.values,
+            p.getString(_dlFormat),
+            StreamFormat.original,
+          ),
+          bitRate: p.getInt(_dlBitRate) ?? d.downloads.quality.bitRate,
+        ),
+        wifiOnly: p.getBool(_dlWifiOnly) ?? d.downloads.wifiOnly,
+      ),
     );
   }
 
@@ -237,5 +258,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _prefs.setInt(_precache, c.precacheTracks);
     await _prefs.setInt(_cacheLimit, c.limitMb);
     await _prefs.setBool(_precacheMobile, c.precacheOnMobile);
+  }
+
+  Future<void> setDownloads(DownloadOptions o) async {
+    state = state.copyWith(downloads: o);
+    await _prefs.setString(_dlFormat, o.quality.format.name);
+    await _prefs.setInt(_dlBitRate, o.quality.bitRate);
+    await _prefs.setBool(_dlWifiOnly, o.wifiOnly);
   }
 }

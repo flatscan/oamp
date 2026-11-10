@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/artwork_cache.dart';
+import '../core/downloads.dart';
 import '../core/music_source.dart';
 import '../core/server_route.dart';
 import '../core/track_cache.dart';
@@ -62,14 +63,26 @@ final trackCacheProvider = Provider<TrackCache?>((_) => null);
 /// a file system; without it images are fetched from the server each run.
 final artworkCacheProvider = Provider<ArtworkCache?>((_) => null);
 
-final trackResolverProvider = Provider<TrackResolver>(
-  (ref) => StreamingTrackResolver(
-    ref.watch(musicSourceProvider),
+/// Where downloads for offline use are kept. main.dart provides the
+/// on-disk store where the platform has a file system; without one,
+/// downloading is switched off.
+final downloadStoreProvider = Provider<DownloadStore?>((_) => null);
+
+/// Turns a track into something to play: its downloaded file when it has
+/// one, otherwise a stream from the server (through the playback cache).
+final trackResolverProvider = Provider<TrackResolver>((ref) {
+  final source = ref.watch(musicSourceProvider);
+  final streaming = StreamingTrackResolver(
+    source,
     quality: ref.watch(streamQualityProvider),
     cache: ref.watch(trackCacheProvider),
     canStartAt: ref.watch(capabilitiesProvider).canStartTranscodeAt,
-  ),
-);
+  );
+  final downloads = ref.watch(downloadStoreProvider);
+  return downloads == null
+      ? streaming
+      : DownloadedTrackResolver(streaming, downloads, source);
+});
 
 /// Saved servers are stored as `oamp.server.<serverId>` with a `type` field
 /// naming the backend, and `oamp.activeServer` holds the active id. The plain
