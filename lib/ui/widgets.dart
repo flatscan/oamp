@@ -107,11 +107,13 @@ class AlbumCard extends ConsumerWidget {
   final Album album;
   final double? size;
   final bool showArtist;
+  final VoidCallback? onTap;
   const AlbumCard({
     super.key,
     required this.album,
     this.size,
     this.showArtist = true,
+    this.onTap,
   });
 
   @override
@@ -122,6 +124,7 @@ class AlbumCard extends ConsumerWidget {
       if (!showArtist) album.year,
     ].whereType<Object>().join(' · ');
     Future<void> play() async {
+      onTap?.call();
       try {
         final detail = await ref.read(albumDetailProvider(album.id).future);
         await ref
@@ -139,7 +142,10 @@ class AlbumCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
         // The cover's own hover overlay is the hover cue.
         hoverColor: Colors.transparent,
-        onTap: () => openAlbum(album),
+        onTap: () {
+          onTap?.call();
+          openAlbum(album);
+        },
         onLongPress: () => showAlbumMenu(context, ref, album),
         onSecondaryTapUp: (d) =>
             showAlbumMenu(context, ref, album, at: d.globalPosition),
@@ -279,12 +285,14 @@ class AlbumCarousel extends StatelessWidget {
   final AsyncValue<List<Album>> albums;
   final VoidCallback? onSeeAll;
   final bool showArtist;
+  final VoidCallback? onTap;
   const AlbumCarousel({
     super.key,
     required this.title,
     required this.albums,
     this.onSeeAll,
     this.showArtist = true,
+    this.onTap,
   });
 
   static const _cardSize = 148.0;
@@ -320,6 +328,7 @@ class AlbumCarousel extends StatelessWidget {
           album: list[i],
           size: _cardSize,
           showArtist: showArtist,
+          onTap: onTap,
         ),
       ),
     );
@@ -486,11 +495,18 @@ class _HorizontalShelfState extends State<HorizontalShelf> {
 class ArtistBubble extends ConsumerWidget {
   final Artist artist;
   final double size;
-  const ArtistBubble({super.key, required this.artist, this.size = 112});
+  final VoidCallback? onTap;
+  const ArtistBubble({
+    super.key,
+    required this.artist,
+    this.size = 112,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     Future<void> play() async {
+      onTap?.call();
       try {
         final tracks = await ref.read(artistTracksProvider(artist.id).future);
         await ref
@@ -503,7 +519,10 @@ class ArtistBubble extends ConsumerWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(size),
-      onTap: () => openArtist(artist),
+      onTap: () {
+        onTap?.call();
+        openArtist(artist);
+      },
       child: SizedBox(
         width: size,
         child: Column(
