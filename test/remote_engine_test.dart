@@ -77,8 +77,25 @@ void main() {
       expect(device.next, _m(2));
       expect(device.loadedAt, const Duration(seconds: 30));
       expect(device.playing, isFalse);
+      expect(device.lastLoadPlay, isFalse);
       await engine.play();
       expect(device.playing, isTrue);
+    });
+
+    test('setQueue with play: true loads playing in one step', () async {
+      await engine.setQueue(
+        _uris(3),
+        initialIndex: 1,
+        initialPosition: const Duration(seconds: 15),
+        play: true,
+      );
+      expect(device.current, _m(1));
+      expect(device.next, _m(2));
+      expect(device.loadedAt, const Duration(seconds: 15));
+      expect(device.lastLoadPlay, isTrue);
+      expect(device.playing, isTrue);
+      expect(states, isNotEmpty);
+      expect(states.every((s) => s.playing), isTrue);
     });
 
     test('lines up the next track when the device moves on', () async {
@@ -269,12 +286,20 @@ void main() {
       await settle();
       local.currentPosition = const Duration(seconds: 42);
 
+      final switchStates = <EngineState>[];
+      final sub = switcher.stateStream.listen(switchStates.add);
+      addTearDown(sub.cancel);
+
       await switcher.switchTo(engine);
+      await settle();
       expect(switcher.isRemote, isTrue);
       expect(local.queue, isEmpty, reason: 'local playback released');
       expect(device.current, _m(1));
       expect(device.loadedAt, const Duration(seconds: 42));
+      expect(device.lastLoadPlay, isTrue);
       expect(device.playing, isTrue);
+      expect(switchStates, isNotEmpty);
+      expect(switchStates.every((s) => s.playing), isTrue);
     });
 
     test('queue edits while casting reach the device, and come back', () async {

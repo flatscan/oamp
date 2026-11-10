@@ -67,6 +67,7 @@ class DlnaPlayer implements RemotePlayer {
 
   RemoteMedia? _current;
   RemoteMedia? _next;
+  bool _linedUp = false;
 
   /// The renderer refused SetNextAVTransportURI, so the player moves on
   /// to the next track itself.
@@ -155,6 +156,7 @@ class DlnaPlayer implements RemotePlayer {
   }) => _command(() async {
     _current = current;
     _next = null;
+    _linedUp = false;
     _ended = false;
     _wasPlaying = false;
     _holdAt = null;
@@ -194,12 +196,26 @@ class DlnaPlayer implements RemotePlayer {
 
   Future<void> _lineUp(RemoteMedia? next) async {
     _next = next;
-    if (_noNextSupport || next == null) return;
+    if (_noNextSupport) return;
+    if (next == null) {
+      if (!_linedUp) return;
+      _linedUp = false;
+      try {
+        await _transportCall('SetNextAVTransportURI', {
+          'NextURI': '',
+          'NextURIMetaData': '',
+        });
+      } on Object {
+        // Some renderers reject an empty NextURI.
+      }
+      return;
+    }
     try {
       await _transportCall('SetNextAVTransportURI', {
         'NextURI': next.url.toString(),
         'NextURIMetaData': didl(next),
       });
+      _linedUp = true;
     } on DlnaFault {
       // The player will start it itself when the current track ends.
       _noNextSupport = true;
@@ -306,6 +322,7 @@ class DlnaPlayer implements RemotePlayer {
   Future<void> stop() => _command(() async {
     _current = null;
     _next = null;
+    _linedUp = false;
     _wasPlaying = false;
     _state = RemoteState.idle;
     _publish();
@@ -343,6 +360,7 @@ class DlnaPlayer implements RemotePlayer {
         // The renderer moved on to the lined-up track by itself.
         _current = next;
         _next = null;
+        _linedUp = false;
         _advanced.add(null);
       }
       final last = _position;

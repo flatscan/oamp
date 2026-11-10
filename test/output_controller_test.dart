@@ -64,14 +64,25 @@ void main() {
     await settle();
     local.currentPosition = const Duration(seconds: 50);
 
+    final playingStates = <bool>[];
+    final sub = container.listen<bool>(
+      playerProvider.select((s) => s.playing),
+      (_, next) => playingStates.add(next),
+    );
+    addTearDown(sub.close);
+
     await outputs().connect(fakeCastDevice);
+    await settle();
     expect(output().phase, OutputPhase.connected);
     expect(output().device, fakeCastDevice);
     final d = devices.single;
     expect(d.current!.url, source.streamUrl('t0'));
     expect(d.current!.contentType, 'audio/flac');
     expect(d.loadedAt, const Duration(seconds: 50));
+    expect(d.lastLoadPlay, isTrue);
     expect(d.playing, isTrue);
+    expect(playingStates, isNot(contains(false)));
+    expect(container.read(playerProvider).playing, isTrue);
     // A format the device can't play comes transcoded from the server.
     expect(d.next!.url, source.streamUrl('t1', quality: remoteTranscode));
     expect(d.next!.contentType, 'audio/mpeg');

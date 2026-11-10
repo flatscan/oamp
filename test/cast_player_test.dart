@@ -361,4 +361,35 @@ void main() {
     }, from: CastChannel.receiverId);
     await player.closed.timeout(const Duration(seconds: 2));
   });
+
+  test(
+    'CastMessage.decode rejects overlong varints and out-of-bounds lengths',
+    () {
+      // Overlong varint (> 64 bits of continuation bytes).
+      final overlong = Uint8List.fromList([for (var i = 0; i < 12; i++) 0x80]);
+      expect(CastMessage.decode(overlong), isNull);
+
+      // Field 2 (length-delimited, tag = 2 << 3 | 2 = 0x12) with a 10-byte
+      // varint encoding -1 (0xffffffffffffffff). Without bounds checking,
+      // i + (-1) would loop forever.
+      final negativeLen = Uint8List.fromList([
+        0x12,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0x01,
+      ]);
+      expect(CastMessage.decode(negativeLen), isNull);
+
+      // Field 2 with a length larger than the remaining buffer.
+      final pastEnd = Uint8List.fromList([0x12, 0x64, 0x41, 0x42]);
+      expect(CastMessage.decode(pastEnd), isNull);
+    },
+  );
 }

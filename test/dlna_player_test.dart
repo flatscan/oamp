@@ -175,6 +175,11 @@ void main() {
     expect(r.state, 'PLAYING');
     expect(r.args['Seek']!['Target'], '0:00:03');
 
+    await player.setNext(null);
+    expect(r.nextUri, isEmpty);
+    await player.setNext(_m(1));
+    expect(r.nextUri, _m(1).url.toString());
+
     final advanced = player.advanced.first;
     r.moveOn();
     await advanced.timeout(const Duration(seconds: 3));
