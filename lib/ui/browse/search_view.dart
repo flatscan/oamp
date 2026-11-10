@@ -314,18 +314,12 @@ class _Results extends ConsumerWidget {
     Widget trackTile(List<Track> list, int i) =>
         TrackTile(track: list[i], onTap: () => playTrack(list, i));
 
-    // Taps on artists and albums open them; noting the search on the way.
-    Widget picked(Widget child) => Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerUp: (_) => onPicked(),
-      child: child,
-    );
-
     switch (filter) {
       case SearchFilter.artists:
         return SliverList.builder(
           itemCount: r.artists.length,
-          itemBuilder: (_, i) => picked(_ArtistRow(artist: r.artists[i])),
+          itemBuilder: (_, i) =>
+              _ArtistRow(artist: r.artists[i], onTap: onPicked),
         );
       case SearchFilter.albums:
         return SliverPadding(
@@ -333,7 +327,8 @@ class _Results extends ConsumerWidget {
           sliver: SliverGrid.builder(
             gridDelegate: AlbumGridDelegate.of(context),
             itemCount: r.albums.length,
-            itemBuilder: (_, i) => picked(AlbumCard(album: r.albums[i])),
+            itemBuilder: (_, i) =>
+                AlbumCard(album: r.albums[i], onTap: onPicked),
           ),
         );
       case SearchFilter.tracks:
@@ -351,8 +346,10 @@ class _Results extends ConsumerWidget {
           const SectionHeader('Top result'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: picked(
-              _TopResultCard(item: top, onPlayTrack: (t) => playTrack([t], 0)),
+            child: _TopResultCard(
+              item: top,
+              onTap: onPicked,
+              onPlayTrack: (t) => playTrack([t], 0),
             ),
           ),
         ],
@@ -367,28 +364,28 @@ class _Results extends ConsumerWidget {
             trackTile(tracks, i),
         ],
         if (r.artists.isNotEmpty)
-          picked(
-            HorizontalShelf(
-              title: 'Artists',
-              onSeeAll: r.artists.length > 3
-                  ? () => onFilter(SearchFilter.artists)
-                  : null,
-              height: artistShelfHeight(context, 100),
-              spacing: 16,
-              itemCount: r.artists.length,
-              itemBuilder: (_, i) =>
-                  ArtistBubble(artist: r.artists[i], size: 100),
+          HorizontalShelf(
+            title: 'Artists',
+            onSeeAll: r.artists.length > 3
+                ? () => onFilter(SearchFilter.artists)
+                : null,
+            height: artistShelfHeight(context, 100),
+            spacing: 16,
+            itemCount: r.artists.length,
+            itemBuilder: (_, i) => ArtistBubble(
+              artist: r.artists[i],
+              size: 100,
+              onTap: onPicked,
             ),
           ),
         if (r.albums.isNotEmpty)
-          picked(
-            AlbumCarousel(
-              title: 'Albums',
-              albums: AsyncData(r.albums),
-              onSeeAll: r.albums.length > 2
-                  ? () => onFilter(SearchFilter.albums)
-                  : null,
-            ),
+          AlbumCarousel(
+            title: 'Albums',
+            albums: AsyncData(r.albums),
+            onSeeAll: r.albums.length > 2
+                ? () => onFilter(SearchFilter.albums)
+                : null,
+            onTap: onPicked,
           ),
       ],
     );
@@ -398,8 +395,13 @@ class _Results extends ConsumerWidget {
 /// A large card for the best match, whatever kind it is.
 class _TopResultCard extends ConsumerWidget {
   final Object item;
+  final VoidCallback onTap;
   final ValueChanged<Track> onPlayTrack;
-  const _TopResultCard({required this.item, required this.onPlayTrack});
+  const _TopResultCard({
+    required this.item,
+    required this.onTap,
+    required this.onPlayTrack,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -408,7 +410,7 @@ class _TopResultCard extends ConsumerWidget {
       Widget art,
       String title,
       String kind,
-      VoidCallback onTap,
+      VoidCallback open,
     ) = switch (item) {
       Artist a => (
         CoverArt(
@@ -419,13 +421,19 @@ class _TopResultCard extends ConsumerWidget {
         ),
         a.name,
         'Artist',
-        () => openArtist(a),
+        () {
+          onTap();
+          openArtist(a);
+        },
       ),
       Album a => (
         CoverArt(a.coverArt, size: 88, radius: 6),
         a.name,
         ['Album', ?a.artist].join(' · '),
-        () => openAlbum(a),
+        () {
+          onTap();
+          openAlbum(a);
+        },
       ),
       Track tr => (
         CoverArt(tr.coverArt, size: 88, radius: 6),
@@ -440,7 +448,7 @@ class _TopResultCard extends ConsumerWidget {
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: open,
         onLongPress: () => switch (item) {
           Album a => showAlbumMenu(context, ref, a),
           Track tr => showTrackMenu(context, ref, tr),
@@ -496,7 +504,8 @@ class _TopResultCard extends ConsumerWidget {
 
 class _ArtistRow extends StatelessWidget {
   final Artist artist;
-  const _ArtistRow({required this.artist});
+  final VoidCallback? onTap;
+  const _ArtistRow({required this.artist, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -520,7 +529,10 @@ class _ArtistRow extends StatelessWidget {
               '$n album${n == 1 ? '' : 's'}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-      onTap: () => openArtist(artist),
+      onTap: () {
+        onTap?.call();
+        openArtist(artist);
+      },
     );
   }
 }

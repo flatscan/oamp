@@ -4,10 +4,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/main.dart';
 import 'package:oamp/state/endless_play.dart';
+import 'package:oamp/state/library.dart';
 import 'package:oamp/state/player.dart';
 import 'package:oamp/state/session.dart';
 
 import 'fakes/fakes.dart';
+
+class _SlowAlbumSource extends FakeMusicSource {
+  int inFlight = 0;
+  int maxInFlight = 0;
+
+  @override
+  Future<AlbumDetail> getAlbum(String id) async {
+    inFlight++;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    inFlight--;
+    return super.getAlbum(id);
+  }
+}
 
 /// The album, artist, playlist and search screens, driven by the fake
 /// source.
@@ -259,6 +274,67 @@ void main() {
     await tester.tap(find.byTooltip('Forget "air"'));
     await tester.pumpAndSettle();
     expect(find.text('Recent searches'), findsNothing);
+  });
+
+  testWidgets('search: scrolling results does not save recent search', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await tapText(tester, 'Search');
+
+    await tester.enterText(find.byType(TextField), 'air');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(TextField)),
+    );
+    expect(container.read(recentSearchesProvider), isEmpty);
+
+    // Drag-scrolling over the results must not record the query.
+    await tester.drag(find.text('Top result'), const Offset(0, -120));
+    await tester.pumpAndSettle();
+    expect(container.read(recentSearchesProvider), isEmpty);
+
+    // Dragging inside the Artists shelf also does not record the query.
+    await tester.drag(find.text('Artists').last, const Offset(-80, 0));
+    await tester.pumpAndSettle();
+    expect(container.read(recentSearchesProvider), isEmpty);
+
+    // Submitting the search field saves the query.
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(container.read(recentSearchesProvider), ['air']);
+  });
+
+  test('artistTracksProvider loads album details in bounded batches in order', () async {
+    final slow = _SlowAlbumSource()
+      ..artistExtras = [
+        for (var i = 2; i <= 10; i++)
+          Album(id: 'al$i', name: 'Album $i', artist: 'Air', artistId: 'ar1'),
+      ];
+    slow.albumDetails['al1'] = const AlbumDetail(
+      FakeMusicSource.moonSafari,
+      [Track(id: 't1', title: 'Track 1')],
+    );
+    for (var i = 2; i <= 10; i++) {
+      slow.albumDetails['al$i'] = AlbumDetail(
+        Album(id: 'al$i', name: 'Album $i'),
+        [Track(id: 't$i', title: 'Track $i')],
+      );
+    }
+
+    final container = ProviderContainer(
+      overrides: [musicSourceProvider.overrideWithValue(slow)],
+    );
+    addTearDown(container.dispose);
+
+    final tracks = await container.read(artistTracksProvider('ar1').future);
+    expect([for (final t in tracks) t.id], [
+      for (var i = 1; i <= 10; i++) 't$i',
+    ]);
+    expect(slow.maxInFlight, lessThanOrEqualTo(4));
+    expect(slow.maxInFlight, greaterThan(1));
   });
 
   testWidgets('queue can be saved as a playlist', (tester) async {

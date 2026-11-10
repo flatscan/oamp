@@ -103,10 +103,21 @@ final artistTracksProvider = FutureProvider.family<List<Track>, String>((
   id,
 ) async {
   final detail = await ref.watch(artistDetailProvider(id).future);
-  final albums = await Future.wait([
-    for (final a in detail.albums) ref.watch(albumDetailProvider(a.id).future),
-  ]);
-  return [for (final a in albums) ...a.tracks];
+  const batchSize = 4;
+  final out = <Track>[];
+  for (var i = 0; i < detail.albums.length; i += batchSize) {
+    final end = (i + batchSize < detail.albums.length)
+        ? i + batchSize
+        : detail.albums.length;
+    final batch = await Future.wait([
+      for (var j = i; j < end; j++)
+        ref.watch(albumDetailProvider(detail.albums[j].id).future),
+    ]);
+    for (final a in batch) {
+      out.addAll(a.tracks);
+    }
+  }
+  return out;
 });
 
 /// A short album row for the home screen, such as recently added.
