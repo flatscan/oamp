@@ -350,12 +350,21 @@ class SubsonicSource implements MusicSource {
   }
 
   @override
-  Future<void> replacePlaylistTracks(String id, List<String> trackIds) =>
-      // createPlaylist with an existing id replaces its tracks.
-      _write('createPlaylist', {
-        'playlistId': id,
-        'songId': trackIds,
-      }, trackIds.length);
+  Future<void> replacePlaylistTracks(String id, List<String> trackIds) async {
+    if (trackIds.isEmpty) {
+      final detail = await getPlaylist(id);
+      if (detail.tracks.isEmpty) return;
+      await removeFromPlaylist(id, [
+        for (var i = 0; i < detail.tracks.length; i++) i,
+      ]);
+      return;
+    }
+    // createPlaylist with an existing id replaces its tracks.
+    await _write('createPlaylist', {
+      'playlistId': id,
+      'songId': trackIds,
+    }, trackIds.length);
+  }
 
   @override
   Future<void> deletePlaylist(String id) =>
