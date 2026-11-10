@@ -51,7 +51,10 @@ class Redactor {
       ..sort((a, b) => b.length.compareTo(a.length));
     for (final v in known) {
       out = out.replaceAll(
-        RegExp(RegExp.escape(v), caseSensitive: false),
+        RegExp(
+          '(?<![a-zA-Z0-9_<])${RegExp.escape(v)}(?![a-zA-Z0-9_>])',
+          caseSensitive: false,
+        ),
         _known[v]!,
       );
     }

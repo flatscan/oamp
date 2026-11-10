@@ -136,6 +136,20 @@ void main() {
       final r = Redactor()..hide('ed', '<user>');
       expect(r('loaded the queue'), 'loaded the queue');
     });
+
+    test('matches known values as whole tokens, not inside words or tags', () {
+      for (final user in ['art', 'url', 'play']) {
+        final r = Redactor()..hide(user, '<user>');
+        expect(
+          r(
+            'https://nas.local/x user $user u=$user '
+            'start artwork playing <url> (${user.toUpperCase()})',
+          ),
+          '<url> user <user> u=<hidden> '
+          'start artwork playing <url> (<user>)',
+        );
+      }
+    });
   });
 
   test('log keeps redacted, stamped lines and returns the newest', () async {
