@@ -10,14 +10,32 @@ class Redactor {
   /// user name, with what to show instead.
   final Map<String, String> _known = {};
 
+  /// Known values that are only hidden as whole words (see [hide]).
+  final Set<String> _wholeWords = {};
+
   /// Hides [value] wherever it appears, shown as [placeholder]. Values
   /// shorter than three characters are left alone, so a user called "ed"
   /// doesn't blank out every "ed" in the log.
-  void hide(String value, String placeholder) {
+  ///
+  /// With [wholeWord], [value] is only hidden where it isn't part of a
+  /// longer word, so a user called "art" leaves "start" and "artwork"
+  /// alone. Only use it for user names: a host or a credential must be
+  /// hidden wherever it turns up.
+  void hide(String value, String placeholder, {bool wholeWord = false}) {
     final v = value.trim();
     if (v.length < 3) return;
     _known[v] = placeholder;
+    if (wholeWord) {
+      _wholeWords.add(v);
+    } else {
+      _wholeWords.remove(v);
+    }
   }
+
+  /// A placeholder this redactor puts in, such as `<url>`.
+  static final _placeholder = RegExp(
+    '<(?:url|hidden|email|ip|host|user|server)>',
+  );
 
   static final _url = RegExp(
     r'''\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s'"<>()\[\]{}]+''',
@@ -50,12 +68,16 @@ class Redactor {
     final known = _known.keys.toList()
       ..sort((a, b) => b.length.compareTo(a.length));
     for (final v in known) {
-      out = out.replaceAll(
-        RegExp(
-          '(?<![a-zA-Z0-9_<])${RegExp.escape(v)}(?![a-zA-Z0-9_>])',
-          caseSensitive: false,
-        ),
-        _known[v]!,
+      final escaped = RegExp.escape(v);
+      final pattern = RegExp(
+        _wholeWords.contains(v)
+            ? '(?<![a-zA-Z0-9_])$escaped(?![a-zA-Z0-9_])'
+            : escaped,
+        caseSensitive: false,
+      );
+      out = _outsidePlaceholders(
+        out,
+        (part) => part.replaceAll(pattern, _known[v]!),
       );
     }
     return out
@@ -70,6 +92,24 @@ class Redactor {
               : s;
         })
         .replaceAllMapped(_userFolder, (m) => '${m[1]}<user>');
+  }
+
+  /// Applies [edit] to the text between placeholders, so a known value
+  /// such as a user called "url" doesn't break up `<url>`.
+  static String _outsidePlaceholders(
+    String text,
+    String Function(String) edit,
+  ) {
+    final out = StringBuffer();
+    var from = 0;
+    for (final m in _placeholder.allMatches(text)) {
+      out
+        ..write(edit(text.substring(from, m.start)))
+        ..write(m[0]);
+      from = m.end;
+    }
+    out.write(edit(text.substring(from)));
+    return out.toString();
   }
 }
 
