@@ -113,6 +113,39 @@ void main() {
     expect(state().current?.id, 'm1');
   });
 
+  test('removing the last remaining track clears the queue cleanly', () async {
+    await player().playTracks([many.first]);
+    await settle();
+    expect(state().queue, hasLength(1));
+    expect(state().currentIndex, 0);
+
+    await player().removeAt(0);
+    await settle();
+    expect(state().queue, isEmpty);
+    expect(state().currentIndex, isNull);
+    expect(state().playing, isFalse);
+    expect(engine.queue, isEmpty);
+    expect(engine.index, isNull);
+  });
+
+  test('removeAt and clearUpcoming prune endless track marks', () async {
+    await player().playTracks(many.sublist(0, 2));
+    await settle();
+    await player().addEndless(many.sublist(2, 5));
+    await settle();
+    expect(state().endless, hasLength(3));
+    final firstEndless = state().queue[2];
+
+    await player().removeAt(2);
+    await settle();
+    expect(state().endless.contains(firstEndless), isFalse);
+    expect(state().endless, hasLength(2));
+
+    await player().clearUpcoming();
+    await settle();
+    expect(state().endless, isEmpty);
+  });
+
   test('volume is clamped and survives clearing the queue', () async {
     await player().setVolume(1.4);
     expect(engine.volume, 1);

@@ -155,7 +155,15 @@ final durationProvider = StreamProvider<Duration?>((ref) {
   if (offset != Duration.zero) {
     return Stream.value(ref.read(playerProvider).current?.duration);
   }
-  return ref.watch(outputSwitcherProvider).durationStream;
+  final switcher = ref.watch(outputSwitcherProvider);
+  // Moving on from a reopened stream, the engine has usually reported the
+  // next track's length already. When repeat one puts the same track back,
+  // that report is forgotten, and the library's length stands in for it.
+  final known = switcher.duration ?? ref.read(playerProvider).current?.duration;
+  return (() async* {
+    if (known != null) yield known;
+    yield* switcher.durationStream;
+  })();
 });
 
 final playerProvider = NotifierProvider<PlayerController, PlayerState>(
@@ -185,6 +193,15 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// The queue entry whose stream was reopened part way in, while
   /// [PlayerState.offset] is set.
   Track? _reopened;
+
+  /// Runs from a skip by hand until the engine reports leaving the track,
+  /// so a natural advance at the end of a reopened stream can be told apart
+  /// in [PlaybackRepeat.one]. The engine can report the new track well
+  /// after the skip's command returns (libmpv reports it from its own
+  /// thread), so this waits for that report, or [_stepWindow] at most for
+  /// a skip that doesn't move (at either end of the queue).
+  Timer? _stepping;
+  static const _stepWindow = Duration(seconds: 2);
 
   /// The queue's order before it was shuffled, while [PlayerState.shuffled].
   List<Track> _unshuffled = const [];
@@ -230,6 +247,35 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
             at != null && at < state.queue.length ? state.queue[at] : null,
             reopened,
           );
+      final manual = _stepping != null;
+      if (left) {
+        _stepping?.cancel();
+        _stepping = null;
+      }
+      // Repeat one on a stream reopened part way in keeps the engine in
+      // repeat off until the stream ends (which completes on the last
+      // entry or moves on to the next one), then puts the full stream back
+      // so it repeats from the top.
+      if (state.repeat == PlaybackRepeat.one &&
+          state.offset > Duration.zero &&
+          reopened != null &&
+          (s.completed || (left && !manual))) {
+        final idx = state.queue.indexWhere((t) => identical(t, reopened));
+        if (idx >= 0) {
+          _reopened = null;
+          // The engine's last length was what was left of the reopened
+          // stream, not the track's.
+          _engine.forgetDuration();
+          state = state.copyWith(
+            currentIndex: () => idx,
+            playing: true,
+            buffering: s.buffering,
+            offset: Duration.zero,
+          );
+          unawaited(_repeatReopenedFromTop(reopened));
+          return;
+        }
+      }
       state = state.copyWith(
         currentIndex: () => s.currentIndex,
         playing: s.playing && !s.completed,
@@ -243,10 +289,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       // ordinary stream back so it plays from the top next time.
       if (left) {
         _reopened = null;
+        if (state.repeat == PlaybackRepeat.one) {
+          unawaited(_engine.setRepeatMode(PlaybackRepeat.one));
+        }
         unawaited(_restoreEntry(reopened));
       }
     });
     ref.onDispose(sub.cancel);
+    ref.onDispose(() => _stepping?.cancel());
     final focus = ref.watch(audioFocusProvider).changes.listen(_onFocus);
     ref.onDispose(focus.cancel);
     // Signing out (or, in v2, switching server) clears the queue, since its
@@ -320,6 +370,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
 
   @override
   bool crossfadeBetween(int from, int to) {
+    if (state.repeat == PlaybackRepeat.one &&
+        state.offset > Duration.zero &&
+        from == state.currentIndex) {
+      return false;
+    }
     final q = state.queue;
     if (from < 0 || to < 0 || from >= q.length || to >= q.length) return false;
     return _options.shouldCrossfade(q[from], q[to]);
@@ -338,7 +393,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   @override
   Duration? durationAt(int index) {
     final q = state.queue;
-    return index >= 0 && index < q.length ? q[index].duration : null;
+    if (index < 0 || index >= q.length) return null;
+    final dur = q[index].duration;
+    if (dur == null) return null;
+    if (index == state.currentIndex && state.offset > Duration.zero) {
+      final rem = dur - state.offset;
+      return rem > Duration.zero ? rem : Duration.zero;
+    }
+    return dur;
   }
 
   Future<void> _reresolveUpcoming() async {
@@ -439,6 +501,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       ]),
     );
     _stale = {for (final t in tracks) t.id};
+    if (reopen != null && state.repeat == PlaybackRepeat.one) {
+      await _engine.setRepeatMode(PlaybackRepeat.off);
+    }
     await _engine.setQueue(
       uris,
       initialIndex: index,
@@ -548,22 +613,45 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     await _engine.insertAll(at, await _uris(tracks));
   }
 
+  Future<void> _step(Future<void> Function() action) async {
+    _stepping?.cancel();
+    _stepping = Timer(_stepWindow, () => _stepping = null);
+    await action();
+  }
+
   Future<void> jumpTo(int index) async {
     _resumeAfterInterruption = false;
-    await _engine.seek(Duration.zero, index: index);
-    await _engine.play();
+    await _step(() async {
+      await _engine.seek(Duration.zero, index: index);
+      await _engine.play();
+    });
   }
 
   Future<void> removeAt(int index) async {
+    if (index < 0 || index >= state.queue.length) return;
+    if (state.queue.length == 1) {
+      await clear();
+      return;
+    }
     // The reopened entry is going, so there is nothing to put back.
     final offset = index == state.currentIndex ? Duration.zero : null;
-    if (offset != null) _reopened = null;
+    if (offset != null) {
+      _reopened = null;
+      if (state.repeat == PlaybackRepeat.one) {
+        await _engine.setRepeatMode(PlaybackRepeat.one);
+      }
+    }
+    final removed = state.queue[index];
     final q = [...state.queue]..removeAt(index);
     final quals = [...state.qualities];
     if (index < quals.length) quals.removeAt(index);
+    final endless = Set<Track>.identity()
+      ..addAll(state.endless)
+      ..remove(removed);
     state = state.copyWith(
       queue: List.unmodifiable(q),
       qualities: List.unmodifiable(quals),
+      endless: Set<Track>.unmodifiable(endless),
       offset: offset,
     );
     await _engine.removeAt(index);
@@ -643,9 +731,14 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (cur == null) return clear();
     final end = state.queue.length - 1;
     if (end <= cur) return;
+    final kept = state.queue.sublist(0, cur + 1);
+    final endless = Set<Track>.identity()
+      ..addAll(state.endless.where((t) => kept.any((k) => identical(k, t))));
+    _unshuffled = const [];
     state = state.copyWith(
-      queue: List.unmodifiable(state.queue.sublist(0, cur + 1)),
+      queue: List.unmodifiable(kept),
       qualities: List.unmodifiable(state.qualities.take(cur + 1).toList()),
+      endless: Set<Track>.unmodifiable(endless),
       shuffled: false,
     );
     for (var i = end; i > cur; i--) {
@@ -657,7 +750,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   Future<void> cycleRepeat() async {
     final next = PlaybackRepeat.values[(state.repeat.index + 1) % 3];
     state = state.copyWith(repeat: next);
-    await _engine.setRepeatMode(next);
+    await _engine.setRepeatMode(
+      next == PlaybackRepeat.one && state.offset > Duration.zero
+          ? PlaybackRepeat.off
+          : next,
+    );
   }
 
   Future<void> setVolume(double volume) async {
@@ -698,7 +795,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   }
 
   Future<void> togglePlay() => state.playing ? pause() : play();
-  Future<void> next() => _engine.next();
+
+  Future<void> next() => _step(_engine.next);
 
   /// Restarts the track when more than three seconds in, like most players.
   Future<void> previous() async {
@@ -707,7 +805,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         i == 0) {
       await seek(Duration.zero);
     } else {
-      await _engine.previous();
+      await _step(_engine.previous);
     }
   }
 
@@ -733,9 +831,16 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     // Back to the top, or now cached: the ordinary stream can do it.
     final uri = reopen ?? await _resolver.resolve(track);
     final offset = reopen == null ? Duration.zero : _whole(d);
-    await _replaceCurrent(i, uri);
+    if (state.repeat == PlaybackRepeat.one) {
+      await _engine.setRepeatMode(
+        offset > Duration.zero ? PlaybackRepeat.off : PlaybackRepeat.one,
+      );
+    }
     _reopened = reopen == null ? null : track;
+    _stepping?.cancel();
+    _stepping = null;
     state = state.copyWith(offset: offset);
+    await _replaceCurrent(i, uri);
     if (reopen == null && d > Duration.zero) await _engine.seek(d);
   }
 
@@ -749,6 +854,27 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       await _engine.insertAll(i + 1, [uri]);
       await _engine.seek(Duration.zero, index: i + 1);
       await _engine.removeAt(i);
+    } finally {
+      _swapping = false;
+    }
+  }
+
+  /// Puts the ordinary stream back for [track] and plays it from the top
+  /// when repeat one reaches the end of a reopened stream.
+  Future<void> _repeatReopenedFromTop(Track track) async {
+    _swapping = true;
+    try {
+      final uri = await _resolver.resolve(track);
+      if (!ref.mounted) return;
+      final idx = state.queue.indexWhere((t) => identical(t, track));
+      if (idx < 0 || state.currentIndex != idx) return;
+      await _engine.insertAll(idx + 1, [uri]);
+      await _engine.seek(Duration.zero, index: idx + 1);
+      await _engine.removeAt(idx);
+      if (state.repeat == PlaybackRepeat.one) {
+        await _engine.setRepeatMode(PlaybackRepeat.one);
+      }
+      await _engine.play();
     } finally {
       _swapping = false;
     }

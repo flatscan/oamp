@@ -39,6 +39,13 @@ class OutputSwitcher implements AudioEngine {
 
   /// The last state the active output reported.
   EngineState get lastState => _last;
+  Duration? _lastDuration;
+
+  /// The last duration the active output reported.
+  Duration? get duration => _lastDuration;
+
+  /// Drops [duration] until the active output reports one again.
+  void forgetDuration() => _lastDuration = null;
 
   void _follow(AudioEngine e) {
     for (final s in _subs) {
@@ -53,7 +60,12 @@ class OutputSwitcher implements AudioEngine {
         }),
       )
       ..add(e.positionStream.listen(_position.add))
-      ..add(e.durationStream.listen(_duration.add));
+      ..add(
+        e.durationStream.listen((d) {
+          _lastDuration = d;
+          _duration.add(d);
+        }),
+      );
   }
 
   /// Moves playback to [to] (null for this device) at the current track

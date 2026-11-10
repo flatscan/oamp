@@ -172,7 +172,10 @@ class MpvDeck implements AudioDeck {
   }
 
   @override
-  Future<void> removeAt(int index) => _player.remove(index);
+  Future<void> removeAt(int index) async {
+    await _player.remove(index);
+    if (_player.state.playlist.medias.isEmpty) _empty = true;
+  }
 
   @override
   Future<void> move(int from, int to) =>
