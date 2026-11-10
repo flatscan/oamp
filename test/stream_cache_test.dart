@@ -173,7 +173,8 @@ void main() {
 
   test('a 0-byte file on disk is ignored on scan and never served', () async {
     final id = HttpTrackCache.idFor('srv|t0|raw');
-    await File('${dir.path}${Platform.pathSeparator}$id').writeAsBytes(const []);
+    await File('${dir.path}${Platform.pathSeparator}$id')
+        .writeAsBytes(const []);
     await cache.dispose();
     cache = await HttpTrackCache.open(dir);
     expect(cache.isCached('srv|t0|raw'), isFalse);
