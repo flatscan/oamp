@@ -136,6 +136,31 @@ void main() {
       final r = Redactor()..hide('ed', '<user>');
       expect(r('loaded the queue'), 'loaded the queue');
     });
+
+    test('matches user names as whole words, not inside words or tags', () {
+      for (final user in ['art', 'url', 'play']) {
+        final r = Redactor()..hide(user, '<user>', wholeWord: true);
+        expect(
+          r(
+            'https://nas.local/x user $user u=$user '
+            'start artwork playing <url> (${user.toUpperCase()})',
+          ),
+          '<url> user <user> u=<hidden> '
+          'start artwork playing <url> (<user>)',
+        );
+      }
+    });
+
+    test('hides hosts and credentials even inside longer words', () {
+      final r = Redactor()
+        ..hide('nas', '<server>')
+        ..hide('0123abcd', '<hidden>')
+        ..hide('edjackson', '<user>', wholeWord: true);
+      final out = r('x_0123abcd key0123abcd mynas <nas> <edjackson>');
+      for (final leak in ['0123abcd', 'nas', 'edjackson']) {
+        expect(out, isNot(contains(leak)), reason: leak);
+      }
+    });
   });
 
   test('log keeps redacted, stamped lines and returns the newest', () async {

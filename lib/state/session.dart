@@ -168,7 +168,7 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
     final redact = ref.read(diagnosticsLogProvider).redact;
     redact.hide(c.baseUrl.host, '<server>');
     if (c.awayUrl case final away?) redact.hide(away.host, '<server>');
-    redact.hide(c.username, '<user>');
+    redact.hide(c.username, '<user>', wholeWord: true);
     for (final secret in [c.token, c.salt, ?c.apiKey]) {
       redact.hide(secret, '<hidden>');
     }
