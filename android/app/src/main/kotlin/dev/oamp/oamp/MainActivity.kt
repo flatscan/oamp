@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.util.Log
 import com.ryanheise.audioservice.AudioServiceActivity
 import com.ryanheise.audioservice.OampForeground
 import io.flutter.embedding.engine.FlutterEngine
@@ -26,6 +27,34 @@ class MainActivity : AudioServiceActivity() {
                     "requestPermission" -> requestNotificationPermission(result)
                     "keepForegroundWhilePaused" -> {
                         OampForeground.setKeepWhilePaused(call.arguments == true)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        // A foreground service with a progress notification, so downloads
+        // carry on with the screen off.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/downloads")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "show" -> {
+                        // Android refuses to start a service from the
+                        // background at times; downloading goes on regardless.
+                        val started = try {
+                            DownloadService.show(
+                                applicationContext,
+                                call.argument<Int>("done") ?: 0,
+                                call.argument<Int>("total") ?: 0,
+                            )
+                            true
+                        } catch (e: RuntimeException) {
+                            Log.w("OAmp", "Download notification refused", e)
+                            false
+                        }
+                        result.success(started)
+                    }
+                    "hide" -> {
+                        DownloadService.hide(applicationContext)
                         result.success(null)
                     }
                     else -> result.notImplemented()

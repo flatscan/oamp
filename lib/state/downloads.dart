@@ -444,3 +444,50 @@ class DownloadManager extends Notifier<DownloadsState> {
     return f.isEmpty || f.length > 5 ? 'audio' : f;
   }
 }
+
+/// Keeps the platform's "downloading" sign in step with the manager: shown
+/// while tracks are being fetched, gone a few seconds after the last one.
+/// Watched once from the app root.
+final downloadActivityBridgeProvider = Provider<void>((ref) {
+  final activity = ref.watch(downloadActivityProvider);
+  var showing = false;
+  ({int done, int total})? last;
+  Timer? hideTimer;
+
+  void send(Future<void> call, String what) => unawaited(
+    call.then(
+      (_) {},
+      onError: (Object e) => debugPrint('Download notification $what: $e'),
+    ),
+  );
+
+  void update(DownloadsState state) {
+    if (state.active.isNotEmpty) {
+      hideTimer?.cancel();
+      hideTimer = null;
+      final total = state.totalTracks;
+      final progress = (done: total - state.remaining, total: total);
+      if (showing && progress == last) return;
+      showing = true;
+      last = progress;
+      send(
+        activity.show(done: progress.done, total: progress.total),
+        'update failed',
+      );
+    } else if (showing) {
+      // A gap between two tracks is not the end.
+      hideTimer ??= Timer(const Duration(seconds: 3), () {
+        showing = false;
+        last = null;
+        hideTimer = null;
+        send(activity.hide(), 'removal failed');
+      });
+    }
+  }
+
+  ref.listen(downloadsProvider, (_, next) => update(next));
+  ref.onDispose(() {
+    hideTimer?.cancel();
+    if (showing) send(activity.hide(), 'removal failed');
+  });
+});

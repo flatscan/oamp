@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/artwork_cache.dart';
+import '../core/download_activity.dart';
 import '../core/downloads.dart';
 import '../core/music_source.dart';
 import '../core/offline_source.dart';
@@ -74,6 +75,11 @@ final artworkCacheProvider = Provider<ArtworkCache?>((_) => null);
 /// on-disk store where the platform has a file system; without one,
 /// downloading is switched off.
 final downloadStoreProvider = Provider<DownloadStore?>((_) => null);
+
+/// How the platform is told that downloads are under way.
+final downloadActivityProvider = Provider<DownloadActivity>(
+  (_) => const NoDownloadActivity(),
+);
 
 /// Turns a track into something to play: its downloaded file when it has
 /// one, otherwise a stream from the server (through the playback cache).
