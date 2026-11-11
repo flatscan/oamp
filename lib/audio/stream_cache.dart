@@ -218,8 +218,7 @@ class HttpTrackCache implements TrackCache {
         return true;
       }
       if (res.statusCode != HttpStatus.ok || _isError(res)) {
-        await res.drain<void>();
-        _log('prefetch ${d.id}: HTTP ${res.statusCode}');
+        _log('prefetch ${d.id}: ${await _describeError(res)}');
         // Skip this track for now rather than retrying in a loop.
         _wanted = [
           for (final w in _wanted)
@@ -363,6 +362,34 @@ class HttpTrackCache implements TrackCache {
   }
 
   /// A Subsonic server answers errors with HTTP 200 and an XML or JSON body.
+  /// What went wrong, for the log. A Subsonic server answers errors with
+  /// HTTP 200 and a small JSON or XML reply naming the error, such as 40
+  /// for a refused login, so that is read rather than the status alone.
+  static Future<String> _describeError(HttpClientResponse res) async {
+    final status = 'HTTP ${res.statusCode}';
+    if (!_isError(res)) {
+      await res.drain<void>().catchError((_) {});
+      return status;
+    }
+    final bytes = <int>[];
+    try {
+      await for (final chunk in res) {
+        bytes.addAll(chunk);
+        if (bytes.length > 16 * 1024) break;
+      }
+    } catch (_) {}
+    final body = utf8.decode(bytes, allowMalformed: true);
+    final code = RegExp(r'"code"\s*:\s*(\d+)|code="(\d+)"').firstMatch(body);
+    if (code == null) return '$status, error reply';
+    final m = RegExp(r'"message"\s*:\s*"([^"]*)"|message="([^"]*)"')
+        .firstMatch(body);
+    final message = m?[1] ?? m?[2];
+    final n = code[1] ?? code[2];
+    return message == null || message.isEmpty
+        ? 'server error $n'
+        : 'server error $n ($message)';
+  }
+
   static bool _isError(HttpClientResponse res) {
     final type = res.headers.contentType?.mimeType ?? '';
     return type.contains('xml') || type.contains('json');

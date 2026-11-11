@@ -102,6 +102,12 @@ abstract class MusicSource {
   /// Fires when [route] changes.
   Stream<ServerRoute> get routeChanges;
 
+  /// Fires when the server turns the login down on an ordinary request,
+  /// such as a play report, after sign-in worked. The password may have
+  /// changed, or the server may be refusing the account for a while after
+  /// another app's failed logins.
+  Stream<void> get loginRejected;
+
   /// Like [ping], but first chooses the address: home when it answers,
   /// otherwise the away address. Throws as [ping] does when neither works.
   Future<void> connect();

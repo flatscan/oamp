@@ -153,6 +153,11 @@ class SubsonicClient {
 
   SubsonicCredentials get credentials => _credentials;
 
+  final _loginRejected = StreamController<void>.broadcast();
+
+  /// See [MusicSource.loginRejected].
+  Stream<void> get loginRejected => _loginRejected.stream;
+
   /// Where requests go now: the home address, or the away address while
   /// home cannot be reached.
   Uri get baseUrl => picker.active;
@@ -242,6 +247,13 @@ class SubsonicClient {
     try {
       return await _sendTo(base, endpoint, params, post: post);
     } on MusicSourceException catch (e) {
+      // Signing in and checks go through [probe] instead, and say so
+      // themselves.
+      if (e.kind == MusicSourceErrorKind.auth &&
+          !_loginRejected.isClosed &&
+          endpoint != 'ping') {
+        _loginRejected.add(null);
+      }
       if (e.kind != MusicSourceErrorKind.unreachable ||
           picker.away == null ||
           !await picker.recover(probe, base)) {
@@ -327,6 +339,7 @@ class SubsonicClient {
   void close() {
     _http.close();
     picker.close();
+    unawaited(_loginRejected.close());
   }
 
   /// Replies bigger than this are decoded off the UI thread.

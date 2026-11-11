@@ -20,7 +20,10 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final source = ref.watch(musicSourceProvider);
+    // Signing out from here leaves the page up for a frame or two while the
+    // app goes back to the login screen, with no server to show.
+    final source = ref.watch(sessionProvider).value?.source;
+    if (source == null) return const SizedBox.shrink();
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     final playback = settings.playback;

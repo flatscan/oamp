@@ -92,6 +92,29 @@ void main() {
       expect(e.kind, MusicSourceErrorKind.auth);
       expect(e.toString(), 'Wrong username or password.');
     });
+
+    test('a refused login on a request is reported, but not on ping', () async {
+      final s = source(
+        () async => http.Response(
+          jsonEncode({
+            'subsonic-response': {
+              'status': 'failed',
+              'error': {'code': 40, 'message': 'Wrong username or password'},
+            },
+          }),
+          200,
+        ),
+      );
+      addTearDown(s.close);
+      var rejected = 0;
+      s.loginRejected.listen((_) => rejected++);
+      await failure(s);
+      await pumpEventQueue();
+      expect(rejected, 0, reason: 'ping and sign-in report it themselves');
+      await expectLater(s.getPlayQueue(), throwsA(isA<MusicSourceException>()));
+      await pumpEventQueue();
+      expect(rejected, 1);
+    });
   });
 
   group('launch check', () {
@@ -135,6 +158,49 @@ void main() {
       expect(s.health, ServerHealth.signedOut);
       expect(s.message, 'Wrong username or password.');
     });
+
+    test('a refused login mid-session checks and asks to sign in', () async {
+      container = start();
+      await container.read(sessionProvider.future);
+      await pumpEventQueue();
+      expect(container.read(serverStatusProvider).health, ServerHealth.ok);
+      expect(src.pings, 1);
+
+      // A play report is refused, and so is the check that follows.
+      src.pingError = MusicSourceException(
+        'Wrong username or password.',
+        code: 40,
+        kind: MusicSourceErrorKind.auth,
+      );
+      src.loginRejectedController
+        ..add(null)
+        ..add(null)
+        ..add(null);
+      await pumpEventQueue();
+      expect(src.pings, 2, reason: 'a burst of refusals checks once');
+      final s = container.read(serverStatusProvider);
+      expect(s.health, ServerHealth.signedOut);
+      expect(s.message, startsWith('Wrong username or password.'));
+      expect(s.message, contains('locked your account'));
+
+      // While the banner asks, more refusals don't ping again.
+      src.loginRejectedController.add(null);
+      await pumpEventQueue();
+      expect(src.pings, 2);
+    });
+
+    test(
+      'a refused login mid-session that passes the check stays ok',
+      () async {
+        container = start();
+        await container.read(sessionProvider.future);
+        await pumpEventQueue();
+        src.loginRejectedController.add(null);
+        await pumpEventQueue();
+        expect(src.pings, 2);
+        expect(container.read(serverStatusProvider).health, ServerHealth.ok);
+      },
+    );
 
     test('a server that is down is retried until it answers', () {
       fakeAsync((async) {

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/audio/stream_cache.dart';
 import 'package:oamp/core/track_cache.dart';
@@ -22,6 +23,17 @@ void main() {
       final range = req.headers.value(HttpHeaders.rangeHeader);
       hits.add('${req.uri.path}${range == null ? '' : ' $range'}');
       final body = bodies[req.uri.path];
+      if (req.uri.path == '/refused') {
+        // How a Subsonic server turns a login down: HTTP 200, JSON error.
+        req.response
+          ..headers.contentType = ContentType.json
+          ..write(
+            '{"subsonic-response":{"status":"failed","version":"1.16.1",'
+            '"error":{"code":40,"message":"Wrong username or password"}}}',
+          );
+        await req.response.close();
+        return;
+      }
       if (req.uri.path == '/empty-chunked') {
         req.response.headers
           ..contentType = ContentType('audio', 'flac')
@@ -178,5 +190,21 @@ void main() {
     await cache.dispose();
     cache = await HttpTrackCache.open(dir);
     expect(cache.isCached('srv|t0|raw'), isFalse);
+  });
+
+  test('a refused prefetch logs the server\'s error, not HTTP 200', () async {
+    final lines = <String>[];
+    final before = debugPrint;
+    debugPrint = (String? m, {int? wrapWidth}) => lines.add(m ?? '');
+    addTearDown(() => debugPrint = before);
+    final refused = CacheRequest(
+      'srv|refused|raw',
+      Uri.parse('http://127.0.0.1:${upstream.port}/refused'),
+    );
+    cache.prefetch([refused, req(0)]);
+    await until(() => cache.isCached('srv|t0|raw'));
+    final line = lines.firstWhere((l) => l.contains('prefetch'));
+    expect(line, contains('server error 40 (Wrong username or password)'));
+    expect(line, isNot(contains('HTTP 200')));
   });
 }
