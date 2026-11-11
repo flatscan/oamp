@@ -286,6 +286,9 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         SnackBar(
           content: Text('Removed "$title"'),
           duration: const Duration(seconds: 4),
+          // A snack bar with an action stays up until dismissed unless told
+          // otherwise, and this one covered the bottom bar.
+          persist: false,
           action: SnackBarAction(
             label: 'Undo',
             onPressed: () => actions.replaceTracks(p, tracks),
