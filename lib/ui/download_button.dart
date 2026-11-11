@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,7 +16,7 @@ import 'widgets.dart';
 /// Shows a download arrow, a ring that fills while the tracks arrive, and a
 /// tick once they are all there. Tapping a pinned item asks before removing
 /// the download. Hidden where the platform has no place to keep files.
-class DownloadButton extends ConsumerWidget {
+class DownloadButton extends ConsumerStatefulWidget {
   final PinKind kind;
   final String itemId;
   final String name;
@@ -39,7 +41,33 @@ class DownloadButton extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DownloadButton> createState() => _DownloadButtonState();
+}
+
+class _DownloadButtonState extends ConsumerState<DownloadButton> {
+  PinKind get kind => widget.kind;
+  String get itemId => widget.itemId;
+  String get name => widget.name;
+  String? get coverArt => widget.coverArt;
+  List<Track> get tracks => widget.tracks;
+  Future<List<Track>> Function()? get loadTracks => widget.loadTracks;
+
+  @override
+  void initState() {
+    super.initState();
+    // Opening a downloaded item reads it from the server again, so it
+    // shows what is there now.
+    Future.microtask(() {
+      if (!mounted) return;
+      final manager = ref.read(downloadsProvider.notifier);
+      if (ref.read(downloadsProvider).pinFor(kind, itemId) != null) {
+        unawaited(manager.syncPin(kind, itemId));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (ref.watch(downloadStoreProvider) == null) {
       return const SizedBox.shrink();
     }

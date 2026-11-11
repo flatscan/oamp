@@ -399,6 +399,12 @@ class SubsonicClient {
         MusicSourceErrorKind.auth,
         'This account is not allowed to do that on the server.',
       ),
+      70 => (
+        MusicSourceErrorKind.notFound,
+        (serverMessage == null || serverMessage.isEmpty)
+            ? 'That is not on the server.'
+            : serverMessage,
+      ),
       20 || 30 => (
         MusicSourceErrorKind.server,
         'The server\'s API version does not work with OAmp. Update the server.',

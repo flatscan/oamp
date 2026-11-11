@@ -233,8 +233,16 @@ abstract class MusicSource {
 
 /// What went wrong talking to a server, so the UI can offer the right fix:
 /// retry for [unreachable], check the address for [notAServer], sign in
-/// again for [auth].
-enum MusicSourceErrorKind { unreachable, notAServer, auth, server, other }
+/// again for [auth]. [notFound] means the server answered and says the thing
+/// asked for does not exist (any more).
+enum MusicSourceErrorKind {
+  unreachable,
+  notAServer,
+  auth,
+  server,
+  notFound,
+  other,
+}
 
 class MusicSourceException implements Exception {
   /// A sentence to show the user as it is.
