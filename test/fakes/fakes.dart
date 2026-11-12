@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/audio/audio_focus.dart';
+import 'package:oamp/core/equalizer.dart';
 import 'package:oamp/core/lyrics.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
@@ -609,6 +610,9 @@ class FakeAudioEngine implements AudioEngine {
   Future<void> setGapless(bool enabled) async => gapless = enabled;
   @override
   Future<void> setCrossfade(Duration d) async => crossfade = d;
+  EqPreset equalizer = EqPreset.off;
+  @override
+  Future<void> setEqualizer(EqPreset p) async => equalizer = p;
 
   bool ducked = false;
   @override

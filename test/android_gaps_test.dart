@@ -296,6 +296,12 @@ void main() {
       await tester.tap(find.text('Pre-cache on mobile data'));
       await tester.pumpAndSettle();
       expect(prefs.getBool('oamp.cache.precacheOnMobile'), isFalse);
+      await tester.tap(find.text('Equaliser'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('More bass').last);
+      await tester.pumpAndSettle();
+      expect(prefs.getString('oamp.playback.equalizer'), 'moreBass');
+      expect(find.text('Fuller low end.'), findsOneWidget);
     });
   });
 

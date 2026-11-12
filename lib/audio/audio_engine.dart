@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../core/equalizer.dart';
 import '../core/models.dart';
 import '../core/output_device.dart';
 import '../core/remote_player.dart';
@@ -94,6 +95,10 @@ abstract class AudioEngine {
   /// crossfading off. Skipping by hand always cuts straight over.
   Future<void> setCrossfade(Duration duration);
 
+  /// Shapes the sound with [preset], on this device only. Engines that
+  /// play elsewhere (speakers and TVs) leave the sound alone.
+  Future<void> setEqualizer(EqPreset preset);
+
   Future<void> dispose();
 }
 
@@ -139,6 +144,13 @@ abstract class AudioDeck {
   Future<void> setRepeatMode(PlaybackRepeat mode);
   Future<void> setVolume(double volume);
   Future<void> setGapless(bool enabled);
+
+  /// Whether [setEqualizer] changes the sound on this deck.
+  bool get hasEqualizer;
+
+  /// Applies [preset]'s shape. Level is left to [setVolume]: the engine
+  /// turns playback down by the preset's headroom so boosts never clip.
+  Future<void> setEqualizer(EqPreset preset);
   Future<void> dispose();
 }
 
@@ -171,6 +183,7 @@ class MixingEngine implements AudioEngine {
   PlaybackRepeat _repeat = PlaybackRepeat.off;
   double _volume = 1;
   bool _gapless = true;
+  EqPreset _eq = EqPreset.off;
   Duration _crossfade = Duration.zero;
   QueueInfo? _info;
 
@@ -393,6 +406,8 @@ class MixingEngine implements AudioEngine {
 
   double _level(AudioDeck deck, int? index, double fade) {
     var level = _volume * _duck * _gain(index) * fade;
+    // Make room for the equaliser's boosts, so they never clip.
+    if (deck.hasEqualizer) level /= _eq.headroom;
     // A deck that can't boost (Android's player) would cut every positive
     // gain off at normal volume; lower everything instead so tracks keep
     // their levels relative to each other.
@@ -444,6 +459,7 @@ class MixingEngine implements AudioEngine {
     try {
       await deck.setVolume(0);
       await deck.setGapless(_gapless);
+      await deck.setEqualizer(_eq);
       await deck.setRepeatMode(_repeat);
       await deck.setQueue(List.of(_uris), initialIndex: index);
     } catch (e) {
@@ -726,6 +742,15 @@ class MixingEngine implements AudioEngine {
     _gapless = enabled;
     await _active.setGapless(enabled);
     await _spare?.setGapless(enabled);
+  }
+
+  @override
+  Future<void> setEqualizer(EqPreset preset) async {
+    if (preset == _eq) return;
+    _eq = preset;
+    await _active.setEqualizer(preset);
+    await _spare?.setEqualizer(preset);
+    if (_fade?.started != true) await _applyGain();
   }
 
   @override

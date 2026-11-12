@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/equalizer.dart';
 import '../../core/music_source.dart';
 import '../../core/playback_options.dart';
 import '../../core/track_cache.dart';
@@ -80,6 +81,17 @@ class SettingsPage extends ConsumerWidget {
                 onChanged: (v) =>
                     setPlayback(playback.copyWith(crossfadeSameAlbum: v)),
               ),
+            // Only Windows (mpv) and Android (the system equaliser) can
+            // shape the sound.
+            if (windows || android)
+              ChoiceTile<EqPreset>(
+                icon: Icons.graphic_eq_rounded,
+                title: 'Equaliser',
+                subtitle: playback.equalizer.description,
+                value: playback.equalizer,
+                choices: {for (final p in EqPreset.values) p: p.label},
+                onChanged: (v) => setPlayback(playback.copyWith(equalizer: v)),
+              ),
             const SettingsHeading('Volume levelling'),
             ChoiceTile<ReplayGainMode>(
               icon: Icons.equalizer_rounded,
@@ -137,7 +149,8 @@ class SettingsPage extends ConsumerWidget {
                 padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
                 child: Text(
                   'Speakers and TVs play tracks at their own loudness: '
-                  'ReplayGain and crossfade only apply on this device.',
+                  'ReplayGain, crossfade and the equaliser only apply on '
+                  'this device.',
                   style: TextStyle(color: OAmpColors.textMuted, fontSize: 13),
                 ),
               ),

@@ -73,7 +73,8 @@ class DiagnosticsReport {
       'Network: ${ref.read(networkKindProvider).name}',
       'Playback: gapless ${_onOff(p.gapless)}, '
           'crossfade ${p.crossfade.inSeconds} s'
-          '${p.crossfade > Duration.zero ? ' (same album ${_onOff(p.crossfadeSameAlbum)})' : ''}',
+          '${p.crossfade > Duration.zero ? ' (same album ${_onOff(p.crossfadeSameAlbum)})' : ''}, '
+          'equaliser ${p.equalizer.name}',
       'ReplayGain: ${p.replayGain.name}, pre-amp ${p.preampDb} dB, '
           'untagged ${p.fallbackGainDb} dB, '
           'prevent clipping ${_onOff(p.preventClipping)}',

@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:oamp/audio/audio_engine.dart';
 import 'package:oamp/audio/mpv_deck.dart';
 import 'package:oamp/audio/stream_cache.dart';
+import 'package:oamp/core/equalizer.dart';
 import 'package:oamp/core/track_cache.dart';
 
 /// Plays real audio through libmpv with a null output. Runs where libmpv is
@@ -99,6 +100,37 @@ void main() {
     },
     skip: !hasMpv,
     timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'every equaliser preset is accepted mid-track and playback carries on',
+    () async {
+      final d = deck();
+      final states = <EngineState>[];
+      d.stateStream.listen(states.add);
+      await d.setQueue(files.sublist(0, 2));
+      await d.play();
+      for (final p in EqPreset.values.reversed) {
+        await d.setEqualizer(p);
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        final af = await d.audioFilters;
+        if (p.isOff) {
+          expect(af, isEmpty);
+        } else {
+          expect(af, contains('oamp-eq'), reason: p.name);
+          expect(af, contains(p.filters.first.ffmpeg.split('=').first));
+        }
+      }
+      await d.setEqualizer(EqPreset.moreBass);
+      await waitFor(
+        () => states.any((s) => s.completed),
+        const Duration(seconds: 20),
+      );
+      expect(states.map((s) => s.currentIndex).toSet(), containsAll([0, 1]));
+      await d.dispose();
+    },
+    skip: !hasMpv,
+    timeout: const Timeout(Duration(seconds: 40)),
   );
 
   test(

@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../core/equalizer.dart';
 import '../core/models.dart' show PlaybackRepeat;
 import 'audio_engine.dart';
 
@@ -10,7 +12,9 @@ import 'audio_engine.dart';
 ///
 /// Talking to mpv directly (rather than through just_audio) lets gapless
 /// playback be switched while playing and lets ReplayGain boost quiet
-/// tracks past 100% volume.
+/// tracks past 100% volume. Equaliser presets run as FFmpeg filters in
+/// mpv's audio chain, ahead of the volume, so they carry across track
+/// changes without breaking gapless playback.
 class MpvDeck implements AudioDeck {
   /// [mpvOptions] are extra mpv properties set at start, such as
   /// `ao: null` in tests.
@@ -241,6 +245,25 @@ class MpvDeck implements AudioDeck {
     await mpv.setProperty('prefetch-playlist', enabled ? 'yes' : 'no');
     await mpv.setProperty('gapless-audio', enabled ? 'weak' : 'no');
   }
+
+  @override
+  bool get hasEqualizer => _mpv != null;
+
+  @override
+  Future<void> setEqualizer(EqPreset preset) async {
+    await _ready;
+    final mpv = _mpv;
+    if (mpv == null) return;
+    try {
+      await mpv.setProperty('af', preset.mpvFilter);
+    } catch (e) {
+      debugPrint('Equaliser unavailable: $e');
+    }
+  }
+
+  /// mpv's audio filter chain as it stands, for tests.
+  @visibleForTesting
+  Future<String> get audioFilters async => await _mpv?.getProperty('af') ?? '';
 
   @override
   Future<void> dispose() async {

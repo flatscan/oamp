@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../core/equalizer.dart';
 import '../core/models.dart';
 import 'audio_engine.dart';
 import 'remote_engine.dart';
@@ -231,6 +232,11 @@ class OutputSwitcher implements AudioEngine {
 
   @override
   Future<void> setDucked(bool ducked) => _active.setDucked(ducked);
+
+  /// Always this device's: the local engine keeps the preset while casting
+  /// and plays with it again when playback comes back.
+  @override
+  Future<void> setEqualizer(EqPreset preset) => local.setEqualizer(preset);
 
   @override
   Future<void> setCrossfade(Duration duration) {
