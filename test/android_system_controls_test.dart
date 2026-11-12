@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/core/models.dart' show PlaybackRepeat;
+import 'package:oamp/platform/android_home_widget.dart';
 import 'package:oamp/platform/android_system_controls.dart';
 import 'package:oamp/platform/system_controls.dart';
 
@@ -43,6 +44,7 @@ void main() {
         return true;
       },
       keepForeground: (keep) async => keeps.add(keep),
+      homeWidget: AndroidHomeWidget(send: (_) async {}),
     );
   });
 
@@ -147,6 +149,8 @@ void main() {
     final failing = AndroidSystemControls(
       handler,
       requestNotifications: () => Future.error(Exception('no activity')),
+      keepForeground: (_) async {},
+      homeWidget: AndroidHomeWidget(send: (_) async {}),
     );
     await failing.update(info());
     await pumpEventQueue();

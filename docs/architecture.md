@@ -51,6 +51,7 @@ lib/
     system_controls.dart    SystemControls: the OS media session interface
     windows_system_controls.dart   Windows media overlay and media keys
     android_system_controls.dart   Android notification and lock screen
+    android_home_widget.dart       What the Android home screen widget shows
     platform_system_controls.dart  Picks the implementation per platform
     disk_artwork_cache.dart Artwork cache in a folder of image files
     network_monitor.dart    Wi-Fi or mobile data, for streaming quality

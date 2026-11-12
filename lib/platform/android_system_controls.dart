@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/models.dart' show PlaybackRepeat;
+import 'android_home_widget.dart';
 import 'system_controls.dart';
 
 /// [SystemControls] on Android, through `audio_service`.
@@ -25,6 +26,7 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   final Future<bool> Function() _requestNotifications;
   bool _askedForNotifications = false;
   final Future<void> Function(bool keep) _keepForeground;
+  final AndroidHomeWidget _homeWidget;
 
   /// Whether the service is being kept in the foreground while paused.
   bool _keeping = false;
@@ -34,9 +36,11 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
     this._handler, {
     Future<bool> Function()? requestNotifications,
     Future<void> Function(bool keep)? keepForeground,
+    AndroidHomeWidget? homeWidget,
   }) : _requestNotifications =
            requestNotifications ?? _requestNotificationPermission,
-       _keepForeground = keepForeground ?? _keepForegroundWhilePaused;
+       _keepForeground = keepForeground ?? _keepForegroundWhilePaused,
+       _homeWidget = homeWidget ?? AndroidHomeWidget();
 
   /// Starts the media session. If that fails the app still runs, with
   /// [NoSystemControls] reporting why.
@@ -138,6 +142,7 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
     if (casting) _setKeeping(true);
     try {
       _handler.show(info);
+      _homeWidget.show(info);
       if (!casting && _keeping) {
         Timer.run(() {
           if (_handler.last?.castVolume == null) _setKeeping(false);
@@ -152,6 +157,7 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   @override
   Future<void> clear() async {
     _handler.hide();
+    _homeWidget.clear();
     _setKeeping(false);
   }
 
@@ -161,6 +167,7 @@ class AndroidSystemControls implements SystemControls, BrowsableSystemControls {
   @override
   Future<void> dispose() async {
     _handler.hide();
+    _homeWidget.clear();
     await _handler.close();
   }
 }
