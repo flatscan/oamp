@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/downloads.dart';
 import '../../core/models.dart';
 import '../../state/library.dart';
+import '../../state/offline.dart';
 import '../../state/player.dart';
 import '../async_view.dart';
 import '../browser.dart';
@@ -100,6 +101,7 @@ class _PlaylistTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = playlist;
+    ref.watch(offlineProvider);
     final mine = ref.read(playlistActionsProvider).canEdit(p);
     return GestureDetector(
       onSecondaryTapUp: (d) =>
@@ -302,6 +304,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final detail = ref.watch(playlistDetailProvider(_id));
     final p = detail.value?.playlist ?? widget.playlist;
     final tracks = detail.value?.tracks ?? const <Track>[];
+    ref.watch(offlineProvider);
     final mine = ref.read(playlistActionsProvider).canEdit(p);
     final player = ref.read(playerProvider.notifier);
     final draft = _draft;

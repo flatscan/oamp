@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
 import '../core/music_source.dart';
+import 'outbox.dart';
 import 'player.dart';
+import 'settings.dart';
 import 'session.dart';
 
 /// Reports listening to the server: "now playing" when a track starts, and
@@ -57,6 +59,10 @@ class PlaybackReporter {
   /// announced.
   bool _announced = false;
 
+  /// When the current entry started playing, which is the time a scrobble
+  /// of it carries.
+  DateTime? _startedAt;
+
   void onPlayer() {
     final s = ref.read(playerProvider);
     final t = s.current;
@@ -75,6 +81,7 @@ class PlaybackReporter {
     if (playing && !_announced) {
       _announced = true;
       _playing = true;
+      _startedAt = DateTime.now();
       if (_reportsState) {
         _state(PlaybackPhase.starting);
         _state(PlaybackPhase.playing);
@@ -127,6 +134,7 @@ class PlaybackReporter {
         p < const Duration(seconds: 2) &&
         _last > p * 2 + const Duration(seconds: 5)) {
       _submitted = false;
+      _startedAt = DateTime.now();
       if (_reportsState) {
         _state(PlaybackPhase.starting);
         _state(PlaybackPhase.playing);
@@ -165,9 +173,28 @@ class PlaybackReporter {
   void _send(String trackId, {required bool submission}) {
     final source = ref.read(sessionProvider).value?.source;
     if (source == null) return;
+    if (submission) {
+      // A play that can't be sent now is kept and sent, with the time it
+      // happened, when the server answers.
+      unawaited(
+        _quietly(
+          () => ref
+              .read(outboxProvider.notifier)
+              .play(trackId, _startedAt ?? DateTime.now()),
+          'Play report failed',
+        ),
+      );
+      return;
+    }
+    // "Now playing" is only useful live, so it is never kept, and not even
+    // tried when the server is known to be out of reach.
+    if (ref.read(settingsProvider).offlineMode ||
+        ref.read(serverStatusProvider).health == ServerHealth.unreachable) {
+      return;
+    }
     unawaited(
       _quietly(
-        () => source.reportPlayback(trackId, submission: submission),
+        () => source.reportPlayback(trackId, submission: false),
         'Play report failed',
       ),
     );

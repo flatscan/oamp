@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/downloads.dart';
 import '../core/models.dart';
+import '../core/music_source.dart';
 import 'downloads.dart';
 import 'offline.dart';
+import 'outbox.dart';
 import 'session.dart';
 import 'settings.dart';
 
@@ -222,12 +224,22 @@ class PlaylistActions {
 
   /// Whether the signed-in user may change [p].
   bool canEdit(Playlist p) {
+    // Playlists are changed on the server, which can't be reached offline.
+    if (_ref.read(offlineProvider)) return false;
     if (p.readonly) return false;
     final owner = p.owner;
     return owner == null || owner == _ref.read(musicSourceProvider).userName;
   }
 
+  /// Playlists live on the server, so they can't be changed offline.
+  void _requireOnline() {
+    if (_ref.read(offlineProvider)) {
+      throw MusicSourceException('Playlists can’t be changed while offline.');
+    }
+  }
+
   Future<Playlist> create(String name, [List<Track> tracks = const []]) async {
+    _requireOnline();
     final p = await _ref
         .read(musicSourceProvider)
         .createPlaylist(name, trackIds: [for (final t in tracks) t.id]);
@@ -236,11 +248,13 @@ class PlaylistActions {
   }
 
   Future<void> rename(Playlist p, String name) async {
+    _requireOnline();
     await _ref.read(musicSourceProvider).renamePlaylist(p.id, name);
     _changed(p.id);
   }
 
   Future<void> add(Playlist p, List<Track> tracks) async {
+    _requireOnline();
     await _ref.read(musicSourceProvider).addToPlaylist(p.id, [
       for (final t in tracks) t.id,
     ]);
@@ -248,11 +262,13 @@ class PlaylistActions {
   }
 
   Future<void> removeAt(Playlist p, List<int> indexes) async {
+    _requireOnline();
     await _ref.read(musicSourceProvider).removeFromPlaylist(p.id, indexes);
     _changed(p.id);
   }
 
   Future<void> replaceTracks(Playlist p, List<Track> tracks) async {
+    _requireOnline();
     await _ref.read(musicSourceProvider).replacePlaylistTracks(p.id, [
       for (final t in tracks) t.id,
     ]);
@@ -260,6 +276,7 @@ class PlaylistActions {
   }
 
   Future<void> delete(Playlist p) async {
+    _requireOnline();
     await _ref.read(musicSourceProvider).deletePlaylist(p.id);
     _changed();
   }
@@ -430,7 +447,7 @@ class LikesNotifier extends Notifier<Map<String, bool>> {
     final liked = !isLiked(id, fetched: fetched);
     state = {...state, id: liked};
     try {
-      await ref.read(musicSourceProvider).setLiked(id, liked, target: target);
+      await ref.read(outboxProvider.notifier).like(id, liked, target);
       switch (target) {
         case LikeTarget.track:
           ref.invalidate(likedTracksProvider);
@@ -475,7 +492,7 @@ class RatingsNotifier extends Notifier<Map<String, int>> {
     final before = ratingOf(id, fetched: fetched);
     state = {...state, id: rating};
     try {
-      await ref.read(musicSourceProvider).setRating(id, rating);
+      await ref.read(outboxProvider.notifier).rate(id, rating);
     } catch (_) {
       if (ref.mounted) state = {...state, id: before};
       rethrow;
