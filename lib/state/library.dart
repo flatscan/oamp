@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/downloads.dart';
 import '../core/models.dart';
+import 'downloads.dart';
 import 'offline.dart';
 import 'session.dart';
 import 'settings.dart';
@@ -207,7 +209,15 @@ class PlaylistActions {
 
   void _changed([String? id]) {
     _ref.invalidate(playlistsProvider);
-    if (id != null) _ref.invalidate(playlistDetailProvider(id));
+    if (id != null) {
+      _ref.invalidate(playlistDetailProvider(id));
+      // A downloaded playlist follows the change at once.
+      unawaited(
+        _ref
+            .read(downloadsProvider.notifier)
+            .syncPin(PinKind.playlist, id, force: true),
+      );
+    }
   }
 
   /// Whether the signed-in user may change [p].
@@ -424,6 +434,12 @@ class LikesNotifier extends Notifier<Map<String, bool>> {
       switch (target) {
         case LikeTarget.track:
           ref.invalidate(likedTracksProvider);
+          // Downloaded liked tracks follow the change.
+          unawaited(
+            ref
+                .read(downloadsProvider.notifier)
+                .syncPin(PinKind.liked, Pin.likedItemId, force: true),
+          );
         case LikeTarget.album:
           ref.invalidate(homeAlbumsProvider(AlbumSort.starred));
           ref.invalidate(albumPagesProvider(AlbumSort.starred));

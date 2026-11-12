@@ -142,6 +142,7 @@ Future<void> main() async {
     ..listen(precacheProvider, (_, _) {})
     ..listen(downloadsProvider, (_, _) {})
     ..listen(downloadActivityBridgeProvider, (_, _) {})
+    ..listen(pinSyncProvider, (_, _) {})
     ..listen(offlineSkipProvider, (_, _) {})
     ..listen(queueSyncProvider, (_, _) {})
     ..listen(endlessPlayProvider, (_, _) {});
@@ -249,6 +250,7 @@ class _RootState extends ConsumerState<_Root> {
     ref.watch(precacheProvider);
     ref.watch(downloadsProvider);
     ref.watch(downloadActivityBridgeProvider);
+    ref.watch(pinSyncProvider);
     ref.watch(offlineSkipProvider);
     ref.watch(queueSyncProvider);
     ref.watch(endlessPlayProvider);

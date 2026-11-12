@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/downloads.dart';
 import '../core/models.dart';
+import '../core/music_source.dart';
+import '../core/pin_contents.dart';
 import '../core/playback_options.dart';
 import '../platform/network_monitor.dart';
 import 'session.dart';
@@ -169,6 +172,8 @@ class DownloadManager extends Notifier<DownloadsState> {
       _current?.cancel.cancel();
     });
     _refused.clear();
+    _synced.clear();
+    _syncing.clear();
     if (store == null || session == null) return const DownloadsState();
 
     // Pick up where things stopped when the network, or the server,
@@ -296,6 +301,148 @@ class DownloadManager extends Notifier<DownloadsState> {
     _current?.cancel.cancel();
     state = state.copyWith(pins: const [], downloaded: const {});
     await store.removeServer(serverId);
+  }
+
+  // ---- Keeping pins in step with the server ----------------------------
+
+  /// When each pin was last read, so opening the same page again and again
+  /// doesn't ask the server again and again.
+  final Map<String, DateTime> _synced = {};
+  final Set<String> _syncing = {};
+
+  /// How soon a pin may be read again when nothing has changed.
+  static const syncGap = Duration(minutes: 1);
+
+  /// Re-reads every pin, one after another.
+  Future<void> syncAll({bool force = false}) async {
+    for (final pin in [...state.pins]) {
+      if (_disposed) return;
+      await syncPin(pin.kind, pin.itemId, force: force);
+    }
+  }
+
+  /// Re-reads one pin from the server and makes the device match: tracks
+  /// added there download, tracks taken away are removed unless another pin
+  /// holds them. A request that fails changes nothing; only the server
+  /// saying the item no longer exists removes the pin.
+  ///
+  /// Unless [force] is set, a pin read within [syncGap] is left alone.
+  Future<void> syncPin(
+    PinKind kind,
+    String itemId, {
+    bool force = false,
+  }) async {
+    final store = _store;
+    final serverId = _serverId;
+    final pin = state.pinFor(kind, itemId);
+    if (store == null || serverId == null || pin == null || !state.loaded) {
+      return;
+    }
+    // Nothing to read from while Offline mode is on or the server is down.
+    if (ref.read(settingsProvider).offlineMode ||
+        ref.read(serverStatusProvider).health == ServerHealth.unreachable) {
+      return;
+    }
+    final key = pin.key;
+    final last = _synced[key];
+    if (!force && last != null && DateTime.now().difference(last) < syncGap) {
+      return;
+    }
+    if (!_syncing.add(key)) return;
+    final gen = _generation;
+    try {
+      final source = ref.read(sessionProvider).value?.source;
+      if (source == null) return;
+      final PinContents contents;
+      try {
+        contents = await readPinContents(source, pin);
+      } on MusicSourceException catch (e) {
+        if (_stale(gen)) return;
+        if (e.kind == MusicSourceErrorKind.notFound) {
+          await _dropGone(pin);
+        } else {
+          debugPrint('Download sync skipped: ${e.kind.name}');
+        }
+        return;
+      } on Object catch (e) {
+        debugPrint('Download sync skipped: ${e.runtimeType}');
+        return;
+      }
+      if (_stale(gen)) return;
+      _synced[key] = DateTime.now();
+      // A server that lists nothing for an album or an artist is more likely
+      // mid-scan than empty, so that never empties a download. A playlist or
+      // the liked tracks can honestly be empty.
+      final canBeEmpty = kind == PinKind.playlist || kind == PinKind.liked;
+      if (contents.tracks.isEmpty && !canBeEmpty) return;
+      await _apply(store, serverId, pin, contents);
+    } finally {
+      _syncing.remove(key);
+    }
+  }
+
+  Future<void> _apply(
+    DownloadStore store,
+    String serverId,
+    Pin pin,
+    PinContents contents,
+  ) async {
+    // The pin may have been removed while the server was answering.
+    final current = state.pinFor(pin.kind, pin.itemId);
+    if (current == null) return;
+    String encode(List<Track> ts) =>
+        jsonEncode([for (final t in ts) t.toJson()]);
+    final changed =
+        contents.name != current.name ||
+        contents.coverArt != current.coverArt ||
+        encode(contents.tracks) != encode(current.tracks);
+    if (!changed) return;
+
+    final updated = current.copyWith(
+      name: contents.name,
+      coverArt: contents.coverArt,
+      tracks: contents.tracks,
+    );
+    await store.savePin(serverId, updated);
+    if (_disposed) return;
+    final pins = [
+      for (final p in state.pins)
+        if (p.key == updated.key) updated else p,
+    ];
+    final wanted = {
+      for (final p in pins)
+        for (final t in p.tracks) t.id,
+    };
+    final newIds = {for (final t in contents.tracks) t.id};
+    final removed = [
+      for (final t in current.tracks)
+        if (!newIds.contains(t.id) && !wanted.contains(t.id)) t.id,
+    ];
+    final running = _current;
+    if (running != null && removed.contains(running.trackId)) {
+      running.cancel.cancel();
+    }
+    state = state.copyWith(
+      pins: pins,
+      downloaded: _downloadedAmong(store, serverId, pins),
+    );
+    for (final id in removed.toSet()) {
+      await store.removeTrack(serverId, id);
+    }
+    if (_disposed) return;
+    state = state.copyWith(
+      downloaded: _downloadedAmong(store, serverId, state.pins),
+    );
+    _refused.clear();
+    kick();
+  }
+
+  /// The server says the item no longer exists: forget the pin, and the
+  /// files no other pin needs, without a word.
+  Future<void> _dropGone(Pin pin) async {
+    debugPrint('A downloaded ${pin.kind.name} is gone from the server');
+    _synced.remove(pin.key);
+    await unpin(pin.kind, pin.itemId);
   }
 
   /// Starts fetching if it is not already, or has stopped to wait for
@@ -490,4 +637,27 @@ final downloadActivityBridgeProvider = Provider<void>((ref) {
     hideTimer?.cancel();
     if (showing) send(activity.hide(), 'removal failed');
   });
+});
+
+/// Keeps downloads in step with the server: a read of every pin at launch,
+/// when the server comes back, when Offline mode goes off, and every 30
+/// minutes while OAmp is open. Watched once from the app root.
+final pinSyncProvider = Provider<void>((ref) {
+  final manager = ref.read(downloadsProvider.notifier);
+  void run() => unawaited(manager.syncAll());
+  if (ref.read(downloadsProvider).loaded) scheduleMicrotask(run);
+
+  ref.listen(downloadsProvider.select((s) => s.loaded), (prev, loaded) {
+    if (loaded && prev != true) run();
+  });
+  ref.listen(serverStatusProvider, (prev, next) {
+    if (next.health == ServerHealth.ok && prev?.health != ServerHealth.ok) {
+      run();
+    }
+  });
+  ref.listen(settingsProvider.select((s) => s.offlineMode), (prev, on) {
+    if (!on && prev == true) run();
+  });
+  final timer = Timer.periodic(const Duration(minutes: 30), (_) => run());
+  ref.onDispose(timer.cancel);
 });

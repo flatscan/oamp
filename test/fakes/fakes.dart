@@ -193,8 +193,33 @@ class FakeMusicSource implements MusicSource {
     int offset = 0,
   }) async => albums.skip(offset).take(size).toList();
   @override
-  Future<AlbumDetail> getAlbum(String id) async =>
-      albumDetails[id] ?? const AlbumDetail(moonSafari, tracks);
+  Future<AlbumDetail> getAlbum(String id) async {
+    _checkReachable();
+    if (goneAlbums.contains(id)) throw _notFound();
+    return albumDetails[id] ?? const AlbumDetail(moonSafari, tracks);
+  }
+
+  /// Albums the server says do not exist.
+  final Set<String> goneAlbums = {};
+
+  /// While set, reads of albums, playlists and liked tracks fail as if the
+  /// server could not be reached.
+  bool unreachable = false;
+
+  void _checkReachable() {
+    if (unreachable) {
+      throw MusicSourceException(
+        'Cannot reach the server',
+        kind: MusicSourceErrorKind.unreachable,
+      );
+    }
+  }
+
+  MusicSourceException _notFound() => MusicSourceException(
+    'Not found',
+    code: 70,
+    kind: MusicSourceErrorKind.notFound,
+  );
 
   /// What getAlbum returns by id, falling back to Moon Safari.
   Map<String, AlbumDetail> albumDetails = {};
@@ -244,7 +269,10 @@ class FakeMusicSource implements MusicSource {
   ];
   @override
   Future<PlaylistDetail> getPlaylist(String id) async {
-    final (p, ts) = playlists[id]!;
+    _checkReachable();
+    final entry = playlists[id];
+    if (entry == null) throw _notFound();
+    final (p, ts) = entry;
     return PlaylistDetail(_summary(p, ts), List.of(ts));
   }
 
@@ -302,7 +330,10 @@ class FakeMusicSource implements MusicSource {
   }
 
   @override
-  Future<List<Track>> getLikedTracks() async => likedTracks;
+  Future<List<Track>> getLikedTracks() async {
+    _checkReachable();
+    return likedTracks;
+  }
 
   /// What getLikedTracks returns.
   List<Track> likedTracks = [];
