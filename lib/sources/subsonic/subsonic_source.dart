@@ -32,6 +32,9 @@ class SubsonicSource implements MusicSource {
   Stream<ServerRoute> get routeChanges => client.picker.changes;
 
   @override
+  Stream<void> get loginRejected => client.loginRejected;
+
+  @override
   Future<void> connect() => client.connect();
 
   @override

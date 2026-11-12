@@ -445,6 +445,17 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
   Timer? _homeCheck;
   int _generation = 0;
 
+  /// Set while checking after the server turned the login down on an
+  /// ordinary request, so a burst of refusals checks once.
+  bool _confirming = false;
+
+  /// Added to the banner when the server says the password is wrong. A
+  /// server that refuses an account for a while after failed logins (as
+  /// Navidrome does) says the same, so the cause may be another app.
+  static const lockoutHint =
+      ' If your password hasn\'t changed, an app signing in with an old '
+      'one may have locked your account for a while.';
+
   @override
   ServerStatus build() {
     final session = ref.watch(sessionProvider).value;
@@ -464,8 +475,18 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
         .anyChange
         .listen((_) => recheckAddress());
     final route = source.routeChanges.listen(_scheduleHomeCheck);
+    // A refused play report or queue save mid-session: check, so the
+    // banner asks to sign in again instead of things quietly failing.
+    final rejected = source.loginRejected.listen((_) {
+      if (state.health != ServerHealth.ok || _confirming) return;
+      _confirming = true;
+      unawaited(
+        _check(source, generation).whenComplete(() => _confirming = false),
+      );
+    });
     ref.onDispose(network.cancel);
     ref.onDispose(route.cancel);
+    ref.onDispose(rejected.cancel);
     // An away address added, changed or removed: choose again.
     ref.listen(awayAddressProvider, (before, after) {
       if (before?.url != after?.url) unawaited(check());
@@ -516,7 +537,7 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
         e.kind == MusicSourceErrorKind.auth
             ? ServerHealth.signedOut
             : ServerHealth.unreachable,
-        e.message,
+        e.code == 40 ? '${e.message}$lockoutHint' : e.message,
       );
     } catch (e) {
       next = ServerStatus(ServerHealth.unreachable, '$e');

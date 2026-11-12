@@ -139,6 +139,12 @@ class FakeMusicSource implements MusicSource {
   @override
   Stream<ServerRoute> get routeChanges => routeController.stream;
 
+  /// Add to it to fake the server turning the login down mid-session.
+  final loginRejectedController = StreamController<void>.broadcast(sync: true);
+
+  @override
+  Stream<void> get loginRejected => loginRejectedController.stream;
+
   /// What [connect] switches to, to fake a server with an away address.
   ServerRoute? routeOnConnect;
 

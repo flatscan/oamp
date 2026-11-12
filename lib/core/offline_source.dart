@@ -124,6 +124,8 @@ class OfflineAwareSource implements MusicSource {
   @override
   Stream<ServerRoute> get routeChanges => inner.routeChanges;
   @override
+  Stream<void> get loginRejected => inner.loginRejected;
+  @override
   Future<void> connect() => inner.connect();
   @override
   void reportUnreachable() => inner.reportUnreachable();
