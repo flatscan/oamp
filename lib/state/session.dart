@@ -8,6 +8,7 @@ import '../core/artwork_cache.dart';
 import '../core/download_activity.dart';
 import '../core/downloads.dart';
 import '../core/music_source.dart';
+import '../core/startup_trace.dart';
 import '../core/offline_source.dart';
 import '../core/server_route.dart';
 import '../core/track_cache.dart';
@@ -107,7 +108,10 @@ class SessionNotifier extends AsyncNotifier<ServerSession?> {
   SecureStore get _store => ref.read(secureStoreProvider);
 
   @override
-  Future<ServerSession?> build() async {
+  Future<ServerSession?> build() =>
+      startupTrace.step('saved sign-in', _restore);
+
+  Future<ServerSession?> _restore() async {
     try {
       final id = await _store.read(_activeKey);
       if (id == null) return null;
