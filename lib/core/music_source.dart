@@ -191,8 +191,13 @@ abstract class MusicSource {
 
   /// Tells the server a track is playing ([submission] false) or has been
   /// listened to ([submission] true), which drives play counts and the
-  /// "recently played" lists.
-  Future<void> reportPlayback(String trackId, {required bool submission});
+  /// "recently played" lists. [at] is when a listened-to track was played,
+  /// for plays reported late, such as after the server was out of reach.
+  Future<void> reportPlayback(
+    String trackId, {
+    required bool submission,
+    DateTime? at,
+  });
 
   /// Tells the server whether the track is playing or paused and where in
   /// it playback is, for its now-playing list. Only meaningful when

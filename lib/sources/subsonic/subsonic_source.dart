@@ -488,8 +488,17 @@ class SubsonicSource implements MusicSource {
   }
 
   @override
-  Future<void> reportPlayback(String trackId, {required bool submission}) =>
-      client.get('scrobble', {'id': trackId, 'submission': '$submission'});
+  Future<void> reportPlayback(
+    String trackId, {
+    required bool submission,
+    DateTime? at,
+  }) => client.get('scrobble', {
+    'id': trackId,
+    'submission': '$submission',
+    // The time the play happened, so a late report lands in the right
+    // place in the server's history.
+    if (submission && at != null) 'time': '${at.millisecondsSinceEpoch}',
+  });
 
   @override
   Future<void> reportPlaybackState(

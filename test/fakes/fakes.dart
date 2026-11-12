@@ -353,13 +353,25 @@ class FakeMusicSource implements MusicSource {
     String id,
     bool liked, {
     LikeTarget target = LikeTarget.track,
-  }) async => calls.add(
-    '${liked ? 'like' : 'unlike'}'
-    '${target == LikeTarget.track ? '' : '-${target.name}'}:$id',
-  );
+  }) async {
+    _checkReachable();
+    if (likesRefused) throw _notFound();
+    calls.add(
+      '${liked ? 'like' : 'unlike'}'
+      '${target == LikeTarget.track ? '' : '-${target.name}'}:$id',
+    );
+  }
+
+  /// While set, play reports fail as if the track did not exist.
+  bool playsRefused = false;
+
+  /// While set, likes fail as if the item did not exist.
+  bool likesRefused = false;
   @override
-  Future<void> setRating(String id, int rating) async =>
-      calls.add('rate:$id:$rating');
+  Future<void> setRating(String id, int rating) async {
+    _checkReachable();
+    calls.add('rate:$id:$rating');
+  }
 
   /// What [getLyrics] returns, by track id.
   final Map<String, Lyrics> lyrics = {};
@@ -385,8 +397,19 @@ class FakeMusicSource implements MusicSource {
   }
 
   @override
-  Future<void> reportPlayback(String trackId, {required bool submission}) =>
-      _report('${submission ? 'played' : 'playing'}:$trackId');
+  Future<void> reportPlayback(
+    String trackId, {
+    required bool submission,
+    DateTime? at,
+  }) {
+    _checkReachable();
+    if (playsRefused) throw _notFound();
+    if (submission && at != null) playTimes[trackId] = at;
+    return _report('${submission ? 'played' : 'playing'}:$trackId');
+  }
+
+  /// The time each played track was reported with.
+  final Map<String, DateTime> playTimes = {};
 
   @override
   Future<void> reportPlaybackState(

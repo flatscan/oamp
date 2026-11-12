@@ -160,8 +160,11 @@ class OfflineAwareSource implements MusicSource {
   Future<void> setRating(String id, int rating) => inner.setRating(id, rating);
 
   @override
-  Future<void> reportPlayback(String trackId, {required bool submission}) =>
-      inner.reportPlayback(trackId, submission: submission);
+  Future<void> reportPlayback(
+    String trackId, {
+    required bool submission,
+    DateTime? at,
+  }) => inner.reportPlayback(trackId, submission: submission, at: at);
   @override
   Future<void> reportPlaybackState(
     String trackId,
