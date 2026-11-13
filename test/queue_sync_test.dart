@@ -223,6 +223,38 @@ void main() {
     });
   });
 
+  test('while playing, the server hears the position about once a minute', () {
+    fakeAsync((async) {
+      engine = FakeAudioEngine();
+      container = ProviderContainer(
+        overrides: [
+          preferencesProvider.overrideWithValue(prefs),
+          sessionProvider.overrideWith(() => FakeSessionNotifier(source)),
+          audioEngineProvider.overrideWithValue(engine),
+        ],
+      );
+      container.read(queueSyncProvider);
+      async.elapse(Duration.zero);
+      player().playTracks(many);
+      async.elapse(QueueSync.debounce);
+      expect(source.queueSaves, hasLength(1));
+      // Three position saves on this device; the third reaches the server.
+      for (var i = 1; i <= 3; i++) {
+        engine.currentPosition = Duration(seconds: 20 * i);
+        async.elapse(QueueSync.interval);
+      }
+      expect(source.queueSaves, hasLength(2));
+      expect(prefs.getInt('oamp.queue.${source.serverId}.positionMs'), 60000);
+      // Pausing sends where it stopped at once.
+      engine.currentPosition = const Duration(seconds: 65);
+      player().pause();
+      async.elapse(Duration.zero);
+      expect(source.queueSaves, hasLength(3));
+      expect(source.queueSaves.last.position, const Duration(seconds: 65));
+      container.dispose();
+    });
+  });
+
   group('choose', () {
     SavedQueue q(List<int> ids, {int at = 0, int pos = 0, DateTime? when}) =>
         SavedQueue(

@@ -22,6 +22,11 @@ class OutboxEntry {
   /// For [OutboxKind.rating]: 0 to 5, 0 clearing it.
   final int rating;
 
+  /// How many times the server answered this report with an error of its
+  /// own (see [isServerRefusal]). After a few it is given up on, so one
+  /// report the server will never take doesn't hold up the rest.
+  final int refusals;
+
   const OutboxEntry({
     required this.kind,
     required this.id,
@@ -29,7 +34,19 @@ class OutboxEntry {
     this.liked = false,
     this.target = LikeTarget.track,
     this.rating = 0,
+    this.refusals = 0,
   });
+
+  /// The same report with one more refusal counted.
+  OutboxEntry refusedAgain() => OutboxEntry(
+    kind: kind,
+    id: id,
+    at: at,
+    liked: liked,
+    target: target,
+    rating: rating,
+    refusals: refusals + 1,
+  );
 
   factory OutboxEntry.play(String trackId, DateTime at) =>
       OutboxEntry(kind: OutboxKind.play, id: trackId, at: at);
@@ -64,6 +81,7 @@ class OutboxEntry {
     'at': at.millisecondsSinceEpoch,
     if (kind == OutboxKind.like) ...{'liked': liked, 'target': target.name},
     if (kind == OutboxKind.rating) 'rating': rating,
+    if (refusals > 0) 'refusals': refusals,
   };
 
   static OutboxEntry? fromJson(Object? raw) {
@@ -84,6 +102,7 @@ class OutboxEntry {
       liked: raw['liked'] == true,
       target: target,
       rating: raw['rating'] is int ? (raw['rating'] as int).clamp(0, 5) : 0,
+      refusals: raw['refusals'] is int ? raw['refusals'] as int : 0,
     );
   }
 }
@@ -112,6 +131,14 @@ OutboxFailure classifyFailure(Object e) {
     MusicSourceErrorKind.other => OutboxFailure.drop,
   };
 }
+
+/// Whether the server answered with an error of its own (a Subsonic error
+/// code) rather than not answering or failing with an HTTP 5xx. Such a
+/// report may never get through, so it is only tried a few times.
+bool isServerRefusal(Object e) =>
+    e is MusicSourceException &&
+    e.kind == MusicSourceErrorKind.server &&
+    e.code != null;
 
 /// Sends one saved report.
 Future<void> deliverEntry(MusicSource source, OutboxEntry e) async {
