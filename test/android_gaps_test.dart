@@ -95,6 +95,17 @@ class FakeArtworkCache implements ArtworkCache {
 
 void main() {
   group('network kind', () {
+    test('the log names the links up, and nothing else', () {
+      expect(
+        ConnectivityNetworkMonitor.describe([
+          ConnectivityResult.wifi,
+          ConnectivityResult.vpn,
+        ]),
+        'wifi + vpn',
+      );
+      expect(ConnectivityNetworkMonitor.describe([]), 'none');
+    });
+
     test('mobile data only when no Wi-Fi or Ethernet is up', () {
       NetworkKind kind(List<ConnectivityResult> r) =>
           ConnectivityNetworkMonitor.kindOf(r);

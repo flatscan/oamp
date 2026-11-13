@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import 'audio/platform_audio.dart';
 import 'core/build_info.dart';
 import 'core/diagnostics.dart';
+import 'core/startup_trace.dart';
 import 'platform/device_details.dart';
 import 'platform/external_actions.dart';
 import 'platform/file_log_store.dart';
@@ -44,26 +46,27 @@ import 'ui/window_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  startupTrace.enabled = true;
 
   // The log for bug reports collects everything the app prints and any
   // error nothing else caught, from here on.
   final log = DiagnosticsLog(await FileLogStore.open());
   _captureIntoLog(log);
-  final device = await DeviceDetails.read();
+  final device = await startupTrace.step('device details', DeviceDetails.read);
   debugPrint(
     'OAmp ${BuildInfo.current.label} starting on ${device.system}'
     '${device.model == null ? '' : ', ${device.model}'}',
   );
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    // Draw under clear status and navigation bars; pages pad themselves
-    // for the bars and any display cutout.
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setSystemUIOverlayStyle(oampSystemBars);
+    _applySystemBars();
   }
 
   final createDeck = createDeckFactory();
-  final preferences = await PlatformPreferences.load();
+  final preferences = await startupTrace.step(
+    'preferences',
+    PlatformPreferences.load,
+  );
 
   if (isDesktop) {
     // Open where the window was last time, if that is still on a screen.
@@ -96,14 +99,26 @@ Future<void> main() async {
   }
 
   // The OS media session: the Windows media overlay and keyboard media keys.
-  final systemControls = await createSystemControls();
+  final systemControls = await startupTrace.step(
+    'media session',
+    createSystemControls,
+  );
   // Calls, other apps and unplugged headphones on phones.
-  final audioFocus = await openAudioFocus();
-  final trackCache = await openTrackCache();
-  final artworkCache = await DiskArtworkCache.open();
-  final downloadStore = await DiskDownloadStore.openDefault();
+  final audioFocus = await startupTrace.step('audio focus', openAudioFocus);
+  final trackCache = await startupTrace.step('track cache', openTrackCache);
+  final artworkCache = await startupTrace.step(
+    'artwork cache',
+    DiskArtworkCache.open,
+  );
+  final downloadStore = await startupTrace.step(
+    'downloads',
+    DiskDownloadStore.openDefault,
+  );
   // Wi-Fi or mobile data, for the mobile data quality on phones.
-  final network = await ConnectivityNetworkMonitor.open();
+  final network = await startupTrace.step(
+    'network monitor',
+    ConnectivityNetworkMonitor.open,
+  );
 
   final container = ProviderContainer(
     overrides: [
@@ -149,9 +164,49 @@ Future<void> main() async {
     ..listen(queueSyncProvider, (_, _) {})
     ..listen(endlessPlayProvider, (_, _) {});
 
+  // Whether a screen is showing tells a start by the car (Android Auto
+  // binding the media service while the app is closed) from one by the
+  // user, and the first frame shows when OAmp actually appeared.
+  startupTrace.mark(
+    'starting the app (screen: '
+    '${WidgetsBinding.instance.lifecycleState?.name ?? 'none yet'})',
+  );
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => startupTrace.mark('first frame drawn'),
+  );
+  _logLifecycle();
+
   runApp(
     UncontrolledProviderScope(container: container, child: const OAmpApp()),
   );
+}
+
+/// Logs the app coming to the front or going away, so a log shows when the
+/// screen was opened and closed around a problem.
+void _logLifecycle() {
+  AppLifecycleListener(
+    onStateChange: (state) => debugPrint('App: ${state.name}'),
+    onResume: () {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        _applySystemBars();
+      }
+    },
+  );
+}
+
+/// Draws under clear status and navigation bars; pages pad themselves for
+/// the bars and any display cutout.
+///
+/// Never awaited: when Android Auto starts OAmp in the background there is
+/// no screen to answer, and the call never returns, which left start-up
+/// (and then the opened app) stuck on the splash. Applied again whenever
+/// the screen comes to the front, as a call made with no screen is lost.
+void _applySystemBars() {
+  unawaited(
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)
+        .catchError((Object e) => debugPrint('System bars: $e')),
+  );
+  SystemChrome.setSystemUIOverlayStyle(oampSystemBars);
 }
 
 /// Sends `debugPrint` output, Flutter errors and uncaught async errors to

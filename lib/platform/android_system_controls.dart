@@ -323,10 +323,33 @@ class OampAudioHandler extends BaseAudioHandler {
     Map<String, dynamic>? options,
   ]) async {
     final library = _library;
-    if (library == null) return const [];
-    final nodes = await library.children(parentMediaId);
-    return [for (final n in nodes) mediaItemForNode(n)];
+    if (library == null) {
+      debugPrint(
+        'Android Auto: asked for $parentMediaId before OAmp was ready',
+      );
+      return const [];
+    }
+    // The root is asked for each time a car connects or reloads.
+    if (parentMediaId == MediaLibrary.rootId) {
+      debugPrint('Android Auto: loading the root');
+    }
+    final time = Stopwatch()..start();
+    try {
+      final nodes = await library.children(parentMediaId);
+      if (time.elapsed > slowBrowse) {
+        debugPrint(
+          'Android Auto: $parentMediaId took ${time.elapsedMilliseconds} ms',
+        );
+      }
+      return [for (final n in nodes) mediaItemForNode(n)];
+    } catch (e) {
+      debugPrint('Android Auto: loading $parentMediaId failed: $e');
+      rethrow;
+    }
   }
+
+  /// Browse requests slower than this are logged.
+  static const slowBrowse = Duration(seconds: 2);
 
   @override
   Future<List<MediaItem>> search(
