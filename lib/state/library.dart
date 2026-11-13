@@ -78,53 +78,76 @@ class LetterGroups<T> {
   }
 }
 
-final artistDetailProvider = FutureProvider.family<ArtistDetail, String>(
-  (ref, id) => ref.watchLibrary().getArtist(id),
-);
+/// How long a page's data is kept after the last screen showing it
+/// closes, so going back and forth doesn't ask the server again, while a
+/// long session doesn't hold every album and artist it ever opened.
+const libraryCacheTime = Duration(minutes: 5);
 
-final artistInfoProvider = FutureProvider.family<ArtistInfo, String>(
-  (ref, id) => ref.watchLibrary().getArtistInfo(id),
-);
+extension CacheFor on Ref {
+  /// Keeps an auto-disposing provider for [time] after its last listener
+  /// goes.
+  void cacheFor(Duration time) {
+    final link = keepAlive();
+    Timer? timer;
+    onCancel(() => timer = Timer(time, link.close));
+    onResume(() => timer?.cancel());
+    onDispose(() => timer?.cancel());
+  }
+}
+
+final artistDetailProvider = FutureProvider.autoDispose
+    .family<ArtistDetail, String>((ref, id) {
+      ref.cacheFor(libraryCacheTime);
+      return ref.watchLibrary().getArtist(id);
+    });
+
+final artistInfoProvider = FutureProvider.autoDispose
+    .family<ArtistInfo, String>((ref, id) {
+      ref.cacheFor(libraryCacheTime);
+      return ref.watchLibrary().getArtistInfo(id);
+    });
 
 /// An artist's popular tracks, keyed by `(id, name)` because Subsonic looks
 /// them up by name.
-final topTracksProvider =
-    FutureProvider.family<List<Track>, ({String id, String name})>(
-      (ref, a) async => a.name.isEmpty
+final topTracksProvider = FutureProvider.autoDispose
+    .family<List<Track>, ({String id, String name})>((ref, a) async {
+      ref.cacheFor(libraryCacheTime);
+      return a.name.isEmpty
           ? const <Track>[]
           : ref.watchLibrary().getTopTracks(
               Artist(id: a.id, name: a.name),
               count: 20,
-            ),
-    );
+            );
+    });
 
-final albumDetailProvider = FutureProvider.family<AlbumDetail, String>(
-  (ref, id) => ref.watchLibrary().getAlbum(id),
-);
+final albumDetailProvider = FutureProvider.autoDispose
+    .family<AlbumDetail, String>((ref, id) {
+      ref.cacheFor(libraryCacheTime);
+      return ref.watchLibrary().getAlbum(id);
+    });
 
 /// Every track by an artist, album by album, for the artist page's play and
 /// shuffle buttons.
-final artistTracksProvider = FutureProvider.family<List<Track>, String>((
-  ref,
-  id,
-) async {
-  final detail = await ref.watch(artistDetailProvider(id).future);
-  const batchSize = 4;
-  final out = <Track>[];
-  for (var i = 0; i < detail.albums.length; i += batchSize) {
-    final end = (i + batchSize < detail.albums.length)
-        ? i + batchSize
-        : detail.albums.length;
-    final batch = await Future.wait([
-      for (var j = i; j < end; j++)
-        ref.watch(albumDetailProvider(detail.albums[j].id).future),
-    ]);
-    for (final a in batch) {
-      out.addAll(a.tracks);
-    }
-  }
-  return out;
-});
+final artistTracksProvider = FutureProvider.autoDispose
+    .family<List<Track>, String>((ref, id) async {
+      ref.cacheFor(libraryCacheTime);
+      final detail = await ref.watch(artistDetailProvider(id).future);
+      const batchSize = 4;
+      final out = <Track>[];
+      for (var i = 0; i < detail.albums.length; i += batchSize) {
+        final end = (i + batchSize < detail.albums.length)
+            ? i + batchSize
+            : detail.albums.length;
+        final batch = await Future.wait([
+          for (var j = i; j < end; j++)
+            ref.watch(albumDetailProvider(detail.albums[j].id).future),
+        ]);
+        for (final a in batch) {
+          out.addAll(a.tracks);
+        }
+      }
+      return out;
+    });
 
 /// A short album row for the home screen, such as recently added.
 final homeAlbumsProvider = FutureProvider.family<List<Album>, AlbumSort>(
@@ -135,9 +158,11 @@ final playlistsProvider = FutureProvider<List<Playlist>>(
   (ref) => ref.watchLibrary().getPlaylists(),
 );
 
-final playlistDetailProvider = FutureProvider.family<PlaylistDetail, String>(
-  (ref, id) => ref.watchLibrary().getPlaylist(id),
-);
+final playlistDetailProvider = FutureProvider.autoDispose
+    .family<PlaylistDetail, String>((ref, id) {
+      ref.cacheFor(libraryCacheTime);
+      return ref.watchLibrary().getPlaylist(id);
+    });
 
 final likedTracksProvider = FutureProvider<List<Track>>(
   (ref) => ref.watchLibrary().getLikedTracks(),
@@ -150,9 +175,10 @@ final likedArtistsProvider = FutureProvider<List<Artist>>(
 /// Search results for a query, with up to [limit] of each kind. The
 /// search page asks for a few of everything, and more of one kind when a
 /// filter is chosen.
-final searchProvider =
-    FutureProvider.family<SearchResults, ({String query, int limit})>((ref, q) {
+final searchProvider = FutureProvider.autoDispose
+    .family<SearchResults, ({String query, int limit})>((ref, q) {
       if (q.query.trim().isEmpty) return const SearchResults();
+      ref.cacheFor(libraryCacheTime);
       return ref.watchLibrary().search(q.query.trim(), limit: q.limit);
     });
 

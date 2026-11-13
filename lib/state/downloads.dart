@@ -291,9 +291,10 @@ class DownloadManager extends Notifier<DownloadsState> {
       current.cancel.cancel();
     }
     await store.removePin(serverId, pin.key);
-    for (final t in pin.tracks) {
-      if (!stillWanted.contains(t.id)) await store.removeTrack(serverId, t.id);
-    }
+    await store.removeTracks(serverId, [
+      for (final t in pin.tracks)
+        if (!stillWanted.contains(t.id)) t.id,
+    ]);
     kick();
   }
 
@@ -430,9 +431,7 @@ class DownloadManager extends Notifier<DownloadsState> {
       pins: pins,
       downloaded: _downloadedAmong(store, serverId, pins),
     );
-    for (final id in removed.toSet()) {
-      await store.removeTrack(serverId, id);
-    }
+    await store.removeTracks(serverId, removed.toSet());
     if (_disposed) return;
     state = state.copyWith(
       downloaded: _downloadedAmong(store, serverId, state.pins),

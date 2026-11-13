@@ -59,8 +59,8 @@ final capabilitiesProvider = Provider<SourceCapabilities>((ref) {
       session.source.capabilities;
 });
 
-final _detectedCapabilitiesProvider =
-    FutureProvider.family<SourceCapabilities, MusicSource>(
+final _detectedCapabilitiesProvider = FutureProvider.autoDispose
+    .family<SourceCapabilities, MusicSource>(
       (ref, source) => source.detectCapabilities(),
     );
 

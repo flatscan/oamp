@@ -281,6 +281,25 @@ void main() {
     expect(store.has('srv', 't1'), isTrue);
   });
 
+  test('many tracks go in one call, files and half-finished parts', () async {
+    await fetch('t1');
+    await fetch('t2');
+    await fetch('t3');
+    final usage = await store.usageBytes('srv');
+    expect(usage, body.length * 3);
+    final part = File(
+      '${dir.path}/${DiskDownloadStore.hash('srv')}/tracks/'
+      '${DiskDownloadStore.hash('t4')}.raw.part',
+    );
+    await part.writeAsBytes([1, 2, 3]);
+    await store.removeTracks('srv', ['t1', 't2', 't4']);
+    expect(store.has('srv', 't1'), isFalse);
+    expect(store.has('srv', 't2'), isFalse);
+    expect(store.has('srv', 't3'), isTrue);
+    expect(await part.exists(), isFalse);
+    expect(await store.usageBytes('srv'), body.length);
+  });
+
   test('removing a track or a whole server deletes the files', () async {
     await fetch('t1');
     await fetch('t2');

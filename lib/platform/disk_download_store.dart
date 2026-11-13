@@ -156,22 +156,34 @@ class DiskDownloadStore implements DownloadStore {
   // ---- Files -----------------------------------------------------------
 
   @override
-  Future<void> removeTrack(String serverId, String trackId) async {
-    final id = hash(trackId);
-    final file = _files[hash(serverId)]?.remove(id);
-    if (file != null) await _tryDelete(file);
-    await _deleteParts(serverId, id);
-    _changes.add(null);
-  }
+  Future<void> removeTrack(String serverId, String trackId) =>
+      removeTracks(serverId, [trackId]);
 
-  Future<void> _deleteParts(String serverId, String id) async {
+  /// Deletes the files, then lists the folder once for half-finished ones,
+  /// rather than once per track.
+  @override
+  Future<void> removeTracks(String serverId, Iterable<String> trackIds) async {
+    final ids = {for (final t in trackIds) hash(t)};
+    if (ids.isEmpty) return;
+    final files = _files[hash(serverId)];
+    for (final id in ids) {
+      final file = files?.remove(id);
+      if (file == null) continue;
+      _sizes.remove(file.path);
+      await _tryDelete(file);
+    }
     final dir = _tracksDir(serverId);
-    if (!await dir.exists()) return;
-    await for (final f in dir.list()) {
-      if (f is File && f.uri.pathSegments.last.startsWith('$id.')) {
-        if (f.path.endsWith('.part')) await _tryDelete(f);
+    if (await dir.exists()) {
+      await for (final f in dir.list()) {
+        if (f is! File || !f.path.endsWith('.part')) continue;
+        final name = f.uri.pathSegments.last;
+        final dot = name.indexOf('.');
+        if (dot > 0 && ids.contains(name.substring(0, dot))) {
+          await _tryDelete(f);
+        }
       }
     }
+    _changes.add(null);
   }
 
   @override
@@ -181,7 +193,9 @@ class DiskDownloadStore implements DownloadStore {
     final files = _files[hash(serverId)] ?? {};
     for (final id in files.keys.toList()) {
       if (keepHashes.contains(id)) continue;
-      await _tryDelete(files.remove(id)!);
+      final file = files.remove(id)!;
+      _sizes.remove(file.path);
+      await _tryDelete(file);
     }
     final dir = _tracksDir(serverId);
     if (await dir.exists()) {
@@ -194,7 +208,9 @@ class DiskDownloadStore implements DownloadStore {
 
   @override
   Future<void> removeServer(String serverId) async {
-    _files.remove(hash(serverId));
+    for (final f in (_files.remove(hash(serverId)) ?? {}).values) {
+      _sizes.remove(f.path);
+    }
     final dir = _serverDir(serverId);
     if (await dir.exists()) {
       try {
@@ -206,12 +222,16 @@ class DiskDownloadStore implements DownloadStore {
     _changes.add(null);
   }
 
+  /// File sizes by path, so the usage total doesn't ask the disk about
+  /// every file each time a download finishes.
+  final Map<String, int> _sizes = {};
+
   @override
   Future<int> usageBytes(String serverId) async {
     var total = 0;
     for (final f in (_files[hash(serverId)] ?? {}).values) {
       try {
-        total += await f.length();
+        total += _sizes[f.path] ??= await f.length();
       } catch (_) {}
     }
     return total;
@@ -293,10 +313,14 @@ class DiskDownloadStore implements DownloadStore {
     // Replace any older copy, such as at another file type.
     final files = _files[hash(serverId)] ??= {};
     final old = files[id];
-    if (old != null && old.path != target.path) await _tryDelete(old);
+    if (old != null && old.path != target.path) {
+      _sizes.remove(old.path);
+      await _tryDelete(old);
+    }
     if (await target.exists()) await target.delete();
     final done = await part.rename(target.path);
     files[id] = done;
+    _sizes.remove(done.path);
     _changes.add(null);
   }
 

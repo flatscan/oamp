@@ -181,6 +181,16 @@ class SubsonicSource implements MusicSource {
         .replaceAll('&#39;', "'")
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAllMapped(RegExp(r'&#(x[0-9a-fA-F]+|\d+);'), (m) {
+          final v = m[1]!;
+          final code = v.startsWith('x')
+              ? int.tryParse(v.substring(1), radix: 16)
+              : int.tryParse(v);
+          return code == null || code > 0x10FFFF
+              ? m[0]!
+              : String.fromCharCode(code);
+        })
         .trim();
     return s.isEmpty ? null : s;
   }
@@ -385,9 +395,31 @@ class SubsonicSource implements MusicSource {
     ];
   }
 
+  /// Liked tracks and liked artists both come from `getStarred2`, and
+  /// screens often ask for both together, so one reply serves both for a
+  /// few seconds.
+  Future<Map<String, dynamic>>? _starred;
+  static const _starredFresh = Duration(seconds: 5);
+
+  Future<Map<String, dynamic>> _getStarred() {
+    final pending = _starred;
+    if (pending != null) return pending;
+    final f = _starred = client.get('getStarred2');
+    // Errors aren't kept, and neither is a reply once it has gone stale.
+    f.then(
+      (_) => Timer(_starredFresh, () {
+        if (identical(_starred, f)) _starred = null;
+      }),
+      onError: (Object _) {
+        if (identical(_starred, f)) _starred = null;
+      },
+    );
+    return f;
+  }
+
   @override
   Future<List<Track>> getLikedTracks() async {
-    final r = await client.get('getStarred2');
+    final r = await _getStarred();
     return [
       for (final t in (r['starred2']?['song'] as List? ?? const []))
         _track(t as Map<String, dynamic>),
@@ -396,7 +428,7 @@ class SubsonicSource implements MusicSource {
 
   @override
   Future<List<Artist>> getLikedArtists() async {
-    final r = await client.get('getStarred2');
+    final r = await _getStarred();
     final list = [
       for (final a in (r['starred2']?['artist'] as List? ?? const []))
         _artist(a as Map<String, dynamic>),
@@ -413,13 +445,18 @@ class SubsonicSource implements MusicSource {
     String id,
     bool liked, {
     LikeTarget target = LikeTarget.track,
-  }) => client.get(liked ? 'star' : 'unstar', {
-    switch (target) {
-      LikeTarget.track => 'id',
-      LikeTarget.album => 'albumId',
-      LikeTarget.artist => 'artistId',
-    }: id,
-  });
+  }) async {
+    // The liked lists are about to change.
+    _starred = null;
+    await client.get(liked ? 'star' : 'unstar', {
+      switch (target) {
+        LikeTarget.track => 'id',
+        LikeTarget.album => 'albumId',
+        LikeTarget.artist => 'artistId',
+      }: id,
+    });
+    _starred = null;
+  }
 
   @override
   Future<void> setRating(String id, int rating) =>
