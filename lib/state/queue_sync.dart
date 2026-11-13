@@ -43,8 +43,14 @@ class QueueSync {
   /// How long queue edits settle before they are saved.
   static const debounce = Duration(seconds: 2);
 
-  /// How often the position is saved while playing.
+  /// How often the position is saved on this device while playing.
   static const interval = Duration(seconds: 20);
+
+  /// While only the position moves, every this-many-th timed save also
+  /// goes to the server (once a minute). Each server save sends the whole
+  /// queue, which the server writes out again; pausing, closing the app and
+  /// changing the queue still save there at once.
+  static const pushEveryTicks = 3;
 
   /// The shortest gap between two looks at the server's queue.
   static const checkGap = Duration(seconds: 10);
@@ -73,6 +79,13 @@ class QueueSync {
   /// What the queue entry on this device holds, to skip rewriting it when
   /// only the position moved.
   String? _localPrint;
+
+  /// [SavedQueue.contentFingerprint] of what the server holds, so a timed
+  /// save can tell a position-only change from a real one.
+  String? _serverContent;
+
+  /// Timed saves since playback started.
+  int _ticks = 0;
 
   Future<void> _restoring = Future.value();
   Future<void> _saving = Future.value();
@@ -105,6 +118,7 @@ class QueueSync {
     _generation++;
     _ready = false;
     _serverPrint = null;
+    _serverContent = null;
     _localPrint = null;
     _lastCheck = null;
     _serverId = s?.serverId;
@@ -129,10 +143,14 @@ class QueueSync {
       _debounce = Timer(debounce, _enqueueSave);
     }
     if (next.playing) {
-      _ticker ??= Timer.periodic(interval, (_) => _enqueueSave());
+      _ticker ??= Timer.periodic(interval, (_) {
+        _ticks++;
+        _enqueueSave(positionOnly: _ticks % pushEveryTicks != 0);
+      });
     } else {
       _ticker?.cancel();
       _ticker = null;
+      _ticks = 0;
     }
   }
 
@@ -156,7 +174,10 @@ class QueueSync {
       }
     }
     if (!_current(gen)) return;
-    if (remoteKnown) _serverPrint = remote?.fingerprint ?? _emptyPrint;
+    if (remoteKnown) {
+      _serverPrint = remote?.fingerprint ?? _emptyPrint;
+      _serverContent = remote?.contentFingerprint;
+    }
     final pick = remoteKnown ? choose(local, localSynced, remote) : local;
     // Something may have started playing while the server was asked.
     if (pick != null &&
@@ -223,10 +244,14 @@ class QueueSync {
     }
   }
 
-  void _enqueueSave() {
-    _saving = _saving.then((_) => _save()).catchError((Object e) {
-      debugPrint('Could not save the play queue: $e');
-    });
+  /// Queues a save. With [positionOnly], a change to just the position is
+  /// kept on this device and not sent to the server.
+  void _enqueueSave({bool positionOnly = false}) {
+    _saving = _saving.then((_) => _save(positionOnly: positionOnly)).catchError(
+      (Object e) {
+        debugPrint('Could not save the play queue: $e');
+      },
+    );
   }
 
   /// Saves the queue now, such as when the app is about to close.
@@ -236,7 +261,7 @@ class QueueSync {
     return _saving;
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool positionOnly = false}) async {
     final gen = _generation;
     if (_disposed) return;
     final id = _serverId;
@@ -247,7 +272,11 @@ class QueueSync {
     final snap = _player.snapshot().copyWith(changed: now);
     final content = snap.localFingerprint;
     final fp = snap.fingerprint;
-    final push = canSync && fp != _serverPrint;
+    final due = !positionOnly || snap.contentFingerprint != _serverContent;
+    final push = canSync && fp != _serverPrint && due;
+    // Holding back a position-only change leaves the server a little
+    // behind, which [choose] sorts out by time at the next start.
+    final behind = canSync && fp != _serverPrint && !due;
     final p = _prefs;
     if (content != _localPrint) {
       await p.setString(_queueKey(id), jsonEncode(snap.toJson()));
@@ -256,7 +285,7 @@ class QueueSync {
     await p.setInt(_positionKey(id), snap.position.inMilliseconds);
     await p.setString(_changedKey(id), now.toIso8601String());
     if (!canSync) return p.setBool(_syncedKey(id), false);
-    if (!push) return p.setBool(_syncedKey(id), true);
+    if (!push) return p.setBool(_syncedKey(id), !behind);
     await p.setBool(_syncedKey(id), false);
     try {
       await source.savePlayQueue(
@@ -270,6 +299,7 @@ class QueueSync {
     }
     if (!_current(gen)) return;
     _serverPrint = fp;
+    _serverContent = snap.contentFingerprint;
     await p.setBool(_syncedKey(id), true);
   }
 
@@ -296,6 +326,7 @@ class QueueSync {
     final fp = remote?.fingerprint ?? _emptyPrint;
     final known = _serverPrint;
     _serverPrint = fp;
+    _serverContent = remote?.contentFingerprint;
     // Unknown before (the server could not be reached at start-up), or
     // unchanged: nothing new to pick up. A queue cleared elsewhere leaves
     // this one alone.

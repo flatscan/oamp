@@ -147,6 +147,33 @@ void main() {
     expect(source.calls, isEmpty);
   });
 
+  test('a report the server keeps answering with an error is given up on '
+      'after a few tries, and the rest go through', () async {
+    await launch();
+    source.unreachable = true;
+    await outbox().play('t1', t0);
+    await outbox().play('t2', t0);
+    source.unreachable = false;
+    source.playsError = true;
+    await outbox().flush();
+    await outbox().flush();
+    expect(pending().map((e) => e.id), ['t1', 't2']);
+    expect(pending().first.refusals, 2);
+    // Kept across a restart.
+    expect(
+      prefs.getStringList('oamp.outbox.${source.serverId}')!.first,
+      contains('"refusals":2'),
+    );
+    // Third refusal for t1: dropped, and t2 goes through.
+    source.playsError = true;
+    await outbox().flush();
+    expect(pending().map((e) => e.id), ['t2']);
+    source.playsError = false;
+    await outbox().flush();
+    expect(pending(), isEmpty);
+    expect(prefs.getStringList('oamp.outbox.${source.serverId}'), isEmpty);
+  });
+
   test('Offline mode keeps reports until it is switched off', () async {
     await launch();
     await container.read(settingsProvider.notifier).setOfflineMode(true);

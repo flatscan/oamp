@@ -29,6 +29,10 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
   /// How often to try again while reports are waiting.
   static const retryEvery = Duration(minutes: 5);
 
+  /// A report the server answers with an error of its own this many times
+  /// is given up on.
+  static const maxRefusals = 3;
+
   bool _flushing = false;
   Timer? _timer;
   String? _serverId;
@@ -72,24 +76,28 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
     return out;
   }
 
-  void _save(List<OutboxEntry> entries) {
+  /// Sets the list and, unless [persist] is false, writes it to storage.
+  /// A flush updates the list after each report but writes it once.
+  void _save(List<OutboxEntry> entries, {bool persist = true}) {
     state = entries;
+    if (persist) _persist();
+    _timer?.cancel();
+    _timer = entries.isEmpty
+        ? null
+        : Timer.periodic(retryEvery, (_) => unawaited(flush()));
+  }
+
+  void _persist() {
     unawaited(
       ref
           .read(preferencesProvider)
-          .setStringList(_key, [
-            for (final e in entries) jsonEncode(e.toJson()),
-          ])
+          .setStringList(_key, [for (final e in state) jsonEncode(e.toJson())])
           .then(
             (_) {},
             onError: (Object e) =>
                 debugPrint('Could not save pending reports: ${e.runtimeType}'),
           ),
     );
-    _timer?.cancel();
-    _timer = entries.isEmpty
-        ? null
-        : Timer.periodic(retryEvery, (_) => unawaited(flush()));
   }
 
   void _add(OutboxEntry entry) {
@@ -160,6 +168,7 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
     if (source == null) return;
     _flushing = true;
     var likedTracksSent = false;
+    var changed = false;
     try {
       while (state.isNotEmpty && ref.mounted) {
         final entry = state.first;
@@ -167,8 +176,15 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
           await deliverEntry(source, entry);
         } on Object catch (e) {
           if (classifyFailure(e) != OutboxFailure.drop) {
-            debugPrint('Pending reports wait: ${e.runtimeType}');
-            return;
+            if (!ref.mounted) return;
+            if (!isServerRefusal(e) || entry.refusals + 1 < maxRefusals) {
+              debugPrint('Pending reports wait: ${e.runtimeType}');
+              if (isServerRefusal(e)) {
+                _replace(entry, entry.refusedAgain());
+                changed = true;
+              }
+              return;
+            }
           }
           debugPrint(
             'A ${entry.kind.name} report was refused: ${e.runtimeType}',
@@ -182,10 +198,12 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
         _save([
           for (final e in state)
             if (!identical(e, entry)) e,
-        ]);
+        ], persist: false);
+        changed = true;
       }
     } finally {
       _flushing = false;
+      if (changed && ref.mounted) _persist();
       if (likedTracksSent && ref.mounted) {
         // Downloaded liked tracks follow likes that just reached the server.
         unawaited(
@@ -196,4 +214,8 @@ class OutboxNotifier extends Notifier<List<OutboxEntry>> {
       }
     }
   }
+
+  void _replace(OutboxEntry old, OutboxEntry next) => _save([
+    for (final e in state) identical(e, old) ? next : e,
+  ], persist: false);
 }

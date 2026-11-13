@@ -365,6 +365,9 @@ class FakeMusicSource implements MusicSource {
   /// While set, play reports fail as if the track did not exist.
   bool playsRefused = false;
 
+  /// Makes plays fail with a Subsonic error of the server's own (code 0).
+  bool playsError = false;
+
   /// While set, likes fail as if the item did not exist.
   bool likesRefused = false;
   @override
@@ -404,6 +407,13 @@ class FakeMusicSource implements MusicSource {
   }) {
     _checkReachable();
     if (playsRefused) throw _notFound();
+    if (playsError) {
+      throw MusicSourceException(
+        'The server could not do that.',
+        code: 0,
+        kind: MusicSourceErrorKind.server,
+      );
+    }
     if (submission && at != null) playTimes[trackId] = at;
     return _report('${submission ? 'played' : 'playing'}:$trackId');
   }
