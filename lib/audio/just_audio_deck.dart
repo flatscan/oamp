@@ -80,6 +80,9 @@ class JustAudioDeck implements AudioDeck {
   @override
   Future<void> removeAt(int index) => _player.removeAudioSourceAt(index);
   @override
+  Future<void> removeRange(int start, int end) =>
+      _player.removeAudioSourceRange(start, end);
+  @override
   Future<void> move(int from, int to) => _player.moveAudioSource(from, to);
   @override
   Future<void> clear() async {

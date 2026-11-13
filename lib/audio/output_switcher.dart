@@ -181,6 +181,14 @@ class OutputSwitcher implements AudioEngine {
   }
 
   @override
+  Future<void> removeRange(int start, int end) {
+    if (start >= 0 && start < end && end <= _uris.length) {
+      _uris.removeRange(start, end);
+    }
+    return _active.removeRange(start, end);
+  }
+
+  @override
   Future<void> move(int from, int to) {
     if (from >= 0 && from < _uris.length && to >= 0 && to < _uris.length) {
       _uris.insert(to, _uris.removeAt(from));
