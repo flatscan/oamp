@@ -67,6 +67,23 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON"/>
             </intent-filter>
         </receiver>
+        <!-- The "Now playing" home screen widget (NowPlayingWidget.kt),
+             exported for the launcher's update broadcasts. Its buttons go
+             to WidgetButtonReceiver, which only the widget can reach. -->
+        <receiver
+            android:name=".NowPlayingWidget"
+            android:label="@string/widget_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_now_playing_info"/>
+        </receiver>
+        <receiver
+            android:name=".WidgetButtonReceiver"
+            android:exported="false"/>
         <!-- Android Auto: OAmp shows up as a media app in the car, browsed
              through the media service above. -->
         <meta-data

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home screen widget (NowPlayingWidget.kt). Android 12+ overrides
+     some of these in values-v31 to match the launcher. -->
+<resources>
+    <string name="widget_name">Now playing</string>
+    <string name="widget_description">What\'s playing, with play/pause and skip buttons</string>
+    <string name="widget_idle_title">OAmp</string>
+    <string name="widget_idle_subtitle">Tap to open</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_pause">Pause</string>
+    <string name="widget_next">Next track</string>
+    <string name="widget_previous">Previous track</string>
+    <string name="widget_open">Open OAmp</string>
+
+    <color name="widget_background">#F01C1B1F</color>
+    <color name="widget_art_background">#FF2B2930</color>
+    <color name="widget_text">#FFFFFFFF</color>
+    <color name="widget_text_secondary">#B3FFFFFF</color>
+    <!-- OAmp's coral accent (lib/ui/theme.dart). -->
+    <color name="widget_accent">#FFFF6B4A</color>
+    <color name="widget_on_accent">#FFFFFFFF</color>
+
+    <dimen name="widget_corner_radius">16dp</dimen>
+    <dimen name="widget_art_corner_radius">8dp</dimen>
+</resources>

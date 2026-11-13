@@ -60,6 +60,31 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // What the home screen widget shows (AndroidHomeWidget in Dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/widget")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "show" -> {
+                        NowPlayingWidget.show(
+                            applicationContext,
+                            NowPlayingWidget.State(
+                                title = call.argument<String>("title") ?: "",
+                                artist = call.argument<String>("artist"),
+                                artPath = call.argument<String>("art"),
+                                playing = call.argument<Boolean>("playing") == true,
+                                canGoNext = call.argument<Boolean>("canGoNext") == true,
+                                canGoPrevious = call.argument<Boolean>("canGoPrevious") == true,
+                            ),
+                        )
+                        result.success(null)
+                    }
+                    "clear" -> {
+                        NowPlayingWidget.clear(applicationContext)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         // Wi-Fi drops multicast unless an app holds a lock, so it is held
         // while OAmp looks for speakers and TVs.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "oamp/network")
