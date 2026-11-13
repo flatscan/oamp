@@ -359,6 +359,9 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     if (o.crossfade != before.crossfade) {
       await _engine.setCrossfade(o.crossfade);
     }
+    if (o.equalizer != before.equalizer) {
+      await _engine.setEqualizer(o.equalizer);
+    }
     await _engine.refreshGain();
   }
 

@@ -8,7 +8,9 @@ cast button at the top left of Now playing and pick a device. While casting:
   or PC only sends commands, so the screen can lock.
 - The volume slider on Windows and the volume buttons on Android change the
   device's own volume.
-- ReplayGain and crossfade are off, because the device plays the tracks.
+- ReplayGain, crossfade and the equaliser are off, because the device plays
+  the tracks. The equaliser preset comes back when playback returns to this
+  device.
 - Picking **This device**, or the device ending the session (for example
   when something else is cast to it), brings playback back to OAmp, paused
   at the same spot.
