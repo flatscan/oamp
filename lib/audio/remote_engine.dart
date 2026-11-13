@@ -278,6 +278,15 @@ class RemoteEngine implements AudioEngine {
     await _lineUp();
   }
 
+  /// The device only holds the current and next track, so this is the same
+  /// bookkeeping as [removeAt], from the end of the range.
+  @override
+  Future<void> removeRange(int start, int end) async {
+    for (var i = end - 1; i >= start; i--) {
+      await removeAt(i);
+    }
+  }
+
   @override
   Future<void> move(int from, int to) async {
     int shift(int i) {

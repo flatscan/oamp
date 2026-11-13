@@ -57,6 +57,31 @@ void main() {
     expect(state().hasNext, isTrue);
   });
 
+  /// The track ids the engine has queued, in order.
+  List<String> engineIds() => [
+    for (final u in engine.queue) u.pathSegments.last,
+  ];
+
+  test('shuffling up next is one bulk removal, not one per track', () async {
+    await player().playTracks(many);
+    await settle();
+    await player().shuffleUpcoming();
+    expect(engine.rangeRemovals, 1);
+    expect(engineIds(), [for (final t in state().queue) t.id]);
+  });
+
+  test('edits made while a shuffle is still reaching the engine keep it in '
+      'step with the queue', () async {
+    await player().playTracks(many);
+    await settle();
+    final shuffling = player().shuffleUpcoming();
+    final moving = player().move(5, 1);
+    final removing = player().removeAt(3);
+    await Future.wait([shuffling, moving, removing]);
+    await settle();
+    expect(engineIds(), [for (final t in state().queue) t.id]);
+  });
+
   test('shuffle up next keeps played and current tracks in place', () async {
     await player().playTracks(many, startIndex: 2);
     await settle();

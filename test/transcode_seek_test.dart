@@ -478,6 +478,17 @@ class FakeDeck implements AudioDeck {
     }
   }
 
+  /// Counts bulk removals, so tests can tell one call from many.
+  int rangeRemovals = 0;
+
+  @override
+  Future<void> removeRange(int start, int end) async {
+    rangeRemovals++;
+    for (var i = end - 1; i >= start; i--) {
+      await removeAt(i);
+    }
+  }
+
   @override
   Future<void> move(int from, int to) async =>
       queue.insert(to, queue.removeAt(from));

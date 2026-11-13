@@ -224,6 +224,19 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   late Preferences _prefs;
   double _savedVolume = 1;
 
+  /// Changes to the engine's playlist, one after another. Each edit
+  /// updates [state] at once and then mirrors it into the engine over
+  /// several awaits; run side by side (a drag while a long shuffle is still
+  /// being applied), two edits could land at the wrong places and leave the
+  /// engine out of step with the queue.
+  Future<void> _engineOps = Future.value();
+
+  Future<T> _serial<T>(Future<T> Function() op) {
+    final result = _engineOps.then((_) => op());
+    _engineOps = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
   bool get _signedIn => ref.read(sessionProvider).value != null;
   TrackResolver get _resolver => ref.read(trackResolverProvider);
 
@@ -415,10 +428,12 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         ...List.filled(rest.length, q),
       ]),
     );
-    for (var i = cur + rest.length; i > cur; i--) {
-      await _engine.removeAt(i);
-    }
-    await _engine.addAll(await _uris(rest));
+    await _serial(() async {
+      await _engine.removeRange(cur + 1, cur + 1 + rest.length);
+      // Resolved after a turn of the event loop, once the resolver has
+      // picked up the new quality.
+      await _engine.addAll(await _uris(rest));
+    });
   }
 
   List<StreamQuality> _qualitiesFor(int count) =>
@@ -458,8 +473,10 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       albumQueue: album && !shuffle,
       endless: _marks(const []),
     );
-    await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
-    await _engine.play();
+    await _serial(() async {
+      await _engine.setQueue(await _uris(tracks), initialIndex: startIndex);
+      await _engine.play();
+    });
   }
 
   /// Loads a saved queue paused at its current track and position, as it
@@ -501,14 +518,16 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       ]),
     );
     _stale = {for (final t in tracks) t.id};
-    if (reopen != null && state.repeat == PlaybackRepeat.one) {
-      await _engine.setRepeatMode(PlaybackRepeat.off);
-    }
-    await _engine.setQueue(
-      uris,
-      initialIndex: index,
-      initialPosition: reopen == null ? position : Duration.zero,
-    );
+    await _serial(() async {
+      if (reopen != null && state.repeat == PlaybackRepeat.one) {
+        await _engine.setRepeatMode(PlaybackRepeat.off);
+      }
+      await _engine.setQueue(
+        uris,
+        initialIndex: index,
+        initialPosition: reopen == null ? position : Duration.zero,
+      );
+    });
     await _refreshAround(index);
   }
 
@@ -595,7 +614,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       ]),
       endless: marked ? _marks([...state.endless, ...tracks]) : null,
     );
-    await _engine.addAll(await _uris(tracks));
+    await _serial(() async => _engine.addAll(await _uris(tracks)));
   }
 
   /// Inserts [tracks] right after the current track.
@@ -610,7 +629,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       queue: List.unmodifiable(q),
       qualities: List.unmodifiable(quals),
     );
-    await _engine.insertAll(at, await _uris(tracks));
+    await _serial(() async => _engine.insertAll(at, await _uris(tracks)));
   }
 
   Future<void> _step(Future<void> Function() action) async {
@@ -635,12 +654,8 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     }
     // The reopened entry is going, so there is nothing to put back.
     final offset = index == state.currentIndex ? Duration.zero : null;
-    if (offset != null) {
-      _reopened = null;
-      if (state.repeat == PlaybackRepeat.one) {
-        await _engine.setRepeatMode(PlaybackRepeat.one);
-      }
-    }
+    final restoreRepeat = offset != null && state.repeat == PlaybackRepeat.one;
+    if (offset != null) _reopened = null;
     final removed = state.queue[index];
     final q = [...state.queue]..removeAt(index);
     final quals = [...state.qualities];
@@ -654,7 +669,10 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       endless: Set<Track>.unmodifiable(endless),
       offset: offset,
     );
-    await _engine.removeAt(index);
+    await _serial(() async {
+      if (restoreRepeat) await _engine.setRepeatMode(PlaybackRepeat.one);
+      await _engine.removeAt(index);
+    });
   }
 
   /// Moves the track at [oldIndex] so it ends up at [newIndex].
@@ -670,7 +688,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       queue: List.unmodifiable(q),
       qualities: List.unmodifiable(quals),
     );
-    await _engine.move(oldIndex, newIndex);
+    await _serial(() => _engine.move(oldIndex, newIndex));
   }
 
   /// Puts the tracks after the current one in a random order.
@@ -719,10 +737,10 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
         ...List.filled(upcoming.length, q),
       ]),
     );
-    for (var i = cur + count; i > cur; i--) {
-      await _engine.removeAt(i);
-    }
-    await _engine.addAll(await _uris(upcoming));
+    await _serial(() async {
+      await _engine.removeRange(cur + 1, cur + 1 + count);
+      await _engine.addAll(await _uris(upcoming));
+    });
   }
 
   /// Removes everything after the current track.
@@ -741,9 +759,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
       endless: Set<Track>.unmodifiable(endless),
       shuffled: false,
     );
-    for (var i = end; i > cur; i--) {
-      await _engine.removeAt(i);
-    }
+    await _serial(() => _engine.removeRange(cur + 1, end + 1));
   }
 
   /// Steps through repeat off, repeat queue and repeat track.
@@ -780,8 +796,11 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     _restoredAt = null;
     _reopened = null;
     _stale = {};
+    _unshuffled = const [];
+    _stepping?.cancel();
+    _stepping = null;
     state = PlayerState(repeat: state.repeat, volume: state.volume);
-    await _engine.clear();
+    await _serial(_engine.clear);
   }
 
   Future<void> play() async {
@@ -840,7 +859,7 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     _stepping?.cancel();
     _stepping = null;
     state = state.copyWith(offset: offset);
-    await _replaceCurrent(i, uri);
+    await _serial(() => _replaceCurrent(i, uri));
     if (reopen == null && d > Duration.zero) await _engine.seek(d);
   }
 
@@ -866,15 +885,17 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
     try {
       final uri = await _resolver.resolve(track);
       if (!ref.mounted) return;
-      final idx = state.queue.indexWhere((t) => identical(t, track));
-      if (idx < 0 || state.currentIndex != idx) return;
-      await _engine.insertAll(idx + 1, [uri]);
-      await _engine.seek(Duration.zero, index: idx + 1);
-      await _engine.removeAt(idx);
-      if (state.repeat == PlaybackRepeat.one) {
-        await _engine.setRepeatMode(PlaybackRepeat.one);
-      }
-      await _engine.play();
+      await _serial(() async {
+        final idx = state.queue.indexWhere((t) => identical(t, track));
+        if (idx < 0 || state.currentIndex != idx) return;
+        await _engine.insertAll(idx + 1, [uri]);
+        await _engine.seek(Duration.zero, index: idx + 1);
+        await _engine.removeAt(idx);
+        if (state.repeat == PlaybackRepeat.one) {
+          await _engine.setRepeatMode(PlaybackRepeat.one);
+        }
+        await _engine.play();
+      });
     } finally {
       _swapping = false;
     }
@@ -884,14 +905,16 @@ class PlayerController extends Notifier<PlayerState> implements QueueInfo {
   /// was reopened part way in.
   Future<void> _restoreEntry(Track track) async {
     final uri = await _resolver.resolve(track);
-    final i = state.queue.indexWhere((t) => identical(t, track));
-    if (i < 0 || i == state.currentIndex) return;
-    _swapping = true;
-    try {
-      await _engine.removeAt(i);
-      await _engine.insertAll(i, [uri]);
-    } finally {
-      _swapping = false;
-    }
+    await _serial(() async {
+      final i = state.queue.indexWhere((t) => identical(t, track));
+      if (i < 0 || i == state.currentIndex) return;
+      _swapping = true;
+      try {
+        await _engine.removeAt(i);
+        await _engine.insertAll(i, [uri]);
+      } finally {
+        _swapping = false;
+      }
+    });
   }
 }
