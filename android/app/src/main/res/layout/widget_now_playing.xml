@@ -59,6 +59,8 @@
         android:layout_height="40dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/widget_previous"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_previous"
         android:visibility="gone"/>
 
@@ -70,6 +72,8 @@
         android:layout_marginEnd="4dp"
         android:background="@drawable/widget_play_background"
         android:contentDescription="@string/widget_play"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_play"
         android:visibility="gone"/>
 
@@ -79,6 +83,8 @@
         android:layout_height="40dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/widget_next"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_next"
         android:visibility="gone"/>
 </LinearLayout>

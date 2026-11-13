@@ -6,11 +6,14 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import android.util.SizeF
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import java.io.File
@@ -35,6 +38,16 @@ class NowPlayingWidget : AppWidgetProvider() {
         redraw(context, ids)
     }
 
+    /** Resized: laid out again for the new size. */
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        manager: AppWidgetManager,
+        id: Int,
+        options: Bundle,
+    ) {
+        redraw(context, intArrayOf(id))
+    }
+
     /** What the widget shows while something is loaded. */
     data class State(
         val title: String,
@@ -52,6 +65,21 @@ class NowPlayingWidget : AppWidgetProvider() {
 
         /** Large enough for the square widget on a big phone, small enough to stay cheap. */
         private const val ART_SIZE = 384
+
+        /** Below this height (dp) the widget is a single row. */
+        private const val ROW_MAX_HEIGHT = 110f
+
+        /** At least this much wider than high, a tall widget keeps the cover beside the text. */
+        private const val WIDE_RATIO = 1.6f
+
+        /** The least room (dp) the title gets in the single-row widget. */
+        private const val ROW_TEXT_MIN = 72f
+
+        /** RemoteViews takes at most this many sizes. */
+        private const val MAX_SIZES = 16
+
+        /** Before the launcher has said: 4x1, 4x2 and 3x3, roughly. */
+        private val DEFAULT_SIZES = listOf(SizeF(250f, 60f), SizeF(250f, 150f), SizeF(200f, 200f))
 
         /** What is showing, or null for "Tap to open". */
         @Volatile
@@ -85,27 +113,68 @@ class NowPlayingWidget : AppWidgetProvider() {
                     if (all.isEmpty()) return@execute
                     val shown = state
                     val art = shown?.artPath?.let { cover(app, it) }
-                    val views = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        // The launcher picks the biggest layout that fits.
-                        RemoteViews(
-                            mapOf(
-                                SizeF(180f, 40f) to build(app, R.layout.widget_now_playing, shown, art),
-                                SizeF(180f, 110f) to
-                                    build(app, R.layout.widget_now_playing_square, shown, art),
-                            ),
-                        )
-                    } else {
-                        build(app, R.layout.widget_now_playing, shown, art)
+                    for (id in all) {
+                        manager.updateAppWidget(id, viewsFor(app, manager, id, shown, art))
                     }
-                    manager.updateAppWidget(all, views)
                 } catch (e: RuntimeException) {
                     Log.w("OAmp", "Home screen widget not updated", e)
                 }
             }
         }
 
-        private fun build(context: Context, layout: Int, shown: State?, art: Bitmap?): RemoteViews {
+        /**
+         * Views for each size the widget can be shown at. Android 12+ says
+         * which sizes those are (portrait and landscape), and draws the
+         * matching one; older versions get one layout for the size given.
+         */
+        private fun viewsFor(
+            context: Context,
+            manager: AppWidgetManager,
+            id: Int,
+            shown: State?,
+            art: Bitmap?,
+        ): RemoteViews {
+            val options = manager.getAppWidgetOptions(id)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                @Suppress("DEPRECATION")
+                val sizes = options.getParcelableArrayList<SizeF>(
+                    AppWidgetManager.OPTION_APPWIDGET_SIZES,
+                )?.distinct()?.take(MAX_SIZES)
+                val all = if (sizes.isNullOrEmpty()) DEFAULT_SIZES else sizes
+                return RemoteViews(all.associateWith { build(context, it, shown, art, scale = true) })
+            }
+            // Older launchers give a range; portrait is narrowest and tallest.
+            val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+            val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+            val size = if (width > 0 && height > 0) {
+                SizeF(width.toFloat(), height.toFloat())
+            } else {
+                DEFAULT_SIZES.first()
+            }
+            return build(context, size, shown, art, scale = false)
+        }
+
+        /** Which layout suits a widget of [size] (in dp). */
+        internal fun layoutFor(size: SizeF): Int = when {
+            size.height < ROW_MAX_HEIGHT -> R.layout.widget_now_playing
+            size.width >= size.height * WIDE_RATIO -> R.layout.widget_now_playing_large
+            else -> R.layout.widget_now_playing_square
+        }
+
+        private fun build(
+            context: Context,
+            size: SizeF,
+            shown: State?,
+            art: Bitmap?,
+            scale: Boolean,
+        ): RemoteViews {
+            val layout = layoutFor(size)
             val views = RemoteViews(context.packageName, layout)
+            // Setting view sizes from code needs Android 12; older versions
+            // keep each layout's own sizes.
+            if (scale && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                fit(views, layout, size)
+            }
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
             if (art != null) {
                 views.setImageViewBitmap(R.id.widget_art, art)
@@ -159,6 +228,62 @@ class NowPlayingWidget : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_next, button(context, ACTION_NEXT))
             return views
+        }
+
+        /** Sizes the cover, text and buttons to the widget, so a bigger widget gets bigger controls. */
+        @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+        private fun fit(views: RemoteViews, layout: Int, size: SizeF) {
+            val w = size.width
+            val h = size.height
+            val (art, skip, title) = when (layout) {
+                // The three buttons take about 3.2 times a skip button's
+                // width, and are kept from crowding out the title.
+                R.layout.widget_now_playing -> {
+                    val cover = (h - 16f).coerceIn(40f, 96f)
+                    val room = (w - 16f - cover - 12f - ROW_TEXT_MIN) / 3.2f
+                    Triple(
+                        cover,
+                        minOf(h * 0.6f, room).coerceIn(36f, 56f),
+                        if (h >= 80f) 16f else 14f,
+                    )
+                }
+                R.layout.widget_now_playing_large -> {
+                    val cover = minOf(h - 24f, w * 0.42f).coerceIn(72f, 240f)
+                    val room = (w - 24f - cover - 16f - 32f) / 3.2f
+                    Triple(
+                        cover,
+                        minOf(h * 0.26f, room).coerceIn(40f, 64f),
+                        (h / 9f).coerceIn(16f, 24f),
+                    )
+                }
+                // The square's cover fills it; only the controls scale.
+                else -> {
+                    val side = minOf(w, h)
+                    Triple(0f, (side * 0.2f).coerceIn(40f, 64f), (side / 11f).coerceIn(14f, 22f))
+                }
+            }
+            if (art > 0f) {
+                views.setViewLayoutWidth(R.id.widget_art, art, TypedValue.COMPLEX_UNIT_DIP)
+                views.setViewLayoutHeight(R.id.widget_art, art, TypedValue.COMPLEX_UNIT_DIP)
+            }
+            views.setTextViewTextSize(R.id.widget_title, TypedValue.COMPLEX_UNIT_SP, title)
+            views.setTextViewTextSize(R.id.widget_artist, TypedValue.COMPLEX_UNIT_SP, title - 2f)
+            val play = skip * 1.2f
+            for ((id, side) in listOf(
+                R.id.widget_previous to skip,
+                R.id.widget_next to skip,
+                R.id.widget_play_pause to play,
+            )) {
+                views.setViewLayoutWidth(id, side, TypedValue.COMPLEX_UNIT_DIP)
+                views.setViewLayoutHeight(id, side, TypedValue.COMPLEX_UNIT_DIP)
+            }
+            // The icons fill the buttons less the padding, so they grow with them.
+            val density = Resources.getSystem().displayMetrics.density
+            val skipPad = (skip * 0.2f * density).toInt()
+            val playPad = (play * 0.25f * density).toInt()
+            views.setViewPadding(R.id.widget_previous, skipPad, skipPad, skipPad, skipPad)
+            views.setViewPadding(R.id.widget_next, skipPad, skipPad, skipPad, skipPad)
+            views.setViewPadding(R.id.widget_play_pause, playPad, playPad, playPad, playPad)
         }
 
         private fun openApp(context: Context): PendingIntent {

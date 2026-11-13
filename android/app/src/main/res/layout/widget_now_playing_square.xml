@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Home screen widget, square (Android 12+, two cells high or more): the
+<!-- Home screen widget, roughly square and two or more cells high: the
      cover fills it, with the title and buttons along the bottom. Same ids as
-     widget_now_playing.xml, filled in by NowPlayingWidget.kt. -->
+     widget_now_playing.xml, filled in and sized by NowPlayingWidget.kt. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/widget_root"
@@ -63,6 +63,8 @@
                 android:layout_height="40dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/widget_previous"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_previous"
                 android:visibility="gone"/>
 
@@ -73,6 +75,8 @@
                 android:layout_marginHorizontal="12dp"
                 android:background="@drawable/widget_play_background"
                 android:contentDescription="@string/widget_play"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_play"
                 android:visibility="gone"/>
 
@@ -82,6 +86,8 @@
                 android:layout_height="40dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/widget_next"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_next"
                 android:visibility="gone"/>
         </LinearLayout>
