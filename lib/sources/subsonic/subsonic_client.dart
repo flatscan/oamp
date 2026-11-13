@@ -408,8 +408,9 @@ class SubsonicClient {
             'one (password or API key).',
       ),
       44 => (MusicSourceErrorKind.auth, 'That API key is not valid.'),
+      // Signed in fine, but not allowed this one thing: not a login problem.
       50 => (
-        MusicSourceErrorKind.auth,
+        MusicSourceErrorKind.server,
         'This account is not allowed to do that on the server.',
       ),
       70 => (

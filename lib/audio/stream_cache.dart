@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/downloads.dart' show isLoginRefusal, subsonicErrorCode;
 import '../core/track_cache.dart';
 
 /// [TrackCache] on disk, served to the audio engine by a small HTTP server
@@ -218,7 +219,14 @@ class HttpTrackCache implements TrackCache {
         return true;
       }
       if (res.statusCode != HttpStatus.ok || _isError(res)) {
-        _log('prefetch ${d.id}: ${await _describeError(res)}');
+        final (text, code) = await _describeError(res);
+        _log('prefetch ${d.id}: $text');
+        if (isLoginRefusal(status: res.statusCode, code: code)) {
+          // Every other track would be refused too, and each refusal counts
+          // as a failed login: stop until the next queue change.
+          _wanted = const [];
+          return true;
+        }
         // Skip this track for now rather than retrying in a loop.
         _wanted = [
           for (final w in _wanted)
@@ -361,15 +369,15 @@ class HttpTrackCache implements TrackCache {
     return null;
   }
 
-  /// A Subsonic server answers errors with HTTP 200 and an XML or JSON body.
-  /// What went wrong, for the log. A Subsonic server answers errors with
-  /// HTTP 200 and a small JSON or XML reply naming the error, such as 40
-  /// for a refused login, so that is read rather than the status alone.
-  static Future<String> _describeError(HttpClientResponse res) async {
+  /// What went wrong, for the log, and the Subsonic error code when there
+  /// is one. A Subsonic server answers errors with HTTP 200 and a small
+  /// JSON or XML reply naming the error, such as 40 for a refused login, so
+  /// that is read rather than the status alone.
+  static Future<(String, int?)> _describeError(HttpClientResponse res) async {
     final status = 'HTTP ${res.statusCode}';
     if (!_isError(res)) {
       await res.drain<void>().catchError((_) {});
-      return status;
+      return (status, null);
     }
     final bytes = <int>[];
     try {
@@ -379,15 +387,17 @@ class HttpTrackCache implements TrackCache {
       }
     } catch (_) {}
     final body = utf8.decode(bytes, allowMalformed: true);
-    final code = RegExp(r'"code"\s*:\s*(\d+)|code="(\d+)"').firstMatch(body);
-    if (code == null) return '$status, error reply';
+    final code = subsonicErrorCode(body);
+    if (code == null) return ('$status, error reply', null);
     final m = RegExp(r'"message"\s*:\s*"([^"]*)"|message="([^"]*)"')
         .firstMatch(body);
     final message = m?[1] ?? m?[2];
-    final n = code[1] ?? code[2];
-    return message == null || message.isEmpty
-        ? 'server error $n'
-        : 'server error $n ($message)';
+    return (
+      message == null || message.isEmpty
+          ? 'server error $code'
+          : 'server error $code ($message)',
+      code,
+    );
   }
 
   static bool _isError(HttpClientResponse res) {

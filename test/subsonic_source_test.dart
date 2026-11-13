@@ -113,6 +113,13 @@ void main() {
     );
   });
 
+  test('not allowed (50) is not a login problem', () {
+    expect(
+      SubsonicClient.serverError(50, null).kind,
+      MusicSourceErrorKind.server,
+    );
+  });
+
   test('liked artists come sorted, with their ratings', () async {
     final c = sourceReturning({
       'status': 'ok',

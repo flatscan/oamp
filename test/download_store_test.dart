@@ -51,6 +51,15 @@ void main() {
         await res.close();
         return;
       }
+      if (mode == 'login') {
+        res.headers.contentType = ContentType.json;
+        res.write(
+          '{"subsonic-response":{"status":"failed",'
+          '"error":{"code":40,"message":"Wrong username or password"}}}',
+        );
+        await res.close();
+        return;
+      }
       if (mode == 'json') {
         res.headers.contentType = ContentType.json;
         res.write('{"subsonic-response":{"status":"failed"}}');
@@ -162,6 +171,22 @@ void main() {
     );
     expect(store.has('srv', 't1'), isFalse);
     expect(store.has('srv', 't2'), isFalse);
+  });
+
+  test('a refused login is its own failure, tried once', () async {
+    mode = 'login';
+    await expectLater(
+      fetch('t1'),
+      throwsA(
+        isA<DownloadException>().having(
+          (e) => e.kind,
+          'kind',
+          DownloadFailure.login,
+        ),
+      ),
+    );
+    expect(hits, ['/song']);
+    expect(store.has('srv', 't1'), isFalse);
   });
 
   test('cancelling stops the download and leaves no finished file', () async {
