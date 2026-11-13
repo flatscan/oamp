@@ -34,6 +34,17 @@ class JustAudioDeck implements AudioDeck {
     // from currentIndexStream; fold both into one EngineState stream.
     _subs.add(_player.playerStateStream.listen((_) => _emit()));
     _subs.add(_player.currentIndexStream.listen((_) => _emit()));
+    // The player rebuilds the system equaliser, flat, whenever its audio
+    // session changes (which happens as tracks open), so the preset is
+    // put back each time.
+    if (_eq != null) {
+      _subs.add(
+        _player.androidAudioSessionIdStream
+            .where((id) => id != null)
+            .distinct()
+            .listen((_) => unawaited(_applyEqualizer())),
+      );
+    }
   }
 
   static bool get _hasEqualizer =>
@@ -138,14 +149,23 @@ class JustAudioDeck implements AudioDeck {
 
   @override
   Future<void> setEqualizer(EqPreset preset) async {
-    final eq = _eq;
     _preset = preset;
+    await _applyEqualizer();
+  }
+
+  Future<void> _applyEqualizer() async {
+    final eq = _eq;
+    final preset = _preset;
     if (eq == null) return;
-    await eq.setEnabled(!preset.isOff);
-    if (preset.isOff) return;
-    // The bands are only known once the player has opened its first
-    // track, so this waits for that the first time.
-    unawaited(_applyBands(eq, preset));
+    try {
+      await eq.setEnabled(!preset.isOff);
+      if (preset.isOff) return;
+      // The bands are only known once the player has opened its first
+      // track; until then this waits, without holding up the caller.
+      unawaited(_applyBands(eq, preset));
+    } catch (e) {
+      debugPrint('Equaliser unavailable: $e');
+    }
   }
 
   Future<void> _applyBands(AndroidEqualizer eq, EqPreset preset) async {

@@ -21,7 +21,6 @@ void main() {
     expect(EqPreset.off.isOff, isTrue);
     expect(EqPreset.off.maxBoostDb, 0);
     expect(EqPreset.off.headroom, 1);
-    expect(EqPreset.off.mpvFilter, '');
     expect(EqPreset.off.bandGains([60, 230, 910], minDb: -15, maxDb: 15), [
       0,
       0,
@@ -64,13 +63,5 @@ void main() {
       maxDb: 1,
     );
     expect(narrow, [-3, 1]);
-  });
-
-  test('mpv gets a labelled FFmpeg filter graph', () {
-    expect(
-      EqPreset.vocals.mpvFilter,
-      '@oamp-eq:lavfi=[lowshelf=f=150:t=q:w=0.707:g=-2,'
-      'equalizer=f=2500:t=q:w=0.8:g=3]',
-    );
   });
 }

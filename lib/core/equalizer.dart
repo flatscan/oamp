@@ -66,20 +66,13 @@ enum EqPreset {
   }) => [
     for (final hz in centresHz) responseDb(hz).clamp(minDb, maxDb).toDouble(),
   ];
-
-  /// The preset as an mpv `af` value: a labelled lavfi graph of FFmpeg
-  /// biquads, or an empty string for [off].
-  String get mpvFilter {
-    if (isOff) return '';
-    final graph = filters.map((f) => f.ffmpeg).join(',');
-    return '@oamp-eq:lavfi=[$graph]';
-  }
 }
 
 enum EqFilterType { lowShelf, highShelf, peak }
 
 /// One biquad, as in the Audio EQ Cookbook (the same maths FFmpeg's
-/// `lowshelf`, `highshelf` and `equalizer` filters use).
+/// `lowshelf`, `highshelf` and `equalizer` filters use, so a player with
+/// those filters could run the shapes directly).
 class EqFilter {
   final EqFilterType type;
   final double hz;
@@ -98,18 +91,6 @@ class EqFilter {
   /// Sample rate the response is worked out at. The shapes barely change
   /// between 44.1 and 48 kHz.
   static const _rate = 48000.0;
-
-  String get ffmpeg {
-    final name = switch (type) {
-      EqFilterType.lowShelf => 'lowshelf',
-      EqFilterType.highShelf => 'highshelf',
-      EqFilterType.peak => 'equalizer',
-    };
-    return '$name=f=${_num(hz)}:t=q:w=${_num(q)}:g=${_num(gainDb)}';
-  }
-
-  static String _num(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   /// This filter's level change at [hz], in decibels.
   double responseDb(double atHz) {

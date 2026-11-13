@@ -81,9 +81,9 @@ class SettingsPage extends ConsumerWidget {
                 onChanged: (v) =>
                     setPlayback(playback.copyWith(crossfadeSameAlbum: v)),
               ),
-            // Only Windows (mpv) and Android (the system equaliser) can
-            // shape the sound.
-            if (windows || android)
+            // Only Android (the system equaliser) can shape the sound:
+            // the libmpv shipped for Windows has no EQ filters.
+            if (android)
               ChoiceTile<EqPreset>(
                 icon: Icons.graphic_eq_rounded,
                 title: 'Equaliser',
