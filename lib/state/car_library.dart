@@ -28,6 +28,7 @@ class CarLibrary implements MediaLibrary {
     ref.listen(sessionProvider, (prev, next) {
       if (prev?.value?.serverId != next.value?.serverId) {
         _allAlbums = null;
+        _allArtists = null;
         _changes.add(null);
       }
     });
@@ -194,8 +195,27 @@ class CarLibrary implements MediaLibrary {
     ];
   }
 
+  ({DateTime at, Future<List<Artist>> artists})? _allArtists;
+
+  /// Every artist, kept for a while like [_everyAlbum]: a big library's
+  /// list runs to megabytes, and opening letter after letter in the car
+  /// (often on mobile data) would otherwise fetch it each time.
+  Future<List<Artist>> _everyArtist(MusicSource source) {
+    final cached = _allArtists;
+    if (cached != null && DateTime.now().difference(cached.at) < _albumsFresh) {
+      return cached.artists;
+    }
+    final artists = source.getArtists();
+    _allArtists = (at: DateTime.now(), artists: artists);
+    artists.catchError((Object _) {
+      _allArtists = null;
+      return const <Artist>[];
+    });
+    return artists;
+  }
+
   Future<List<MediaNode>> _artists(MusicSource source, {String? letter}) async {
-    final artists = await source.getArtists();
+    final artists = await _everyArtist(source);
     String sortName(Artist a) => a.sortName ?? a.name;
     if (letter == null && artists.length > letterThreshold) {
       return _letters('artists', artists.map(sortName), NodeStyle.list);
@@ -416,9 +436,18 @@ class CarLibrary implements MediaLibrary {
   /// Every track by the artist, shuffled.
   Future<void> _playArtist(MusicSource source, String artistId) async {
     final detail = await source.getArtist(artistId);
-    final albums = await Future.wait([
-      for (final a in detail.albums) source.getAlbum(a.id),
-    ]);
+    // A few albums at a time, as the app's own artist page does, rather
+    // than one request per album all at once.
+    const batch = 4;
+    final albums = <AlbumDetail>[];
+    for (var i = 0; i < detail.albums.length; i += batch) {
+      albums.addAll(
+        await Future.wait([
+          for (final a in detail.albums.skip(i).take(batch))
+            source.getAlbum(a.id),
+        ]),
+      );
+    }
     await _player.playTracks(
       [for (final a in albums) ...a.tracks],
       shuffle: true,

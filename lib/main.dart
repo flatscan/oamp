@@ -103,22 +103,17 @@ Future<void> main() async {
     'media session',
     createSystemControls,
   );
-  // Calls, other apps and unplugged headphones on phones.
-  final audioFocus = await startupTrace.step('audio focus', openAudioFocus);
-  final trackCache = await startupTrace.step('track cache', openTrackCache);
-  final artworkCache = await startupTrace.step(
-    'artwork cache',
-    DiskArtworkCache.open,
-  );
-  final downloadStore = await startupTrace.step(
-    'downloads',
-    DiskDownloadStore.openDefault,
-  );
-  // Wi-Fi or mobile data, for the mobile data quality on phones.
-  final network = await startupTrace.step(
-    'network monitor',
-    ConnectivityNetworkMonitor.open,
-  );
+  // These don't depend on each other, so they open side by side: audio
+  // focus (calls, other apps and unplugged headphones on phones), the
+  // caches, downloads, and Wi-Fi or mobile data for the mobile data
+  // quality on phones.
+  final (audioFocus, trackCache, artworkCache, downloadStore, network) = await (
+    startupTrace.step('audio focus', openAudioFocus),
+    startupTrace.step('track cache', openTrackCache),
+    startupTrace.step('artwork cache', DiskArtworkCache.open),
+    startupTrace.step('downloads', DiskDownloadStore.openDefault),
+    startupTrace.step('network monitor', ConnectivityNetworkMonitor.open),
+  ).wait;
 
   final container = ProviderContainer(
     overrides: [

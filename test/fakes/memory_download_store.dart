@@ -53,6 +53,9 @@ class MemoryDownloadStore implements DownloadStore {
   Future<void> removeTrack(String serverId, String trackId) async =>
       files.remove(trackId);
   @override
+  Future<void> removeTracks(String serverId, Iterable<String> trackIds) async =>
+      files.removeAll(trackIds);
+  @override
   Future<void> retain(String serverId, Set<String> keep) async =>
       files.removeWhere((f) => !keep.contains(f));
   @override

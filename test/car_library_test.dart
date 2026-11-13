@@ -121,6 +121,9 @@ void main() {
     final bs = await library().children('artists/B');
     expect(bs, hasLength(75));
     expect(bs.first.id, 'artist/a0');
+    await library().children('artists/Z');
+    // The list is fetched once for the tab and its letters.
+    expect(source.artistListFetches, 1);
 
     // Albums come from every page, not just the first 500.
     expect(ids(await library().children('albums')), ['albums/%23', 'albums/Q']);

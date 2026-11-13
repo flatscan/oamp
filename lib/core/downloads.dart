@@ -172,6 +172,9 @@ abstract class DownloadStore {
 
   Future<void> removeTrack(String serverId, String trackId);
 
+  /// [removeTrack] for many tracks at once, such as when a big pin goes.
+  Future<void> removeTracks(String serverId, Iterable<String> trackIds);
+
   /// Deletes every file for [serverId] that is not in [keep], and any
   /// half-finished one, such as left behind by a crash.
   Future<void> retain(String serverId, Set<String> keep);

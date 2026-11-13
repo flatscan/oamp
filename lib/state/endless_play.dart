@@ -8,6 +8,7 @@ import '../core/models.dart';
 import '../core/music_source.dart';
 import '../platform/preferences.dart';
 import 'player.dart';
+import 'offline.dart';
 import 'radio.dart';
 import 'session.dart';
 import 'settings.dart';
@@ -186,6 +187,12 @@ class EndlessPlay {
   Future<void> _topUp(EndlessMode mode, PlayerState s, String key) async {
     final session = ref.read(sessionProvider).value;
     if (session == null) return;
+    // Picks come from the server; while offline there is nothing to ask,
+    // and each attempt would only wait out a timeout.
+    if (ref.read(offlineProvider)) {
+      _gaveUpOn = key;
+      return;
+    }
     final source = session.source;
     final cutoff = _now().subtract(recent);
     _played.removeWhere((_, at) => at.isBefore(cutoff));

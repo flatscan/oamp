@@ -469,6 +469,31 @@ void main() {
       'Air are a French duo.',
     );
     expect(SubsonicSource.plainBiography('  '), isNull);
+    expect(
+      SubsonicSource.plainBiography('Caf&#233; del&nbsp;Mar &#x2013; Ibiza'),
+      'Café del Mar – Ibiza',
+    );
+  });
+
+  test('liked tracks and artists asked together share one request, and a '
+      'like starts afresh', () async {
+    final (c, seen) = recording({
+      'starred2': {
+        'song': [
+          {'id': 't1', 'title': 'One'},
+        ],
+        'artist': [
+          {'id': 'a1', 'name': 'Air'},
+        ],
+      },
+    });
+    final both = await Future.wait([c.getLikedTracks(), c.getLikedArtists()]);
+    expect(both[0], hasLength(1));
+    expect(both[1], hasLength(1));
+    expect(seen.where((r) => r.url.path == '/rest/getStarred2'), hasLength(1));
+    await c.setLiked('t2', true);
+    await c.getLikedTracks();
+    expect(seen.where((r) => r.url.path == '/rest/getStarred2'), hasLength(2));
   });
 
   test('artist info, top songs and similar songs are parsed', () async {

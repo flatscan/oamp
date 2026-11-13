@@ -161,8 +161,16 @@ class FakeMusicSource implements MusicSource {
   int unreachableReports = 0;
   @override
   void reportUnreachable() => unreachableReports++;
+
+  /// How many times the whole artist list was asked for.
+  int artistListFetches = 0;
+
   @override
-  Future<List<Artist>> getArtists() async => artists;
+  Future<List<Artist>> getArtists() async {
+    artistListFetches++;
+    return artists;
+  }
+
   @override
   Future<ArtistDetail> getArtist(String id) async =>
       ArtistDetail(air, [moonSafari, ...artistExtras]);
@@ -198,8 +206,13 @@ class FakeMusicSource implements MusicSource {
     int size = 100,
     int offset = 0,
   }) async => albums.skip(offset).take(size).toList();
+
+  /// Every album id asked for, in order.
+  final List<String> albumFetches = [];
+
   @override
   Future<AlbumDetail> getAlbum(String id) async {
+    albumFetches.add(id);
     _checkReachable();
     if (goneAlbums.contains(id)) throw _notFound();
     return albumDetails[id] ?? const AlbumDetail(moonSafari, tracks);
