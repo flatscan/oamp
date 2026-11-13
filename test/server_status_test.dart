@@ -224,5 +224,25 @@ void main() {
         expect(src.pings, 2);
       });
     });
+
+    test('overlapping checks keep a single retry loop', () {
+      fakeAsync((async) {
+        src.pingError = MusicSourceException(
+          'Could not reach music.example.com.',
+          kind: MusicSourceErrorKind.unreachable,
+        );
+        container = start();
+        container.read(sessionProvider);
+        async.elapse(Duration.zero);
+        final notifier = container.read(serverStatusProvider.notifier);
+        // Two checks at once, as when the network changes during a Retry.
+        unawaited(notifier.check());
+        unawaited(notifier.check());
+        async.elapse(Duration.zero);
+        final before = src.pings;
+        async.elapse(ServerStatusNotifier.retryEvery * 3);
+        expect(src.pings - before, 3);
+      });
+    });
   });
 }

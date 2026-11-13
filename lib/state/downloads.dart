@@ -142,6 +142,10 @@ class DownloadManager extends Notifier<DownloadsState> {
   /// How long to wait before trying again after the device ran out of space.
   static const retryAfterFull = Duration(minutes: 5);
 
+  /// Why downloading waits while the server refuses the login.
+  static const loginProblem =
+      'The server turned the login down. Sign in again to carry on.';
+
   DownloadStore? get _store => ref.read(downloadStoreProvider);
   String? get _serverId => ref.read(sessionProvider).value?.serverId;
 
@@ -485,6 +489,12 @@ class DownloadManager extends Notifier<DownloadsState> {
           _setProblem('Offline mode is on');
           return;
         }
+        // Each request with a refused login counts as a failed sign-in;
+        // wait until the server takes the login again.
+        if (ref.read(serverStatusProvider).health == ServerHealth.signedOut) {
+          _setProblem(loginProblem);
+          return;
+        }
         final options = ref.read(downloadOptionsProvider);
         if (options.wifiOnly &&
             ref.read(networkKindProvider) == NetworkKind.mobile) {
@@ -533,6 +543,12 @@ class DownloadManager extends Notifier<DownloadsState> {
             case DownloadFailure.unreachable:
               _setProblem('The server can’t be reached. Will keep trying.');
               _retry = Timer(retryAfterUnreachable, kick);
+              return;
+            case DownloadFailure.login:
+              // Not retried on a timer: the server status check takes over,
+              // and downloading starts again once the login works.
+              _setProblem(loginProblem);
+              unawaited(ref.read(serverStatusProvider.notifier).check());
               return;
             case DownloadFailure.storageFull:
               _setProblem(

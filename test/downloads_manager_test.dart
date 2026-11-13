@@ -215,6 +215,25 @@ void main() {
     expect(state().problem, isNull);
   });
 
+  test(
+    'a refused login stops downloading instead of trying each track',
+    () async {
+      store.failures.add(
+        const DownloadException(DownloadFailure.login, 'refused'),
+      );
+      await launch();
+      await manager().pin(
+        PinKind.album,
+        'al1',
+        name: 'Album',
+        tracks: [a, b, c],
+      );
+      await settle();
+      expect(store.fetched, isEmpty);
+      expect(state().problem, DownloadManager.loginProblem);
+    },
+  );
+
   test('removing all downloads clears the pins and files', () async {
     await launch();
     await manager().pin(PinKind.album, 'al1', name: 'Album', tracks: [a]);

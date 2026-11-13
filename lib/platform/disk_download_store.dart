@@ -334,7 +334,16 @@ class DiskDownloadStore implements DownloadStore {
                 type.subType == 'html' ||
                 type.subType.contains('xml')));
     if (isError) {
-      await response.drain<void>();
+      final body = await _readSome(response);
+      if (isLoginRefusal(
+        status: response.statusCode,
+        code: subsonicErrorCode(body),
+      )) {
+        throw const DownloadException(
+          DownloadFailure.login,
+          'The server turned the login down',
+        );
+      }
       throw DownloadException(
         DownloadFailure.server,
         response.statusCode >= 400
@@ -370,6 +379,17 @@ class DiskDownloadStore implements DownloadStore {
       throw SocketException('Got $received of $total bytes');
     }
     if (received == 0) throw const SocketException('Empty reply');
+  }
+
+  /// The start of an error reply, enough to find its error code.
+  static Future<String> _readSome(HttpClientResponse response) async {
+    final bytes = <int>[];
+    try {
+      await for (final chunk in response) {
+        if (bytes.length < 16 * 1024) bytes.addAll(chunk);
+      }
+    } catch (_) {}
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   /// ENOSPC on Android, ERROR_DISK_FULL and ERROR_HANDLE_DISK_FULL on

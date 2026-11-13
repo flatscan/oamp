@@ -34,6 +34,16 @@ void main() {
         await req.response.close();
         return;
       }
+      if (req.uri.path == '/gone') {
+        req.response
+          ..headers.contentType = ContentType.json
+          ..write(
+            '{"subsonic-response":{"status":"failed","version":"1.16.1",'
+            '"error":{"code":70,"message":"Song not found"}}}',
+          );
+        await req.response.close();
+        return;
+      }
       if (req.uri.path == '/empty-chunked') {
         req.response.headers
           ..contentType = ContentType('audio', 'flac')
@@ -197,14 +207,33 @@ void main() {
     final before = debugPrint;
     debugPrint = (String? m, {int? wrapWidth}) => lines.add(m ?? '');
     addTearDown(() => debugPrint = before);
-    final refused = CacheRequest(
-      'srv|refused|raw',
-      Uri.parse('http://127.0.0.1:${upstream.port}/refused'),
+    final gone = CacheRequest(
+      'srv|gone|raw',
+      Uri.parse('http://127.0.0.1:${upstream.port}/gone'),
     );
-    cache.prefetch([refused, req(0)]);
+    cache.prefetch([gone, req(0)]);
     await until(() => cache.isCached('srv|t0|raw'));
     final line = lines.firstWhere((l) => l.contains('prefetch'));
-    expect(line, contains('server error 40 (Wrong username or password)'));
+    expect(line, contains('server error 70 (Song not found)'));
     expect(line, isNot(contains('HTTP 200')));
   });
+
+  test(
+    'a refused login stops prefetching instead of trying each track',
+    () async {
+      final lines = <String>[];
+      final before = debugPrint;
+      debugPrint = (String? m, {int? wrapWidth}) => lines.add(m ?? '');
+      addTearDown(() => debugPrint = before);
+      final refused = CacheRequest(
+        'srv|refused|raw',
+        Uri.parse('http://127.0.0.1:${upstream.port}/refused'),
+      );
+      cache.prefetch([refused, req(0), req(1)]);
+      await until(() => lines.any((l) => l.contains('server error 40')));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(hits, ['/refused']);
+      expect(cache.isCached('srv|t0|raw'), isFalse);
+    },
+  );
 }

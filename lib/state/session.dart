@@ -560,6 +560,9 @@ class ServerStatusNotifier extends Notifier<ServerStatus> {
       // server was down it fell back to the baseline, so ask again.
       if (wasDown) ref.invalidate(_detectedCapabilitiesProvider(source));
     } else if (next.health == ServerHealth.unreachable) {
+      // Checks can overlap (a timed one and a network change or Retry);
+      // keep a single retry loop.
+      _retry?.cancel();
       _retry = Timer(retryEvery, () => _check(source, generation));
     }
   }

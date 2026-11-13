@@ -112,7 +112,27 @@ enum DownloadFailure {
 
   /// The download was cancelled on purpose.
   cancelled,
+
+  /// The server turned the login down. Every other track would be refused
+  /// the same way, and each refusal counts as a failed login (Navidrome
+  /// locks the account for a while after a run of them), so downloading
+  /// stops until the server accepts the login again.
+  login,
 }
+
+/// The Subsonic error code in an error reply's body (JSON or XML), or null
+/// when there is none.
+int? subsonicErrorCode(String body) {
+  final m = RegExp(r'"code"\s*:\s*(\d+)|code="(\d+)"').firstMatch(body);
+  final n = m?[1] ?? m?[2];
+  return n == null ? null : int.tryParse(n);
+}
+
+/// Whether a reply means the login itself was refused: HTTP 401 or 403, or
+/// a Subsonic error 40 (wrong credentials), 41 (token login not allowed)
+/// or 44 (bad API key).
+bool isLoginRefusal({int? status, int? code}) =>
+    status == 401 || status == 403 || code == 40 || code == 41 || code == 44;
 
 class DownloadException implements Exception {
   final DownloadFailure kind;
