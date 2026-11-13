@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/startup_trace.dart';
+
 /// What kind of network the phone is streaming over.
 enum NetworkKind {
   /// Wi-Fi, Ethernet, or nothing known: settings apply as set.
@@ -72,10 +74,14 @@ class ConnectivityNetworkMonitor implements NetworkMonitor {
     }
     try {
       final c = Connectivity();
-      final now = kindOf(await c.checkConnectivity());
+      final first = await c.checkConnectivity();
+      startupTrace.mark('network is ${describe(first)}');
       return ConnectivityNetworkMonitor._(
-        now,
-        c.onConnectivityChanged.map(kindOf),
+        kindOf(first),
+        c.onConnectivityChanged.map((results) {
+          debugPrint('Network: ${describe(results)}');
+          return kindOf(results);
+        }),
         settle,
       );
     } catch (e) {
@@ -90,6 +96,11 @@ class ConnectivityNetworkMonitor implements NetworkMonitor {
     Stream<NetworkKind> source, {
     Duration settle = const Duration(seconds: 3),
   }) => ConnectivityNetworkMonitor._(initial, source, settle);
+
+  /// The connections up, such as "wifi + vpn", for the diagnostics log.
+  /// Names only the kind of link, never a network name or address.
+  static String describe(List<ConnectivityResult> results) =>
+      results.isEmpty ? 'none' : results.map((r) => r.name).join(' + ');
 
   /// Mobile data only when nothing better is up. A VPN (such as Tailscale)
   /// is reported alongside the network underneath it, so it doesn't count.
