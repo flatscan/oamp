@@ -95,7 +95,6 @@ Alpha2 is in the works, for Windows and Android. Planned:
 - A backup server address for when you're away from home
 - Endless play: keep going after the queue ends, with the next album by the
   same artist, similar tracks, your liked tracks or a shuffle of the same genres
-- An equaliser with simple presets that suit your device
 - Android home screen widgets
 - Player controls in the Windows taskbar preview
 - A notice when a new version is out, and a button that copies diagnostics
@@ -109,6 +108,8 @@ After that:
 - **Alpha4**: a round of UI rework and polish, including an option for
   expanded mode to open to the left so the window can sit against the right
   edge of the screen
+- **Beta**: Google Play and signed Windows builds, and an equaliser with simple
+  presets that suit your device
 
 macOS, iOS and CarPlay are on hold for now. OAmp is a player, not a library
 manager: it never edits or deletes your music files or their tags, so use your
