@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -58,13 +59,7 @@ Future<void> main() async {
   );
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    // Draw under clear status and navigation bars; pages pad themselves
-    // for the bars and any display cutout.
-    await startupTrace.step(
-      'system bars',
-      () => SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge),
-    );
-    SystemChrome.setSystemUIOverlayStyle(oampSystemBars);
+    _applySystemBars();
   }
 
   final createDeck = createDeckFactory();
@@ -191,7 +186,27 @@ Future<void> main() async {
 void _logLifecycle() {
   AppLifecycleListener(
     onStateChange: (state) => debugPrint('App: ${state.name}'),
+    onResume: () {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        _applySystemBars();
+      }
+    },
   );
+}
+
+/// Draws under clear status and navigation bars; pages pad themselves for
+/// the bars and any display cutout.
+///
+/// Never awaited: when Android Auto starts OAmp in the background there is
+/// no screen to answer, and the call never returns, which left start-up
+/// (and then the opened app) stuck on the splash. Applied again whenever
+/// the screen comes to the front, as a call made with no screen is lost.
+void _applySystemBars() {
+  unawaited(
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)
+        .catchError((Object e) => debugPrint('System bars: $e')),
+  );
+  SystemChrome.setSystemUIOverlayStyle(oampSystemBars);
 }
 
 /// Sends `debugPrint` output, Flutter errors and uncaught async errors to
