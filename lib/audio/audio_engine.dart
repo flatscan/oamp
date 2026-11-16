@@ -65,6 +65,9 @@ abstract class AudioEngine {
   Future<void> addAll(List<Uri> uris);
   Future<void> insertAll(int index, List<Uri> uris);
   Future<void> removeAt(int index);
+
+  /// Removes entries [start] up to (not including) [end] in one go.
+  Future<void> removeRange(int start, int end);
   Future<void> move(int from, int to);
   Future<void> clear();
 
@@ -126,6 +129,9 @@ abstract class AudioDeck {
   Future<void> addAll(List<Uri> uris);
   Future<void> insertAll(int index, List<Uri> uris);
   Future<void> removeAt(int index);
+
+  /// Removes entries [start] up to (not including) [end] in one go.
+  Future<void> removeRange(int start, int end);
   Future<void> move(int from, int to);
 
   /// Stops and empties the playlist, releasing open streams.
@@ -607,6 +613,29 @@ class MixingEngine implements AudioEngine {
       }
     }
     await _active.removeAt(index);
+  }
+
+  @override
+  Future<void> removeRange(int start, int end) async {
+    end = math.min(end, _uris.length);
+    if (start < 0 || start >= end) return;
+    if (start == 0 && end == _uris.length) {
+      await clear();
+      return;
+    }
+    await _finishFade();
+    _changed();
+    _uris.removeRange(start, end);
+    final f = _failure;
+    if (f != null) {
+      if (f.index >= end) {
+        f.index -= end - start;
+      } else if (f.index >= start) {
+        // The entry after the range takes its place, from the top.
+        _retarget(math.min(start, _uris.length - 1), Duration.zero);
+      }
+    }
+    await _active.removeRange(start, end);
   }
 
   @override

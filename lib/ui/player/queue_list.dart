@@ -132,6 +132,7 @@ class _QueueSliversState extends ConsumerState<QueueSlivers> {
       body = SliverReorderableList(
         itemCount: upcoming.length,
         onReorderItem: (from, to) => p.move(first + from, first + to),
+        proxyDecorator: dragProxy,
         itemBuilder: (context, i) {
           final track = upcoming[i];
           final index = first + i;

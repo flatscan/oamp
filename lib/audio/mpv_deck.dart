@@ -177,6 +177,16 @@ class MpvDeck implements AudioDeck {
     if (_player.state.playlist.medias.isEmpty) _empty = true;
   }
 
+  /// mpv removes one entry at a time; from the end, so the indexes of the
+  /// ones still to go don't move.
+  @override
+  Future<void> removeRange(int start, int end) async {
+    for (var i = end - 1; i >= start; i--) {
+      await _player.remove(i);
+    }
+    if (_player.state.playlist.medias.isEmpty) _empty = true;
+  }
+
   @override
   Future<void> move(int from, int to) =>
       // The entry should end up at [to]; mpv inserts before the entry at

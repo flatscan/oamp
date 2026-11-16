@@ -29,6 +29,32 @@ void toast(BuildContext context, String message) {
     );
 }
 
+/// How a row looks while it is dragged to a new place in a reorderable
+/// list: lifted on its own dark card.
+///
+/// The dragged row is drawn in the app's overlay, outside the page, so it
+/// needs a [Material] of its own. Without one a [ListTile] in it has nothing
+/// to draw on, and a release build paints a grey error box instead.
+Widget dragProxy(Widget child, int index, Animation<double> animation) =>
+    AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final t = Curves.easeOut.transform(animation.value);
+        return Material(
+          color: Color.lerp(
+            const Color(0x00000000),
+            const Color(0xE6202024),
+            t,
+          ),
+          elevation: 6 * t,
+          borderRadius: BorderRadius.circular(8),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        );
+      },
+      child: child,
+    );
+
 void openAlbum(Album album) => openPage(AlbumPage(album: album));
 
 void openAlbumById(String id, String name) =>

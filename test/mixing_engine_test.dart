@@ -86,6 +86,18 @@ class FakeDeck implements AudioDeck {
       queue.insertAll(i, uris);
   @override
   Future<void> removeAt(int i) async => queue.removeAt(i);
+
+  /// Counts bulk removals, so tests can tell one call from many.
+  int rangeRemovals = 0;
+
+  @override
+  Future<void> removeRange(int start, int end) async {
+    rangeRemovals++;
+    for (var i = end - 1; i >= start; i--) {
+      await removeAt(i);
+    }
+  }
+
   @override
   Future<void> move(int from, int to) async =>
       queue.insert(to, queue.removeAt(from));
@@ -204,6 +216,16 @@ void main() {
       expect(decks[0].volume, closeTo(1.2, 1e-9));
     },
   );
+
+  test('a range of entries goes in one call', () async {
+    await engine.setQueue(uris);
+    await engine.removeRange(1, 3);
+    expect(decks[0].queue, [uris[0], uris[3]]);
+    expect(decks[0].rangeRemovals, 1);
+    // The whole queue empties it.
+    await engine.removeRange(0, 2);
+    expect(decks[0].queue, isEmpty);
+  });
 
   test('gain is capped at what the deck can output', () async {
     info.gains = {0: 4};
