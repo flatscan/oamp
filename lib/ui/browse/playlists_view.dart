@@ -397,6 +397,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     if (draft != null) {
       list = SliverReorderableList(
         itemCount: draft.length,
+        proxyDecorator: dragProxy,
         onReorderItem: (from, to) => setState(() {
           draft.insert(to, draft.removeAt(from));
         }),

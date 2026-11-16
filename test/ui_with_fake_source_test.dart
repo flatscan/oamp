@@ -224,4 +224,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(offset(), lessThan(afterArrow + 150));
   });
+
+  testWidgets('dragging a queue row lifts it on its own card', (tester) async {
+    await pumpApp(tester, height: 860);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(OAmpApp)),
+    );
+    await container.read(playerProvider.notifier).playTracks([
+      for (var i = 0; i < 12; i++)
+        Track(id: 't$i', title: 'Track $i', artist: 'Artist'),
+    ]);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Track 0').last);
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(CustomScrollView).last,
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+
+    // Now playing has no page of its own under it, so the dragged row
+    // needs a Material to draw on; without one its ListTile fails to build
+    // and a release build shows a grey box over the queue.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.drag_handle_rounded).at(1)),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    for (var i = 0; i < 6; i++) {
+      await gesture.moveBy(const Offset(0, 12));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(tester.takeException(), isNull);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // Track 2 moved down one place.
+    expect(container.read(playerProvider).queue.take(4).map((t) => t.id), [
+      't0',
+      't1',
+      't3',
+      't2',
+    ]);
+  });
 }
