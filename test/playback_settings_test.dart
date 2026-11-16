@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oamp/core/equalizer.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/playback_options.dart';
 import 'package:oamp/core/track_cache.dart';
@@ -134,6 +135,7 @@ void main() {
         crossfade: Duration(seconds: 8),
         replayGain: ReplayGainMode.album,
         preampDb: 3,
+        equalizer: EqPreset.vocals,
       ),
     );
     await n.setQuality(
@@ -150,6 +152,7 @@ void main() {
     expect(s.playback.crossfade, const Duration(seconds: 8));
     expect(s.playback.replayGain, ReplayGainMode.album);
     expect(s.playback.preampDb, 3);
+    expect(s.playback.equalizer, EqPreset.vocals);
     expect(
       s.quality,
       const StreamQuality(format: StreamFormat.opus, bitRate: 160),
@@ -193,10 +196,12 @@ void main() {
           gapless: false,
           crossfade: Duration(seconds: 4),
           replayGain: ReplayGainMode.track,
+          equalizer: EqPreset.smallSpeakers,
         ),
       );
       await settle();
       expect(engine.gapless, isFalse);
+      expect(engine.equalizer, EqPreset.smallSpeakers);
       expect(engine.crossfade, const Duration(seconds: 4));
       expect(engine.gainRefreshes, greaterThan(0));
 

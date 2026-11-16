@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/downloads.dart';
+import '../core/equalizer.dart';
 import '../core/playback_options.dart';
 import '../platform/network_monitor.dart';
 import '../platform/preferences.dart';
@@ -140,6 +141,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _rgPreamp = 'oamp.playback.replayGainPreampDb';
   static const _rgFallback = 'oamp.playback.replayGainFallbackDb';
   static const _rgClip = 'oamp.playback.replayGainPreventClipping';
+  static const _eq = 'oamp.playback.equalizer';
   static const _format = 'oamp.stream.format';
   static const _bitRate = 'oamp.stream.maxBitRate';
   static const _mobileFormat = 'oamp.stream.mobile.format';
@@ -184,6 +186,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
         preampDb: p.getDouble(_rgPreamp) ?? d.playback.preampDb,
         fallbackGainDb: p.getDouble(_rgFallback) ?? d.playback.fallbackGainDb,
         preventClipping: p.getBool(_rgClip) ?? d.playback.preventClipping,
+        equalizer: _enum(
+          EqPreset.values,
+          p.getString(_eq),
+          d.playback.equalizer,
+        ),
       ),
       quality: StreamQuality(
         format: _enum(
@@ -246,6 +253,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       _prefs.setDouble(_rgPreamp, o.preampDb),
       _prefs.setDouble(_rgFallback, o.fallbackGainDb),
       _prefs.setBool(_rgClip, o.preventClipping),
+      _prefs.setString(_eq, o.equalizer.name),
     ]);
   }
 

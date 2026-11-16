@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/audio/audio_engine.dart';
+import 'package:oamp/core/equalizer.dart';
 import 'package:oamp/core/models.dart';
 import 'package:oamp/core/music_source.dart';
 import 'package:oamp/core/play_queue.dart';
@@ -526,6 +527,11 @@ class FakeDeck implements AudioDeck {
   Future<void> setVolume(double v) async => volume = v;
   @override
   Future<void> setGapless(bool enabled) async => gapless = enabled;
+  EqPreset equalizer = EqPreset.off;
+  @override
+  bool hasEqualizer = true;
+  @override
+  Future<void> setEqualizer(EqPreset p) async => equalizer = p;
   @override
   Future<void> dispose() async {
     await _state.close();

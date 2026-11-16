@@ -19,6 +19,7 @@ lib/
     lyrics.dart             Plain and synced lyrics
     artwork_cache.dart      ArtworkCache interface: covers kept on disk
     playback_options.dart   Gapless, crossfade, ReplayGain, quality, cache
+    equalizer.dart          Equaliser presets as biquad shapes
     track_cache.dart        TrackCache interface: temporary playback cache
     track_resolver.dart     Track to playable URI (streams now, downloads later)
     output_device.dart      A speaker or TV found on the network

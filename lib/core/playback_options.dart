@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'equalizer.dart';
 import 'models.dart';
 
 /// The codec a server is asked to transcode to.
@@ -81,6 +82,9 @@ class PlaybackOptions {
   /// Whether a track's peak may limit its gain so it never clips.
   final bool preventClipping;
 
+  /// The sound shape on this device.
+  final EqPreset equalizer;
+
   const PlaybackOptions({
     this.gapless = true,
     this.crossfade = Duration.zero,
@@ -89,6 +93,7 @@ class PlaybackOptions {
     this.preampDb = 0,
     this.fallbackGainDb = 0,
     this.preventClipping = true,
+    this.equalizer = EqPreset.off,
   });
 
   /// How far above normal volume ReplayGain is allowed to raise a track
@@ -149,6 +154,7 @@ class PlaybackOptions {
     double? preampDb,
     double? fallbackGainDb,
     bool? preventClipping,
+    EqPreset? equalizer,
   }) => PlaybackOptions(
     gapless: gapless ?? this.gapless,
     crossfade: crossfade ?? this.crossfade,
@@ -157,6 +163,7 @@ class PlaybackOptions {
     preampDb: preampDb ?? this.preampDb,
     fallbackGainDb: fallbackGainDb ?? this.fallbackGainDb,
     preventClipping: preventClipping ?? this.preventClipping,
+    equalizer: equalizer ?? this.equalizer,
   );
 }
 

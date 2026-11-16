@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oamp/audio/audio_engine.dart';
+import 'package:oamp/core/equalizer.dart';
 import 'package:oamp/core/output_device.dart';
 import 'package:oamp/core/remote_player.dart';
 import 'package:oamp/core/models.dart';
@@ -137,6 +138,11 @@ class FakeDeck implements AudioDeck {
   Future<void> setVolume(double v) async => volume = v;
   @override
   Future<void> setGapless(bool enabled) async => gapless = enabled;
+  EqPreset equalizer = EqPreset.off;
+  @override
+  bool hasEqualizer = true;
+  @override
+  Future<void> setEqualizer(EqPreset p) async => equalizer = p;
   @override
   Future<void> dispose() async {}
 }
@@ -368,6 +374,43 @@ void main() {
     decks[0].at(const Duration(seconds: 50));
     await settle();
     expect(decks[1].gapless, isFalse);
+  });
+
+  group('equaliser', () {
+    test('reaches both decks and makes room for its boost', () async {
+      info.gains = {0: 1};
+      await engine.setVolume(0.8);
+      await engine.setQueue(uris);
+      await engine.setEqualizer(EqPreset.moreBass);
+      expect(decks[0].equalizer, EqPreset.moreBass);
+      expect(decks[0].volume, closeTo(0.8 / EqPreset.moreBass.headroom, 1e-9));
+
+      // The crossfade deck picks the preset up when it is made.
+      await engine.setCrossfade(const Duration(seconds: 6));
+      await engine.play();
+      decks[0].at(const Duration(seconds: 50));
+      await settle();
+      expect(decks[1].equalizer, EqPreset.moreBass);
+
+      await engine.setEqualizer(EqPreset.off);
+      expect(decks[0].equalizer, EqPreset.off);
+      expect(decks[1].equalizer, EqPreset.off);
+    });
+
+    test('a preset that only cuts keeps the level', () async {
+      info.gains = {0: 1};
+      await engine.setQueue(uris);
+      await engine.setEqualizer(EqPreset.lessBass);
+      expect(decks[0].volume, closeTo(1, 1e-9));
+    });
+
+    test('a deck without an equaliser is not turned down', () async {
+      decks[0].hasEqualizer = false;
+      info.gains = {0: 1};
+      await engine.setQueue(uris);
+      await engine.setEqualizer(EqPreset.moreBass);
+      expect(decks[0].volume, closeTo(1, 1e-9));
+    });
   });
 
   group('ducking', () {

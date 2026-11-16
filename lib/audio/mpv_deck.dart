@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:media_kit/media_kit.dart';
 
+import '../core/equalizer.dart';
 import '../core/models.dart' show PlaybackRepeat;
 import 'audio_engine.dart';
 
@@ -241,6 +242,15 @@ class MpvDeck implements AudioDeck {
     await mpv.setProperty('prefetch-playlist', enabled ? 'yes' : 'no');
     await mpv.setProperty('gapless-audio', enabled ? 'weak' : 'no');
   }
+
+  /// The libmpv that media_kit ships for Windows is built with a trimmed
+  /// FFmpeg that has none of the EQ filters (no equalizer, lowshelf or
+  /// highshelf), so there is no equaliser here and the setting is hidden.
+  @override
+  bool get hasEqualizer => false;
+
+  @override
+  Future<void> setEqualizer(EqPreset preset) async {}
 
   @override
   Future<void> dispose() async {

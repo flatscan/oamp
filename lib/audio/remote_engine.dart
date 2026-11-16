@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/equalizer.dart';
 import '../core/models.dart';
 import '../core/remote_player.dart';
 import 'audio_engine.dart';
@@ -376,6 +377,10 @@ class RemoteEngine implements AudioEngine {
   Future<void> setDucked(bool ducked) async {}
   @override
   Future<void> setCrossfade(Duration duration) async {}
+
+  /// Speakers and TVs keep their own sound settings.
+  @override
+  Future<void> setEqualizer(EqPreset preset) async {}
 
   /// Doesn't wait for listeners to finish: a paused one would hold it up.
   @override
